@@ -1,12 +1,15 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
-  <title>DomoMaker</title>
+  <title>Trade Journal</title>
   <link rel="shortcut icon" href="/assets/img/favicon.png"/>
   <link rel="stylesheet" type="text/css" href="/assets/style.css"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap" rel="stylesheet">
 </head>
 <body> 
-  <nav><a href="/login"><img id="logo" src="/assets/img/face.png" alt="face logo"/></a>
+  <nav><a href="/login"><img id="logo" src="/assets/img/logo.jpg" alt="logo"/></a>
     <div class="navlink"><a id="loginButton" href="/login">Login</a></div>
     <div class="navlink"><a id="signupButton" href="/signup">Sign up</a></div>
   </nav>
@@ -15,10 +18,8 @@
 
   </section>
 
-  <div id="domoMessage" class='hidden'>
-    <img id="speech" src="/assets/img/speech.png" alt="speech box"/>
+  <div id="errorDiv" class='hidden'>
     <h3><span id="errorMessage"></span></h3>
-    <img id="domo" src="assets/img/domo.png" alt="domo"/>
   </div>
   <script src="/assets/loginBundle.js"></script>
 </body>
