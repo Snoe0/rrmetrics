@@ -5,7 +5,14 @@ const { Trade } = models;
 const tradePage = (req, res) => res.render('app');
 
 const makeTrade = async (req, res) => {
-  if (!req.body.ticker || !req.body.enterTime || !req.body.exitTime || !req.body.enterPrice || !req.body.exitPrice || !req.body.quantity) {
+  if (
+    !req.body.ticker
+    || !req.body.enterTime
+    || !req.body.exitTime
+    || !req.body.enterPrice
+    || !req.body.exitPrice
+    || !req.body.quantity
+  ) {
     return res.status(400).json({ error: 'Ticker, enter time, exit time, enter price, exit price, and quantity are required!' });
   }
 
