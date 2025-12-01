@@ -1,9 +1,12 @@
+/* Navbar color: #2d3c47 */
+
 html, body {
     height: 100%;
     width: 100%;
     margin: 0;
     padding: 0;
     overflow-x: hidden;
+    font-family: 'Outfit', sans-serif;
 }
 
 #logo {
@@ -17,7 +20,7 @@ html, body {
 nav {
     width: 100%;
     height: 50px;
-    background-color: #55acee;
+    background-color: #2d3c47;
 }
 
 nav:nth-child(1) {
@@ -38,62 +41,13 @@ nav:nth-child(1) {
     text-decoration: none;
     padding: 5px;
     border-radius: 4px;
-    background-color: #55acee;
+    background-color: #2d3c47;
     transition: background-color 0.4s ease;
 }
 
 .navlink a:hover {
     transition: background-color 0.8s ease;
-    background-color: #66bdff;
-}
-
-.domoForm {
-    border: 2px solid #338acc;
-    height: 35px;
-    width: 100%;
-    margin-top:0px;
-    padding-top:10px;
-    background-color: #55acee;
-    border-bottom-right-radius: 4px;
-    border-top-right-radius: 4px;
-}
-
-.domoForm label {
-    display: inline-block;
-    width: 75px;
-    margin-left: 10px;
-    font-size: 1.2em;
-    float: left;
-    color: white;
-}
-
-.domoForm input[type=text] {
-    float:left;
-}
-
-.domoForm input[type=number] {
-    float:left;
-    margin-right: 5px;
-    width: 60px;
-}
-
-.makeDomoSubmit {
-    transition: background-color 0.4s ease;
-    display: inline;
-    width: 90px;
-    background-color: #55acee;
-    border-radius: 2px;
-    color: white;
-    text-decoration: none;
-}
-
-.makeDomoSubmit:link, .makeDomoSubmit:visited, .makeDomoSubmit:hover, .makeDomoSubmit:active {
-    color: white;
-}
-
-.makeDomoSubmit:hover {
-    transition: background-color 0.4s ease;
-    background-color: #338acc;
+    background-color: #3b5161;
 }
 
 .mainForm {
@@ -111,7 +65,7 @@ nav:nth-child(1) {
 .mainForm label {
     display: inline-block;
     width: 100px;
-    margin-right: 10px;
+    margin-right: 20px;
     text-align: right;
     font-size: 1.2em;
 }
@@ -124,9 +78,9 @@ nav:nth-child(1) {
     margin-top: 14px;
     font-size: 1.2em;
     width: 100px;
-    background-color: #55acee;
+    background-color: #455c6c;
     border-radius: 2px;
-    border-color: #66acee;
+    border-color: #3b5161;
     padding: 3px 0px;
     color: white;
     text-decoration: none;
@@ -138,7 +92,7 @@ nav:nth-child(1) {
 
 .formSubmit:hover {
     transition: background-color 0.4s ease;
-    background-color: #338acc;
+    background-color: #2d3c47;
 }
 
 #user, #pass, #pass2 {
@@ -150,143 +104,505 @@ nav:nth-child(1) {
 
 #user:focus, #pass:focus, #pass2:focus {
     outline: none;
-    box-shadow: 0px 0px 1px 1px #55acee;
+    box-shadow: 0px 0px 2px 2px #2d3c47;
 }
 
 .hidden {
     display: none;
 }
 
-#domoMessage {
-    top: 250px;
-    width: 250px;
-    height: 650px;
-    position: absolute;
-    z-index: 200;
-    right: 0px;
+#errorDiv {
     overflow: hidden;
+    margin: auto;
+    margin-top: -150px;
 }
 
-#domoMessage h3 {
+#errorDiv h3 {
     width: 200px;
-    position: absolute;
-    top: 0px;
-    left: 20px;
-}
-
-#speech {
-    height: 120px;
-    width: 250px;
-    z-index:300;
+    margin: auto;
+    text-align: center;
 }
 
 #errorMessage {
-    font-size: 1.2em;
+    font-size: 1.1em;
     font-weight: bold;
     color: red;
     font-style: italic;
 }
 
-#domo {
-    z-index: 225;
-    margin-top: -20px;
-    margin-left: 135px;
-    height: 450px;
-    width: 300px;
-    -ms-transform: rotate(330deg);
-    -webkit-transform: rotate(330deg); 
-    transform: rotate(330deg);
+.tradeForm {
+    border: 2px solid #2d3c47;
+    width: 90%;
+    max-width: 800px;
+    margin: 20px auto;
+    padding: 20px;
+    background-color: #384b59;
+    border-radius: 8px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 15px;
+    align-items: center;
 }
 
-#domos {
-    width: 60%;
-    min-width: 400px;
-    border: 2px solid #55acee;
-    border-radius: 4px;
-    margin: 0 auto;
-    margin-top: 100px;
+.tradeForm label {
+    color: white;
+    font-size: 1em;
+    text-align: right;
+    padding-right: 10px;
 }
 
-.domo {
-    width: 95%;
-    margin: 0 auto;
-    margin-top: 2px;
-    margin-bottom: 2px;
-    border: 2px solid #55acee;
+.tradeForm input[type="text"],
+.tradeForm input[type="datetime-local"],
+.tradeForm input[type="number"],
+.tradeForm textarea {
+    padding: 8px;
+    border: 1px solid #2d3c47;
     border-radius: 4px;
-    background-color: #55acee;
+    font-size: 1em;
+    font-family: 'Outfit', sans-serif;
+}
+
+.tradeForm input[type="text"]:focus,
+.tradeForm input[type="datetime-local"]:focus,
+.tradeForm input[type="number"]:focus,
+.tradeForm textarea:focus {
+    outline: none;
+    box-shadow: 0px 0px 2px 2px #2d3c47;
+}
+
+.tradeForm textarea {
+    resize: vertical;
+    min-height: 60px;
+}
+
+.makeTradeSubmit {
+    grid-column: 1 / -1;
+    transition: background-color 0.4s ease;
+    width: 150px;
+    margin: 10px auto 0;
     padding: 10px;
-    min-height:60px;
-    overflow: hidden;
-}
-
-.domo:hover {
-    transition: border-color 0.2s ease-out;
-    border-color: rgba(255,255,255, 0.8);
-    transition: background-color 2.6s ease-out;
-    background-color: #66bfff;
-}
-
-img.domoFace {
-    margin-left: 25px;
-    margin-right: 10px;
-    height: 50px;
-    width: 50px;
+    background-color: #455c6c;
     border-radius: 4px;
-    margin-top:10px;
-    float:left;
-}
-
-
-img.domoDelete {
-    margin-right: 10px;
-    margin-left: 10px;
-    height: 30px;
-    width: 30px;
-    border-radius: 4px;
-    margin-top:10px;
-    float:right;
+    border: 1px solid #3b5161;
+    color: white;
+    font-size: 1.1em;
+    font-weight: bold;
     cursor: pointer;
+    font-family: 'Outfit', sans-serif;
 }
 
-h3.emptyDomo {
-    width: 400px;
-    font-size: 1.5em;
-    margin: 0 auto;
+.makeTradeSubmit:hover {
+    transition: background-color 0.4s ease;
+    background-color: #2d3c47;
+}
+
+#trades {
+    width: 90%;
+    max-width: 1000px;
+    margin: 30px auto;
+}
+
+.tradeList {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.emptyTrade {
     text-align: center;
-    margin-top: 18px;
-}
-
-h3.domoName {
-    float:left;
-    width: 200px;
-    font-weight: bold;
-    padding-left: 65px;
     font-size: 1.5em;
+    color: #666;
+    margin: 50px 0;
 }
 
-h3.domoAge {
-    float:right;
-    text-align: left;
-    width: 100px;
+.trade {
+    border: 2px solid #2d3c47;
+    border-radius: 8px;
+    background-color: #f5f5f5;
+    padding: 15px;
+    transition: all 0.3s ease;
+}
+
+.trade:hover {
+    border-color: #3b5161;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.tradeHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #ddd;
+    gap: 15px;
+}
+
+.tradeTicker {
+    margin: 0;
+    font-size: 1.3em;
     font-weight: bold;
-    padding-right: 40px;
-    font-size: 1.5em;
+    color: #2d3c47;
+    text-transform: uppercase;
+    min-width: 80px;
 }
 
-h3.domoHeight {
-    float:right;
-    text-align: left;
-    width: 100px;
+.tradeDate {
+    margin: 0;
+    font-size: 0.95em;
+    color: #2d3c47;
+    flex-grow: 1;
+}
+
+.tradeDelete {
+    height: 24px;
+    width: 24px;
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.2s ease;
+}
+
+.tradeDelete:hover {
+    opacity: 1;
+}
+
+.tradeDetails {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.tradePrice,
+.tradeQuantity,
+.tradeProfitLoss {
+    padding: 8px;
+    background-color: white;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+}
+
+.tradeProfitLoss {
     font-weight: bold;
-    padding-right: 40px;
-    font-size: 1.5em;
 }
 
-.domo:first-child {
+.tradeProfitLoss.profit {
+    color: #22c55e;
+    border-color: #22c55e;
+}
+
+.tradeProfitLoss.loss {
+    color: #ef4444;
+    border-color: #ef4444;
+}
+
+.tradeComments {
     margin-top: 10px;
+    padding: 10px;
+    background-color: white;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+    font-style: italic;
 }
 
-.domo:last-child {
-    margin-bottom:10px;
+.trade .label {
+    font-weight: bold;
+    color: #2d3c47;
+    margin-right: 5px;
+}
+
+.manualIndicator {
+    font-size: 0.85em;
+    font-style: italic;
+    opacity: 0.8;
+}
+
+#dashboard {
+    width: 90%;
+    max-width: 1200px;
+    margin: 30px auto 20px;
+}
+
+.dashboardTitle {
+    text-align: center;
+    color: #2d3c47;
+    font-size: 2em;
+    margin-bottom: 25px;
+}
+
+/* Dashboard Stats Grid */
+.dashboardStats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-bottom: 30px;
+}
+
+.statCard {
+    background-color: white;
+    border: 2px solid #2d3c47;
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    transition: all 0.3s ease;
+}
+
+.statCard:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+}
+
+.statCard.positive {
+    border-color: #22c55e;
+    background-color: #f0fdf4;
+}
+
+.statCard.negative {
+    border-color: #ef4444;
+    background-color: #fef2f2;
+}
+
+.statLabel {
+    font-size: 0.9em;
+    color: #666;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 10px;
+}
+
+.statValue {
+    font-size: 1.8em;
+    font-weight: bold;
+    color: #2d3c47;
+}
+
+.statCard.positive .statValue {
+    color: #22c55e;
+}
+
+.statCard.negative .statValue {
+    color: #ef4444;
+}
+
+/* Performance Metrics */
+.performanceMetrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 15px;
+    margin-bottom: 30px;
+}
+
+.metricCard {
+    background-color: white;
+    border: 2px solid #2d3c47;
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    transition: all 0.3s ease;
+}
+
+.metricCard:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+}
+
+.metricCard.positive {
+    border-color: #22c55e;
+    background-color: #f0fdf4;
+}
+
+.metricCard.negative {
+    border-color: #ef4444;
+    background-color: #fef2f2;
+}
+
+.metricLabel {
+    font-size: 1em;
+    color: #666;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 10px;
+}
+
+.metricValue {
+    font-size: 2em;
+    font-weight: bold;
+}
+
+.metricCard.positive .metricValue {
+    color: #22c55e;
+}
+
+.metricCard.negative .metricValue {
+    color: #ef4444;
+}
+
+/* Calendar View */
+.calendarView {
+    background-color: white;
+    border: 2px solid #2d3c47;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 30px;
+}
+
+.calendarHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #e5e7eb;
+}
+
+.calendarTitle {
+    margin: 0;
+    font-size: 1.5em;
+    color: #2d3c47;
+    font-weight: bold;
+}
+
+.calendarNav {
+    background-color: #2d3c47;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 10px 20px;
+    font-size: 1.2em;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+    font-weight: bold;
+}
+
+.calendarNav:hover {
+    background-color: #3b5161;
+}
+
+.calendarNav:active {
+    transform: scale(0.95);
+}
+
+.calendarGrid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 8px;
+}
+
+.calendarDayName {
+    text-align: center;
+    font-weight: bold;
+    color: #2d3c47;
+    padding: 10px;
+    background-color: #f3f4f6;
+    border-radius: 4px;
+    font-size: 0.9em;
+    text-transform: uppercase;
+}
+
+.calendarDay {
+    aspect-ratio: 1;
+    border: 2px solid #e5e7eb;
+    border-radius: 6px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background-color: #fafafa;
+    transition: all 0.2s ease;
+    min-height: 70px;
+}
+
+.calendarDay.empty {
+    background-color: transparent;
+    border-color: transparent;
+}
+
+.calendarDay.profitable {
+    background-color: #f0fdf4;
+    border-color: #22c55e;
+}
+
+.calendarDay.loss {
+    background-color: #fef2f2;
+    border-color: #ef4444;
+}
+
+.calendarDay:not(.empty):hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    z-index: 10;
+}
+
+.dayNumber {
+    font-weight: bold;
+    font-size: 1em;
+    color: #2d3c47;
+    margin-bottom: 4px;
+}
+
+.dayPL {
+    font-size: 0.85em;
+    font-weight: bold;
+}
+
+.calendarDay.profitable .dayPL {
+    color: #22c55e;
+}
+
+.calendarDay.loss .dayPL {
+    color: #ef4444;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .dashboardStats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .performanceMetrics {
+        grid-template-columns: 1fr;
+    }
+
+    .calendarGrid {
+        gap: 4px;
+    }
+
+    .calendarDay {
+        min-height: 60px;
+        padding: 4px;
+    }
+
+    .dayNumber {
+        font-size: 0.9em;
+    }
+
+    .dayPL {
+        font-size: 0.75em;
+    }
+
+    .statValue {
+        font-size: 1.5em;
+    }
+
+    .dashboardTitle {
+        font-size: 1.5em;
+    }
+}
+
+@media (max-width: 480px) {
+    .dashboardStats {
+        grid-template-columns: 1fr;
+    }
+
+    .calendarDayName {
+        font-size: 0.75em;
+        padding: 6px;
+    }
+
+    .calendarDay {
+        min-height: 50px;
+    }
 }

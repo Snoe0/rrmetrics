@@ -15,7 +15,7 @@ const router = require('./router.js');
 
 const port = process.env.PORT || process.env.NODE_PORT || 3000;
 
-const dbURI = process.env.MONGODB_URI || 'mongodb://localhost/DomoMaker';
+const dbURI = process.env.MONGODB_URI || 'mongodb://localhost/TradeJournal';
 
 mongoose.connect(dbURI).catch((err) => {
   if (err) {
@@ -43,7 +43,7 @@ redisClient.connect().then(() => {
   app.use(session({
     key: 'sessionid',
     store: new RedisStore({ client: redisClient }),
-    secret: 'Domo Arigato',
+    secret: 'Trade Journal Secret',
     resave: false,
     saveUninitialized: false,
   }));
