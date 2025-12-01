@@ -3,6 +3,7 @@ const mid = require('./middleware');
 
 const router = (app) => {
   app.get('/getTrades', mid.requiresLogin, controllers.Trade.getTrades);
+  app.post('/makeTrade', mid.requiresLogin, controllers.Trade.makeTrade);
   app.post('/removeTrade', mid.requiresLogin, controllers.Trade.removeTrade);
 
   app.get('/login', mid.requiresSecure, mid.requiresLogout, controllers.Account.loginPage);
