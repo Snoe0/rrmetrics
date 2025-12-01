@@ -24,7 +24,7 @@ const login = (req, res) => {
 
     req.session.account = Account.toAPI(account);
 
-    return res.json({ redirect: '/maker' });
+    return res.json({ redirect: '/trades' });
   });
 };
 
@@ -49,7 +49,7 @@ const signup = async (req, res) => {
     });
     await newAccount.save();
     req.session.account = Account.toAPI(newAccount);
-    return res.json({ redirect: '/maker' });
+    return res.json({ redirect: '/trades' });
   } catch (err) {
     console.error(err);
     if (err.code === 11000) {
