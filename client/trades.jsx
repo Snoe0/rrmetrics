@@ -59,14 +59,22 @@ const calculateAnalytics = (trades) => {
 };
 
 const formatDuration = (milliseconds) => {
-  const hours = Math.floor(milliseconds / (1000 * 60 * 60));
-  const days = Math.floor(hours / 24);
-  const minutes = Math.floor((milliseconds % (1000 * 60 * 60)) / (1000 * 60));
+  const totalSeconds = Math.floor(milliseconds / 1000);
+  const days = Math.floor(totalSeconds / (24 * 60 * 60));
+  const hours = Math.floor((totalSeconds % (24 * 60 * 60)) / (60 * 60));
+  const minutes = Math.floor((totalSeconds % (60 * 60)) / 60);
+  const seconds = totalSeconds % 60;
 
   if (days > 0) {
-    return `${days}d ${hours % 24}h`;
+    return `${days}d ${hours}h ${minutes}m`;
   }
-  return `${hours}h ${minutes}m`;
+  if (hours > 0) {
+    return `${hours}h ${minutes}m ${seconds}s`;
+  }
+  if (minutes > 0) {
+    return `${minutes}m ${seconds}s`;
+  }
+  return `${seconds}s`;
 };
 
 const groupTradesByDate = (trades) => {
@@ -134,6 +142,43 @@ const handleRemoveTrade = (id, onTradeRemoved) => {
   }
 
   helper.sendPost('/removeTrade', { _id: id }, onTradeRemoved);
+  return false;
+};
+
+const handleUpdateTrade = (e, tradeId, onTradeUpdated) => {
+  e.preventDefault();
+  helper.hideError();
+
+  const ticker = e.target.querySelector('#ticker').value;
+  const enterTime = e.target.querySelector('#enterTime').value;
+  const exitTime = e.target.querySelector('#exitTime').value;
+  const enterPrice = e.target.querySelector('#enterPrice').value;
+  const exitPrice = e.target.querySelector('#exitPrice').value;
+  const quantity = e.target.querySelector('#quantity').value;
+  const manualPL = e.target.querySelector('#manualPL').value;
+  const comments = e.target.querySelector('#comments').value;
+
+  if (!ticker || !enterTime || !exitTime || !enterPrice || !exitPrice || !quantity) {
+    helper.handleError('Ticker, enter time, exit time, enter price, exit price, and quantity are required');
+    return false;
+  }
+
+  const tradeData = {
+    _id: tradeId,
+    ticker,
+    enterTime,
+    exitTime,
+    enterPrice: parseFloat(enterPrice),
+    exitPrice: parseFloat(exitPrice),
+    quantity: parseFloat(quantity),
+    comments
+  };
+
+  if (manualPL) {
+    tradeData.manualPL = parseFloat(manualPL);
+  }
+
+  helper.sendPost('/updateTrade', tradeData, onTradeUpdated);
   return false;
 };
 
@@ -282,44 +327,158 @@ const CalendarView = ({ trades }) => {
 
 const TradeForm = (props) => {
   return (
-    <form id="tradeForm"
-      onSubmit={(e) => handleTrade(e, props.triggerReload)}
-      name="tradeForm"
-      action="/trades"
-      method="POST"
-      className="tradeForm"
-    >
-      <label htmlFor="ticker">Ticker: </label>
-      <input id="ticker" type="text" name="ticker" placeholder="AAPL" />
-
-      <label htmlFor="enterTime">Enter Time: </label>
-      <input id="enterTime" type="datetime-local" name="enterTime" />
-
-      <label htmlFor="exitTime">Exit Time: </label>
-      <input id="exitTime" type="datetime-local" name="exitTime" />
-
-      <label htmlFor="enterPrice">Enter Price: </label>
-      <input id="enterPrice" type="number" step="0.01" min="0" name="enterPrice" placeholder="0.00" />
-
-      <label htmlFor="exitPrice">Exit Price: </label>
-      <input id="exitPrice" type="number" step="0.01" min="0" name="exitPrice" placeholder="0.00" />
-
-      <label htmlFor="quantity">Quantity: </label>
-      <input id="quantity" type="number" step="0.01" name="quantity" placeholder="1" />
-
-      <label htmlFor="manualPL">P/L (optional): </label>
-      <input id="manualPL" type="number" step="0.01" name="manualPL" placeholder="Leave blank to auto-calculate" />
-
-      <label htmlFor="comments">Comments: </label>
-      <textarea id="comments" name="comments" placeholder="Trade notes..." rows="3"></textarea>
-
-      {/* <label htmlFor="imageAttachments">Image Attachments: </label>
-      <textarea id="imageAttachments" name="imageAttachments" placeholder="Image URLs or descriptions..." rows="3"></textarea> */}
-
-      <input className="makeTradeSubmit" type="submit" value="Add Trade" />
-    </form>
+    <div id="tradeFormButton">
+      <button className="journalNewTradeButton" onClick={() => setIsFormOpen(true)}>+ Journal New Trade</button>
+    </div>
   );
 };
+
+const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade }) => {
+  useEffect(() => {
+    const handleEscape = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    if (isOpen) {
+      document.addEventListener('keydown', handleEscape);
+      document.body.style.overflow = 'hidden';
+    }
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+
+  const isEditing = editingTrade !== null;
+
+  const handleSubmit = (e) => {
+    if (isEditing) {
+      handleUpdateTrade(e, editingTrade._id, () => {
+        triggerReload();
+        onClose();
+      });
+    } else {
+      handleTrade(e, () => {
+        triggerReload();
+        onClose();
+      });
+    }
+  };
+
+  // Format datetime for input field (datetime-local requires specific format)
+  const formatDateTimeForInput = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+  };
+
+  return (
+    <div className="formBackdrop" onClick={onClose}>
+      <div className="formContent" onClick={(e) => e.stopPropagation()}>
+        <button className="closeButton" onClick={onClose}>×</button>
+        <h2>{isEditing ? 'Edit Trade' : 'Journal New Trade'}</h2>
+        <form id="tradeForm"
+          onSubmit={(e) => handleSubmit(e)}
+          name="tradeForm"
+          action={isEditing ? "/updateTrade" : "/trades"}
+          method="POST"
+          className="tradeForm"
+        >
+          <label htmlFor="ticker">Ticker: </label>
+          <input
+            id="ticker"
+            type="text"
+            name="ticker"
+            placeholder="AAPL"
+            defaultValue={isEditing ? editingTrade.ticker : ''}
+          />
+
+          <label htmlFor="enterTime">Enter Time: </label>
+          <input
+            id="enterTime"
+            type="datetime-local"
+            name="enterTime"
+            step="1"
+            defaultValue={isEditing ? formatDateTimeForInput(editingTrade.enterTime) : ''}
+          />
+
+          <label htmlFor="exitTime">Exit Time: </label>
+          <input
+            id="exitTime"
+            type="datetime-local"
+            name="exitTime"
+            step="1"
+            defaultValue={isEditing ? formatDateTimeForInput(editingTrade.exitTime) : ''}
+          />
+
+          <label htmlFor="enterPrice">Enter Price: </label>
+          <input
+            id="enterPrice"
+            type="number"
+            step="0.01"
+            min="0"
+            name="enterPrice"
+            placeholder="0.00"
+            defaultValue={isEditing ? editingTrade.enterPrice : ''}
+          />
+
+          <label htmlFor="exitPrice">Exit Price: </label>
+          <input
+            id="exitPrice"
+            type="number"
+            step="0.01"
+            min="0"
+            name="exitPrice"
+            placeholder="0.00"
+            defaultValue={isEditing ? editingTrade.exitPrice : ''}
+          />
+
+          <label htmlFor="quantity">Quantity: </label>
+          <input
+            id="quantity"
+            type="number"
+            step="0.01"
+            name="quantity"
+            placeholder="1"
+            defaultValue={isEditing ? editingTrade.quantity : ''}
+          />
+
+          <label htmlFor="manualPL">P/L (optional): </label>
+          <input
+            id="manualPL"
+            type="number"
+            step="0.01"
+            name="manualPL"
+            placeholder="Leave blank to auto-calculate"
+            defaultValue={isEditing && editingTrade.manualPL ? editingTrade.manualPL : ''}
+          />
+
+          <label htmlFor="comments">Comments: </label>
+          <textarea
+            id="comments"
+            name="comments"
+            placeholder="Trade notes..."
+            rows="3"
+            defaultValue={isEditing ? editingTrade.comments : ''}
+          ></textarea>
+
+          <input
+            className="makeTradeSubmit"
+            type="submit"
+            value={isEditing ? "Update Trade" : "Add Trade"}
+          />
+        </form>
+      </div>
+    </div>
+  );
+}
 
 const TradeList = (props) => {
   const { trades } = props;
@@ -345,7 +504,8 @@ const TradeList = (props) => {
         month: 'short',
         day: 'numeric',
         hour: '2-digit',
-        minute: '2-digit'
+        minute: '2-digit',
+        second: '2-digit'
       });
     };
 
@@ -356,12 +516,20 @@ const TradeList = (props) => {
           <h3 className="tradeDate">
             {formatDateTime(trade.enterTime)} → {formatDateTime(trade.exitTime)}
           </h3>
-          <img
-            src="/assets/img/trash.png"
-            alt="delete trade"
-            className="tradeDelete"
-            onClick={() => handleRemoveTrade(trade._id, props.triggerReload)}
-          />
+          <div className="tradeActions">
+            <img
+              src="/assets/img/pencil-edit-button.svg"
+              alt="edit trade"
+              className="tradeEdit"
+              onClick={() => props.onEdit(trade)}
+            />
+            <img
+              src="/assets/img/trash.png"
+              alt="delete trade"
+              className="tradeDelete"
+              onClick={() => handleRemoveTrade(trade._id, props.triggerReload)}
+            />
+          </div>
         </div>
         <div className="tradeDetails">
           <div className="tradePrice">
@@ -399,6 +567,8 @@ const TradeList = (props) => {
 const App = () => {
   const [reloadTrades, setReloadTrades] = useState(false);
   const [trades, setTrades] = useState([]);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingTrade, setEditingTrade] = useState(null);
 
   useEffect(() => {
     const loadTradesFromServer = async () => {
@@ -411,18 +581,39 @@ const App = () => {
 
   return (
     <div>
+      <div id="makeTradeButtonContainer">
+        <button
+          className="journalNewTradeButton"
+          onClick={() => setIsFormOpen(true)}
+        >
+          + Journal New Trade
+        </button>
+      </div>
       <div id="dashboard">
         <h2 className="dashboardTitle">Trading Dashboard</h2>
         <DashboardStats trades={trades} />
         <PerformanceDisplay trades={trades} />
         <CalendarView trades={trades} />
       </div>
-
-      <div id="makeTrade">
-        <TradeForm triggerReload={() => setReloadTrades(!reloadTrades)} />
-      </div>
+      <TradeFormPopup
+        isOpen={isFormOpen}
+        onClose={() => {
+          setIsFormOpen(false);
+          setEditingTrade(null);
+        }}
+        triggerReload={() => setReloadTrades(!reloadTrades)}
+        editingTrade={editingTrade}
+      />
       <div id="trades">
-        <TradeList trades={trades} reloadTrades={reloadTrades} triggerReload={() => setReloadTrades(!reloadTrades)} />
+        <TradeList
+          trades={trades}
+          reloadTrades={reloadTrades}
+          triggerReload={() => setReloadTrades(!reloadTrades)}
+          onEdit={(trade) => {
+            setEditingTrade(trade);
+            setIsFormOpen(true);
+          }}
+        />
       </div>
     </div>
   );

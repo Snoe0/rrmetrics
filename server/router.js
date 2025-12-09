@@ -5,6 +5,7 @@ const router = (app) => {
   app.get('/getTrades', mid.requiresLogin, controllers.Trade.getTrades);
   app.post('/makeTrade', mid.requiresLogin, controllers.Trade.makeTrade);
   app.post('/removeTrade', mid.requiresLogin, controllers.Trade.removeTrade);
+  app.post('/updateTrade', mid.requiresLogin, controllers.Trade.updateTrade);
 
   app.get('/login', mid.requiresSecure, mid.requiresLogout, controllers.Account.loginPage);
   app.post('/login', mid.requiresSecure, mid.requiresLogout, controllers.Account.login);

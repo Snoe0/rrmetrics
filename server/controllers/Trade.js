@@ -87,9 +87,69 @@ const removeTrade = async (req, res) => {
   }
 };
 
+const updateTrade = async (req, res) => {
+  if (!req.body._id) {
+    return res.status(400).json({ error: 'Trade ID is required to update!' });
+  }
+
+  if (
+    !req.body.ticker
+    || !req.body.enterTime
+    || !req.body.exitTime
+    || !req.body.enterPrice
+    || !req.body.exitPrice
+    || !req.body.quantity
+  ) {
+    return res.status(400).json({ error: 'Ticker, enter time, exit time, enter price, exit price, and quantity are required!' });
+  }
+
+  try {
+    const query = {
+      _id: req.body._id,
+      owner: req.session.account._id,
+    };
+
+    const updateData = {
+      ticker: req.body.ticker,
+      enterTime: req.body.enterTime,
+      exitTime: req.body.exitTime,
+      enterPrice: req.body.enterPrice,
+      exitPrice: req.body.exitPrice,
+      quantity: req.body.quantity,
+      manualPL: req.body.manualPL || null,
+      comments: req.body.comments || '',
+    };
+
+    const updatedTrade = await Trade.findOneAndUpdate(
+      query,
+      updateData,
+      { new: true, runValidators: true },
+    ).exec();
+
+    if (!updatedTrade) {
+      return res.status(404).json({ error: 'Trade not found!' });
+    }
+
+    return res.status(200).json({
+      ticker: updatedTrade.ticker,
+      enterTime: updatedTrade.enterTime,
+      exitTime: updatedTrade.exitTime,
+      enterPrice: updatedTrade.enterPrice,
+      exitPrice: updatedTrade.exitPrice,
+      quantity: updatedTrade.quantity,
+      manualPL: updatedTrade.manualPL,
+      comments: updatedTrade.comments,
+    });
+  } catch (err) {
+    console.log(err);
+    return res.status(500).json({ error: 'An error occurred while updating the trade!' });
+  }
+};
+
 module.exports = {
   tradePage,
   makeTrade,
   getTrades,
   removeTrade,
+  updateTrade,
 };
