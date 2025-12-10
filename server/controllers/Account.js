@@ -71,7 +71,7 @@ const getSubscriptionStatus = (req, res) => {
   });
 };
 
-const changePassPage = (req, res) => res.render('/changepass');
+const changePassPage = (req, res) => res.render('changePass');
 
 const changePass = (req, res) => {
   const oldPass = `${req.body.currentPass}`;
@@ -93,7 +93,7 @@ const changePass = (req, res) => {
 
     try {
       const hash = await Account.generateHash(newPass);
-      account.password = hash;
+      Account.password = hash;
       await account.save();
       return res.json({ redirect: '/trades' });
     } catch (saveErr) {
@@ -101,8 +101,7 @@ const changePass = (req, res) => {
       return res.status(500).json({ error: 'An error occurred.' });
     }
   });
-}
-
+};
 
 module.exports = {
   loginPage,

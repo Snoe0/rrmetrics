@@ -27,7 +27,7 @@ const checkSubscriptionStatus = (req, res, next) => {
     return next();
   }
 
-  const account = req.session.account;
+  const { account } = req.session;
 
   if (account.isPremium) {
     req.subscriptionStatus = {

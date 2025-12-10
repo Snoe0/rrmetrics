@@ -17,8 +17,8 @@ const router = (app) => {
   app.get('/trades', mid.requiresLogin, controllers.Trade.tradePage);
   app.post('/trades', mid.requiresLogin, controllers.Trade.makeTrade);
 
-  app.get('/changepass', mid.requiresLogin, controllers.Account.changePassPage);
-  app.post('/changepass', mid.requiresLogin, controllers.Account.changePass);
+  app.get('/changePass', mid.requiresLogin, controllers.Account.changePassPage);
+  app.post('/changePass', mid.requiresLogin, controllers.Account.changePass);
 
   app.get('/subscriptionStatus', mid.requiresLogin, mid.checkSubscriptionStatus, controllers.Account.getSubscriptionStatus);
 

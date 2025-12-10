@@ -15,7 +15,6 @@ const handleChangePass = (e) => {
     return false;
   }
 
-
   if (pass !== pass2) {
     helper.handleError('Passwords do not match');
     return false;
@@ -26,17 +25,16 @@ const handleChangePass = (e) => {
 }
 
 const ChangePass = (props) => {
-
   return (
     <form id="changePassForm"
       name="changePassForm"
       onSubmit={handleChangePass}
-      action="/changepass"
+      action="/changePass"
       method="POST"
       className="mainForm"
     >
       <label htmlFor="pass">Current Password: </label>
-      <input id="currentPass" type="text" name="currentpass" placeholder="current password" />
+      <input id="currentPass" type="password" name="currentpass" placeholder="current password" />
       <label htmlFor="pass">New Password: </label>
       <input id="pass" type="password" name="pass" placeholder="password" />
       <label htmlFor="pass">New Password: </label>
@@ -47,14 +45,7 @@ const ChangePass = (props) => {
 };
 
 const init = () => {
-  const changePassButton = document.getElementById('changePassButton');
   const root = createRoot(document.getElementById('content'));
-
-  changePassButton.addEventListener('click', (e) => {
-    e.preventDefault();
-    root.render(<ChangePass />);
-    return false;
-  });
 
   root.render(<ChangePass />);
 };
