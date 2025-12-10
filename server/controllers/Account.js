@@ -59,9 +59,57 @@ const signup = async (req, res) => {
   }
 };
 
+const getSubscriptionStatus = (req, res) => {
+  if (!req.subscriptionStatus) {
+    return res.status(500).json({ error: 'Subscription status not available' });
+  }
+
+  return res.json({
+    isPremium: req.subscriptionStatus.isPremium,
+    isTrialActive: req.subscriptionStatus.isTrialActive,
+    trialDaysRemaining: req.subscriptionStatus.trialDaysRemaining,
+  });
+};
+
+const changePassPage = (req, res) => res.render('/changepass');
+
+const changePass = (req, res) => {
+  const oldPass = `${req.body.currentPass}`;
+  const newPass = `${req.body.pass}`;
+  const newPass2 = `${req.body.pass2}`;
+
+  if (!oldPass || !newPass || !newPass2) {
+    return res.status(400).json({ error: 'All fields are required!' });
+  }
+
+  if (newPass !== newPass2) {
+    return res.status(400).json({ error: 'New passwords do not match!' });
+  }
+
+  return Account.authenticate(req.session.account.username, oldPass, async (err, account) => {
+    if (err || !account) {
+      return res.status(401).json({ error: 'Wrong password!' });
+    }
+
+    try {
+      const hash = await Account.generateHash(newPass);
+      account.password = hash;
+      await account.save();
+      return res.json({ redirect: '/trades' });
+    } catch (saveErr) {
+      console.error(saveErr);
+      return res.status(500).json({ error: 'An error occurred.' });
+    }
+  });
+}
+
+
 module.exports = {
   loginPage,
   logout,
   login,
   signup,
+  changePassPage,
+  changePass,
+  getSubscriptionStatus,
 };

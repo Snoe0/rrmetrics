@@ -3,6 +3,7 @@ const React = require('react');
 const { useState, useEffect } = React;
 const { createRoot } = require('react-dom/client');
 
+//Calculates all the major stats for the dashboard from the user's trades array
 const calculateAnalytics = (trades) => {
   if (!trades || trades.length === 0) {
     return {
@@ -182,54 +183,56 @@ const handleUpdateTrade = (e, tradeId, onTradeUpdated) => {
   return false;
 };
 
+//Displays all the stats on the dashboard
 const DashboardStats = ({ trades }) => {
   const stats = calculateAnalytics(trades);
 
   return (
-    <div className="dashboardStats">
-      <div className={`statCard ${stats.totalPL >= 0 ? 'positive' : 'negative'}`}>
-        <div className="statLabel">Total P/L</div>
-        <div className="statValue">${stats.totalPL.toFixed(2)}</div>
+    <div class="dashboardStats">
+      <div class={`statCard ${stats.totalPL >= 0 ? 'positive' : 'negative'}`}>
+        <div class="statLabel">Total P/L</div>
+        <div class="statValue">${stats.totalPL.toFixed(2)}</div>
       </div>
 
-      <div className="statCard">
-        <div className="statLabel">Win Rate</div>
-        <div className="statValue">{stats.winRate.toFixed(1)}%</div>
+      <div class="statCard">
+        <div class="statLabel">Win Rate</div>
+        <div class="statValue">{stats.winRate.toFixed(1)}%</div>
       </div>
 
-      <div className="statCard positive">
-        <div className="statLabel">Avg Win</div>
-        <div className="statValue">${stats.avgWin.toFixed(2)}</div>
+      <div class="statCard positive">
+        <div class="statLabel">Avg Win</div>
+        <div class="statValue">${stats.avgWin.toFixed(2)}</div>
       </div>
 
-      <div className="statCard negative">
-        <div className="statLabel">Avg Loss</div>
-        <div className="statValue">${stats.avgLoss.toFixed(2)}</div>
+      <div class="statCard negative">
+        <div class="statLabel">Avg Loss</div>
+        <div class="statValue">${stats.avgLoss.toFixed(2)}</div>
       </div>
 
-      <div className="statCard">
-        <div className="statLabel">Total Trades</div>
-        <div className="statValue">{stats.totalTrades}</div>
+      <div class="statCard">
+        <div class="statLabel">Total Trades</div>
+        <div class="statValue">{stats.totalTrades}</div>
       </div>
 
-      <div className="statCard">
-        <div className="statLabel">Wins</div>
-        <div className="statValue">{stats.wins}</div>
+      <div class="statCard">
+        <div class="statLabel">Wins</div>
+        <div class="statValue">{stats.wins}</div>
       </div>
 
-      <div className="statCard">
-        <div className="statLabel">Losses</div>
-        <div className="statValue">{stats.losses}</div>
+      <div class="statCard">
+        <div class="statLabel">Losses</div>
+        <div class="statValue">{stats.losses}</div>
       </div>
 
-      <div className="statCard">
-        <div className="statLabel">Avg Duration</div>
-        <div className="statValue">{formatDuration(stats.avgDuration)}</div>
+      <div class="statCard">
+        <div class="statLabel">Avg Duration</div>
+        <div class="statValue">{formatDuration(stats.avgDuration)}</div>
       </div>
     </div>
   );
 };
 
+//Displays the best and worst trades
 const PerformanceDisplay = ({ trades }) => {
   const stats = calculateAnalytics(trades);
 
@@ -238,20 +241,21 @@ const PerformanceDisplay = ({ trades }) => {
   }
 
   return (
-    <div className="performanceMetrics">
-      <div className="metricCard positive">
-        <div className="metricLabel">Best Trade</div>
-        <div className="metricValue">${stats.bestTrade.toFixed(2)}</div>
+    <div class="performanceMetrics">
+      <div class="metricCard positive">
+        <div class="metricLabel">Best Trade</div>
+        <div class="metricValue">${stats.bestTrade.toFixed(2)}</div>
       </div>
 
-      <div className="metricCard negative">
-        <div className="metricLabel">Worst Trade</div>
-        <div className="metricValue">${stats.worstTrade.toFixed(2)}</div>
+      <div class="metricCard negative">
+        <div class="metricLabel">Worst Trade</div>
+        <div class="metricValue">${stats.worstTrade.toFixed(2)}</div>
       </div>
     </div>
   );
 };
 
+//CALENDAR VIEW -> Displays a calendar with daily P/L totals (may add winrate and # of trades in the future as well)
 const CalendarView = ({ trades }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const dailyPL = groupTradesByDate(trades);
@@ -281,7 +285,7 @@ const CalendarView = ({ trades }) => {
     const days = [];
 
     for (let i = 0; i < firstDay; i++) {
-      days.push(<div key={`empty-${i}`} className="calendarDay empty"></div>);
+      days.push(<div key={`empty-${i}`} class="calendarDay empty"></div>);
     }
 
     for (let day = 1; day <= daysInMonth; day++) {
@@ -295,10 +299,10 @@ const CalendarView = ({ trades }) => {
       }
 
       days.push(
-        <div key={day} className={dayClass}>
-          <div className="dayNumber">{day}</div>
+        <div key={day} class={dayClass}>
+          <div class="dayNumber">{day}</div>
           {hasActivity && (
-            <div className="dayPL">${pl.toFixed(0)}</div>
+            <div class="dayPL">${pl.toFixed(0)}</div>
           )}
         </div>
       );
@@ -308,16 +312,16 @@ const CalendarView = ({ trades }) => {
   };
 
   return (
-    <div className="calendarView">
-      <div className="calendarHeader">
-        <button type="button" onClick={previousMonth} className="calendarNav">←</button>
-        <h3 className="calendarTitle">{monthNames[month]} {year}</h3>
-        <button type="button" onClick={nextMonth} className="calendarNav">→</button>
+    <div class="calendarView">
+      <div class="calendarHeader">
+        <button type="button" onClick={previousMonth} class="calendarNav">←</button>
+        <h3 class="calendarTitle">{monthNames[month]} {year}</h3>
+        <button type="button" onClick={nextMonth} class="calendarNav">→</button>
       </div>
 
-      <div className="calendarGrid">
+      <div class="calendarGrid">
         {dayNames.map(day => (
-          <div key={day} className="calendarDayName">{day}</div>
+          <div key={day} class="calendarDayName">{day}</div>
         ))}
         {renderDays()}
       </div>
@@ -325,13 +329,41 @@ const CalendarView = ({ trades }) => {
   );
 };
 
-const TradeForm = (props) => {
-  return (
-    <div id="tradeFormButton">
-      <button className="journalNewTradeButton" onClick={() => setIsFormOpen(true)}>+ Journal New Trade</button>
-    </div>
-  );
-};
+//TRIAL BANNER COMPONENT -> If user isn't a premium user, shows trial status (countdown or expired)
+const TrialBanner = ({ subscriptionStatus }) => {
+  if (!subscriptionStatus) return null;
+
+  if (subscriptionStatus.isPremium) return null;
+
+  const { isTrialActive, trialDaysRemaining } = subscriptionStatus;
+
+  if (isTrialActive) {
+    return (
+      <div class="trialBanner active">
+        <p>
+          🎉 <b>Free Trial Active!</b> You have <b>{trialDaysRemaining} day{trialDaysRemaining !== 1 ? 's' : ''}</b> remaining.
+          Upgrade now for just <b>$7/month</b> to keep full access!
+        </p>
+      </div>
+    );
+  } else {
+    return (
+      <div class="trialBanner expired">
+        <p>
+          ⏰ <b>Trial Expired!</b> Upgrade now for just <b>$7/month</b> to continue adding trades and unlock all features!
+        </p>
+      </div>
+    );
+  }
+}
+
+// const TradeForm = (props) => {
+//   return (
+//     <div id="tradeFormButton">
+//       <button class="journalNewTradeButton" onClick={() => setIsFormOpen(true)}>+ Journal New Trade</button>
+//     </div>
+//   );
+// };
 
 const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade }) => {
   useEffect(() => {
@@ -366,7 +398,6 @@ const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade }) => {
     }
   };
 
-  // Format datetime for input field (datetime-local requires specific format)
   const formatDateTimeForInput = (dateString) => {
     if (!dateString) return '';
     const date = new Date(dateString);
@@ -380,16 +411,16 @@ const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade }) => {
   };
 
   return (
-    <div className="formBackdrop" onClick={onClose}>
-      <div className="formContent" onClick={(e) => e.stopPropagation()}>
-        <button className="closeButton" onClick={onClose}>×</button>
+    <div class="formBackdrop" onClick={onClose}>
+      <div class="formContent" onClick={(e) => e.stopPropagation()}>
+        <button class="closeButton" onClick={onClose}>×</button>
         <h2>{isEditing ? 'Edit Trade' : 'Journal New Trade'}</h2>
         <form id="tradeForm"
           onSubmit={(e) => handleSubmit(e)}
           name="tradeForm"
           action={isEditing ? "/updateTrade" : "/trades"}
           method="POST"
-          className="tradeForm"
+          class="tradeForm"
         >
           <label htmlFor="ticker">Ticker: </label>
           <input
@@ -469,8 +500,12 @@ const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade }) => {
             defaultValue={isEditing ? editingTrade.comments : ''}
           ></textarea>
 
+          <div id="errorDiv" class='hidden'>
+            <h3><span id="errorMessage"></span></h3>
+          </div>
+
           <input
-            className="makeTradeSubmit"
+            class="makeTradeSubmit"
             type="submit"
             value={isEditing ? "Update Trade" : "Add Trade"}
           />
@@ -485,8 +520,8 @@ const TradeList = (props) => {
 
   if (trades.length === 0) {
     return (
-      <div className="tradeList">
-        <h3 className="emptyTrade">No Trades yet</h3>
+      <div class="tradeList">
+        <h3 class="emptyTrade">No Trades yet</h3>
       </div>
     );
   }
@@ -510,47 +545,47 @@ const TradeList = (props) => {
     };
 
     return (
-      <div key={trade._id} className="trade">
-        <div className="tradeHeader">
-          <h3 className="tradeTicker">{trade.ticker}</h3>
-          <h3 className="tradeDate">
+      <div key={trade._id} class="trade">
+        <div class="tradeHeader">
+          <h3 class="tradeTicker">{trade.ticker}</h3>
+          <h3 class="tradeDate">
             {formatDateTime(trade.enterTime)} → {formatDateTime(trade.exitTime)}
           </h3>
-          <div className="tradeActions">
+          <div class="tradeActions">
             <img
               src="/assets/img/pencil-edit-button.svg"
               alt="edit trade"
-              className="tradeEdit"
+              class="tradeEdit"
               onClick={() => props.onEdit(trade)}
             />
             <img
               src="/assets/img/trash.png"
               alt="delete trade"
-              className="tradeDelete"
+              class="tradeDelete"
               onClick={() => handleRemoveTrade(trade._id, props.triggerReload)}
             />
           </div>
         </div>
-        <div className="tradeDetails">
-          <div className="tradePrice">
-            <span className="label">Entry:</span> ${trade.enterPrice.toFixed(2)}
+        <div class="tradeDetails">
+          <div class="tradePrice">
+            <span class="label">Entry:</span> ${trade.enterPrice.toFixed(2)}
           </div>
-          <div className="tradePrice">
-            <span className="label">Exit:</span> ${trade.exitPrice.toFixed(2)}
+          <div class="tradePrice">
+            <span class="label">Exit:</span> ${trade.exitPrice.toFixed(2)}
           </div>
-          <div className="tradeQuantity">
-            <span className="label">Qty:</span> {trade.quantity}
+          <div class="tradeQuantity">
+            <span class="label">Qty:</span> {trade.quantity}
           </div>
-          <div className={`tradeProfitLoss ${profitLossClass}`}>
-            <span className="label">P/L:</span> ${profitLoss.toFixed(2)}
+          <div class={`tradeProfitLoss ${profitLossClass}`}>
+            <span class="label">P/L:</span> ${profitLoss.toFixed(2)}
             {trade.manualPL !== null && trade.manualPL !== undefined && (
-              <span className="manualIndicator"> (manual)</span>
+              <span class="manualIndicator"> (manual)</span>
             )}
           </div>
         </div>
         {trade.comments && (
-          <div className="tradeComments">
-            <span className="label">Notes:</span> {trade.comments}
+          <div class="tradeComments">
+            <span class="label">Notes:</span> {trade.comments}
           </div>
         )}
       </div>
@@ -558,7 +593,7 @@ const TradeList = (props) => {
   });
 
   return (
-    <div className="tradeList">
+    <div class="tradeList">
       {tradeNodes}
     </div>
   );
@@ -569,6 +604,7 @@ const App = () => {
   const [trades, setTrades] = useState([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingTrade, setEditingTrade] = useState(null);
+  const [subscriptionStatus, setSubscriptionStatus] = useState(null);
 
   useEffect(() => {
     const loadTradesFromServer = async () => {
@@ -579,18 +615,35 @@ const App = () => {
     loadTradesFromServer();
   }, [reloadTrades]);
 
+  useEffect(() => {
+    const fetchSubscriptionStatus = async () => {
+      try {
+        const response = await fetch('/subscriptionStatus');
+        const data = await response.json();
+        setSubscriptionStatus(data);
+      } catch (err) {
+        console.error('Failed to fetch subscription status:', err);
+      }
+    };
+
+    fetchSubscriptionStatus();
+  }, []);
+
   return (
     <div>
-      <div id="makeTradeButtonContainer">
-        <button
-          className="journalNewTradeButton"
-          onClick={() => setIsFormOpen(true)}
-        >
-          + Journal New Trade
-        </button>
-      </div>
+      <TrialBanner subscriptionStatus={subscriptionStatus} />
+      {subscriptionStatus && (subscriptionStatus.isPremium || subscriptionStatus.isTrialActive) && (
+        <div id="makeTradeButtonContainer">
+          <button
+            class="journalNewTradeButton"
+            onClick={() => setIsFormOpen(true)}
+          >
+            + Journal New Trade
+          </button>
+        </div>
+      )}
       <div id="dashboard">
-        <h2 className="dashboardTitle">Trading Dashboard</h2>
+        <h2 class="dashboardTitle">Trading Dashboard</h2>
         <DashboardStats trades={trades} />
         <PerformanceDisplay trades={trades} />
         <CalendarView trades={trades} />

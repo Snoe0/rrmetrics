@@ -1,9 +1,11 @@
 const path = require('path');
+const { chain } = require('underscore');
 
 module.exports = {
     entry: {
         app: './client/trades.jsx',
         login: './client/login.jsx',
+        changepass: './client/changepass.jsx',
     },
     module: {
         rules: [

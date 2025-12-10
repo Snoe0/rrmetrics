@@ -9,17 +9,19 @@
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap" rel="stylesheet">
 </head>
 <body>
-  <nav><a href="/login"><img id="logo" src="/assets/img/logo.jpg" alt="logo"/></a>
-    <div class="navlink"><a href="/logout">Log out</a></div>
+  <nav><a href="/login"><img id="logo" src="/assets/img/logo.jpg" alt="logo" /></a>
+    <div class="navlink"><a href="/logout"><b>LOG OUT</b></a></div>
+    <div class="navlink"><a href="/changepass"><b>CHANGE PASSWORD</b></a></div>
   </nav>
+    
+  {{!-- <div id="errorDiv" class='hidden'>
+    <h3><span id="errorMessage"></span></h3>
+  </div> --}}
 
   <section id="app">
 
   </section>
 
-  <div id="errorDiv" class='hidden'>
-    <h3><span id="errorMessage"></span></h3>
-  </div>
   <script src="/assets/appBundle.js"></script>
 </body>
 </html>
