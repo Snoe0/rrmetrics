@@ -33,11 +33,11 @@ const ChangePass = (props) => {
       method="POST"
       className="mainForm"
     >
-      <label htmlFor="pass">Current Password: </label>
+      <label htmlFor="currentpass">Current Password: </label>
       <input id="currentPass" type="password" name="currentpass" placeholder="current password" />
       <label htmlFor="pass">New Password: </label>
       <input id="pass" type="password" name="pass" placeholder="password" />
-      <label htmlFor="pass">New Password: </label>
+      <label htmlFor="pass2">New Password: </label>
       <input id="pass2" type="password" name="pass2" placeholder="password" />
       <input className="formSubmit" type="submit" value="Change Password" />
     </form>
