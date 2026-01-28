@@ -25,6 +25,7 @@ const makeTrade = async (req, res) => {
     quantity: req.body.quantity,
     manualPL: req.body.manualPL || null,
     imageAttachments: req.body.imageAttachments || [],
+    screenshot: req.body.screenshot || null,
     comments: req.body.comments || '',
     owner: req.session.account._id,
   };
@@ -41,6 +42,7 @@ const makeTrade = async (req, res) => {
       quantity: newTrade.quantity,
       manualPL: newTrade.manualPL,
       imageAttachments: newTrade.imageAttachments,
+      screenshot: newTrade.screenshot,
       comments: newTrade.comments,
     });
   } catch (err) {
@@ -55,7 +57,7 @@ const makeTrade = async (req, res) => {
 const getTrades = async (req, res) => {
   try {
     const query = { owner: req.session.account._id };
-    const docs = await Trade.find(query).select('ticker enterTime exitTime enterPrice exitPrice quantity manualPL imageAttachments comments').lean().exec();
+    const docs = await Trade.find(query).select('ticker enterTime exitTime enterPrice exitPrice quantity manualPL imageAttachments screenshot comments').lean().exec();
 
     return res.json({ trades: docs });
   } catch (err) {
@@ -117,6 +119,7 @@ const updateTrade = async (req, res) => {
       exitPrice: req.body.exitPrice,
       quantity: req.body.quantity,
       manualPL: req.body.manualPL || null,
+      screenshot: req.body.screenshot || null,
       comments: req.body.comments || '',
     };
 
@@ -138,6 +141,7 @@ const updateTrade = async (req, res) => {
       exitPrice: updatedTrade.exitPrice,
       quantity: updatedTrade.quantity,
       manualPL: updatedTrade.manualPL,
+      screenshot: updatedTrade.screenshot,
       comments: updatedTrade.comments,
     });
   } catch (err) {

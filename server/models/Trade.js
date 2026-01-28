@@ -41,6 +41,11 @@ const TradeSchema = new mongoose.Schema({
     required: false,
     default: [],
   },
+  screenshot: {
+    type: String,
+    required: false,
+    default: null,
+  },
   comments: {
     type: String,
     required: false,
@@ -66,6 +71,7 @@ TradeSchema.statics.toAPI = (doc) => ({
   quantity: doc.quantity,
   manualPL: doc.manualPL,
   imageAttachments: doc.imageAttachments,
+  screenshot: doc.screenshot,
   comments: doc.comments,
 });
 

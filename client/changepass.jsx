@@ -2,6 +2,55 @@ const helper = require('./helper.js');
 const React = require('react');
 const { createRoot } = require('react-dom/client');
 
+// Setup sidebar toggle functionality
+const setupSidebar = () => {
+  const hamburgerBtn = document.getElementById('hamburgerBtn');
+  const sidebar = document.getElementById('sidebar');
+  const sidebarOverlay = document.getElementById('sidebarOverlay');
+  const accountBtn = document.getElementById('accountBtn');
+  const accountDropdown = document.getElementById('accountDropdown');
+
+  const toggleSidebar = () => {
+    if (hamburgerBtn && sidebar && sidebarOverlay) {
+      hamburgerBtn.classList.toggle('active');
+      sidebar.classList.toggle('open');
+      sidebarOverlay.classList.toggle('active');
+    }
+  };
+
+  if (hamburgerBtn) {
+    hamburgerBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleSidebar();
+    });
+  }
+
+  if (sidebarOverlay) {
+    sidebarOverlay.addEventListener('click', toggleSidebar);
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && sidebar && sidebar.classList.contains('open')) {
+      toggleSidebar();
+    }
+  });
+
+  if (accountBtn && accountDropdown) {
+    accountBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      accountDropdown.classList.toggle('open');
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!accountDropdown.contains(e.target)) {
+        accountDropdown.classList.remove('open');
+      }
+    });
+  }
+};
+
 const handleChangePass = (e) => {
   e.preventDefault();
   helper.hideError();
@@ -46,8 +95,8 @@ const ChangePass = (props) => {
 
 const init = () => {
   const root = createRoot(document.getElementById('content'));
-
   root.render(<ChangePass />);
+  setupSidebar();
 };
 
 window.onload = init;

@@ -1,5 +1,6 @@
 const helper = require('./helper.js');
 const React = require('react');
+const { useState } = React;
 const { createRoot } = require('react-dom/client');
 
 const handleLogin = (e) => {
@@ -41,67 +42,109 @@ const handleSignup = (e) => {
   return false;
 };
 
-const LoginWindow = (props) => {
+const LoginWindow = ({ onSwitchToSignup }) => {
   return (
-
-    <form id="loginForm" 
-      name="loginForm" 
-      onSubmit={handleLogin} 
-      action="/login" 
-      method="POST" 
+    <form id="loginForm"
+      name="loginForm"
+      onSubmit={handleLogin}
+      action="/login"
+      method="POST"
       className="mainForm"
     >
-      <label htmlFor="username">Username: </label>
-      <input id="user" type="text" name="username" placeholder="username"/>
-      <label htmlFor="pass">Password: </label>
-      <input id="pass" type="password" name="pass" placeholder="password"/>
+      <h3>Welcome Back</h3>
+      <label htmlFor="username">Username</label>
+      <input
+        id="user"
+        type="text"
+        name="username"
+        placeholder="Enter your username"
+        autoComplete="username"
+      />
+
+      <label htmlFor="pass">Password</label>
+      <input
+        id="pass"
+        type="password"
+        name="pass"
+        placeholder="Enter your password"
+        autoComplete="current-password"
+      />
+
       <input className="formSubmit" type="submit" value="Sign In"/>
+
+      <p className="formToggle">
+        Don't have an account?{' '}
+        <button type="button" className="toggleLink" onClick={onSwitchToSignup}>
+          Sign Up
+        </button>
+      </p>
     </form>
   );
 };
 
 
-const SignupWindow = (props) => {
+const SignupWindow = ({ onSwitchToLogin }) => {
   return (
-
-    <form id="signupForm" 
-      name="signupForm" 
-      onSubmit={handleSignup} 
-      action="/signup" 
-      method="POST" 
+    <form id="signupForm"
+      name="signupForm"
+      onSubmit={handleSignup}
+      action="/signup"
+      method="POST"
       className="mainForm"
     >
-      <label htmlFor="username">Username: </label>
-      <input id="user" type="text" name="username" placeholder="username"/>
-      <label htmlFor="pass">Password: </label>
-      <input id="pass" type="password" name="pass" placeholder="password"/>
-      <label htmlFor="pass2">Password: </label>
-      <input id="pass2" type="password" name="pass2" placeholder="retype password"/>
+      <h3>Create Account</h3>
+      <label htmlFor="username">Username</label>
+      <input
+        id="user"
+        type="text"
+        name="username"
+        placeholder="Choose a username"
+        autoComplete="username"
+      />
+
+      <label htmlFor="pass">Password</label>
+      <input
+        id="pass"
+        type="password"
+        name="pass"
+        placeholder="Create a password"
+        autoComplete="new-password"
+      />
+
+      <label htmlFor="pass2">Confirm Password</label>
+      <input
+        id="pass2"
+        type="password"
+        name="pass2"
+        placeholder="Confirm your password"
+        autoComplete="new-password"
+      />
+
       <input className="formSubmit" type="submit" value="Sign Up"/>
+
+      <p className="formToggle">
+        Already have an account?{' '}
+        <button type="button" className="toggleLink" onClick={onSwitchToLogin}>
+          Sign In
+        </button>
+      </p>
     </form>
   );
 };
 
+const App = () => {
+  const [isLogin, setIsLogin] = useState(true);
+
+  return isLogin ? (
+    <LoginWindow onSwitchToSignup={() => setIsLogin(false)} />
+  ) : (
+    <SignupWindow onSwitchToLogin={() => setIsLogin(true)} />
+  );
+};
 
 const init = () => {
-  const loginButton = document.getElementById('loginButton');
-  const signupButton = document.getElementById('signupButton');
-
   const root = createRoot(document.getElementById('content'));
-
-  loginButton.addEventListener('click', (e) => {
-    e.preventDefault();
-    root.render(<LoginWindow />);
-    return false;
-  });
-
-  signupButton.addEventListener('click', (e) => {
-    e.preventDefault();
-    root.render(<SignupWindow />);
-    return false;
-  });
-
-  root.render(<LoginWindow />);
+  root.render(<App />);
 };
 
 window.onload = init;
