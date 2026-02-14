@@ -56,6 +56,20 @@ const TradeSchema = new mongoose.Schema({
     required: true,
     ref: 'Account',
   },
+  tradovateOrderId: {
+    type: String,
+    default: null,
+    index: true,
+  },
+  tags: [{
+    type: mongoose.Schema.ObjectId,
+    ref: 'Tag',
+  }],
+  tradovateSource: {
+    type: String,
+    enum: ['manual', 'tradovate_demo', 'tradovate_live'],
+    default: 'manual',
+  },
   createdDate: {
     type: Date,
     default: Date.now,

@@ -8,8 +8,6 @@ const mongoose = require('mongoose');
 const expressHandlebars = require('express-handlebars');
 const helmet = require('helmet');
 const session = require('express-session');
-const { RedisStore } = require('connect-redis');
-const redis = require('redis');
 
 const router = require('./router.js');
 
@@ -24,50 +22,46 @@ mongoose.connect(dbURI).catch((err) => {
   }
 });
 
-const redisClient = redis.createClient({
-  url: process.env.REDISCLOUD_URL,
+const app = express();
+
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://accounts.google.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://accounts.google.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:", "blob:", "https://lh3.googleusercontent.com"],
+      frameSrc: ["https://accounts.google.com"],
+      connectSrc: ["'self'", "https://accounts.google.com"],
+    },
+  },
+}));
+app.use('/assets', express.static(path.resolve(`${__dirname}/../hosted`)));
+app.use(favicon(path.resolve(`${__dirname}/../hosted/img/favicon.png`)));
+app.use(compression());
+app.use(express.urlencoded({ extended: true }));
+app.use((req, res, next) => {
+  if (req.originalUrl === '/api/stripe/webhook') return next();
+  return express.json()(req, res, next);
 });
 
-redisClient.on('error', (err) => console.log('Redis Client Error', err));
+app.use(session({
+  key: 'sessionid',
+  secret: 'Trade Journal Secret',
+  resave: false,
+  saveUninitialized: false,
+}));
 
-redisClient.connect().then(() => {
-  const app = express();
+app.engine('handlebars', expressHandlebars.engine({ defaultLayout: '' }));
+app.set('view engine', 'handlebars');
+app.set('views', `${__dirname}/../views`);
 
-  app.use(helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        scriptSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-        fontSrc: ["'self'", "https://fonts.gstatic.com"],
-        imgSrc: ["'self'", "data:", "blob:"],
-      },
-    },
-  }));
-  app.use('/assets', express.static(path.resolve(`${__dirname}/../hosted`)));
-  app.use(favicon(path.resolve(`${__dirname}/../hosted/img/favicon.png`)));
-  app.use(compression());
-  app.use(express.urlencoded({ extended: true }));
-  app.use(express.json());
+router(app);
 
-  app.use(session({
-    key: 'sessionid',
-    store: new RedisStore({ client: redisClient }),
-    secret: 'Trade Journal Secret',
-    resave: false,
-    saveUninitialized: false,
-  }));
-
-  app.engine('handlebars', expressHandlebars.engine({ defaultLayout: '' }));
-  app.set('view engine', 'handlebars');
-  app.set('views', `${__dirname}/../views`);
-
-  router(app);
-
-  app.listen(port, (err) => {
-    if (err) {
-      throw err;
-    }
-    console.log(`Listening on port ${port}`);
-  });
+app.listen(port, (err) => {
+  if (err) {
+    throw err;
+  }
+  console.log(`Listening on port ${port}`);
 });

@@ -1,11 +1,13 @@
 const path = require('path');
-const { chain } = require('underscore');
+const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 
 module.exports = {
     entry: {
         app: './client/trades.jsx',
         login: './client/login.jsx',
         changepass: './client/changepass.jsx',
+        landing: './client/landing.jsx',
+        upgrade: './client/upgrade.jsx',
     },
     module: {
         rules: [
@@ -16,8 +18,21 @@ module.exports = {
                     loader: 'babel-loader',
                 },
             },
+            {
+                test: /\.css$/,
+                use: [
+                    MiniCssExtractPlugin.loader,
+                    'css-loader',
+                    'postcss-loader',
+                ],
+            },
         ],
     },
+    plugins: [
+        new MiniCssExtractPlugin({
+            filename: '[name].css',
+        }),
+    ],
     mode: 'production',
     watchOptions: {
         aggregateTimeout: 200,

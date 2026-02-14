@@ -1,20 +1,18 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
-  <title>Trade Journal</title>
+  <title>RR Metrics</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/img/logo.svg"/>
   <link rel="shortcut icon" href="/assets/img/favicon.png"/>
-  <link rel="stylesheet" type="text/css" href="/assets/style.css"/>
+  <link rel="stylesheet" type="text/css" href="/assets/login.css"/>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script>document.documentElement.setAttribute('data-theme',localStorage.getItem('theme')||'dark')</script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
-  <div class="loginHeader">
-    <a href="/login" class="loginLogo">
-      <img id="logo" src="/assets/img/logo.jpg" alt="Trade Journal Logo"/>
-    </a>
-  </div>
-
   <section id="content">
 
   </section>
@@ -22,6 +20,7 @@
   <div id="errorDiv" class='hidden'>
     <h3><span id="errorMessage"></span></h3>
   </div>
+  <script>window.__GOOGLE_CLIENT_ID__ = '{{googleClientId}}';</script>
   <script src="/assets/loginBundle.js"></script>
 </body>
 </html>

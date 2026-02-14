@@ -1,0 +1,75 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --accent: #BFFF00;
+    --bg-page: #000000;
+    --bg-surface: #111111;
+    --bg-input: #1A1A1A;
+    --border: #1A1A1A;
+    --text-primary: #FFFFFF;
+    --text-secondary: #999999;
+    --text-tertiary: #6e6e6e;
+    --text-muted: #404040;
+    --positive: #10B981;
+    --negative: #EF4444;
+    --info: #3B82F6;
+    --warning: #F59E0B;
+    --accent-text: #000000;
+    --scrollbar-track: #0a0a0a;
+    --scrollbar-thumb: #333333;
+    --scrollbar-thumb-hover: #555555;
+  }
+
+  [data-theme="light"] {
+    --accent: #10B981;
+    --bg-page: #F5F5F5;
+    --bg-surface: #FFFFFF;
+    --bg-input: #F0F0F0;
+    --border: #E0E0E0;
+    --text-primary: #1A1A1A;
+    --text-secondary: #666666;
+    --text-tertiary: #999999;
+    --text-muted: #CCCCCC;
+    --accent-text: #000000;
+    --scrollbar-track: #E8E8E8;
+    --scrollbar-thumb: #C0C0C0;
+    --scrollbar-thumb-hover: #A0A0A0;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    @apply bg-bg-page text-text-primary font-sans m-0 p-0 antialiased;
+  }
+
+  input, select, textarea, button {
+    font-family: inherit;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
+  }
+}
+
+@layer components {
+  .font-data {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}

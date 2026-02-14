@@ -27,6 +27,7 @@ const makeTrade = async (req, res) => {
     imageAttachments: req.body.imageAttachments || [],
     screenshot: req.body.screenshot || null,
     comments: req.body.comments || '',
+    tags: req.body.tags || [],
     owner: req.session.account._id,
   };
 
@@ -44,6 +45,7 @@ const makeTrade = async (req, res) => {
       imageAttachments: newTrade.imageAttachments,
       screenshot: newTrade.screenshot,
       comments: newTrade.comments,
+      tags: newTrade.tags,
     });
   } catch (err) {
     console.log(err);
@@ -57,7 +59,7 @@ const makeTrade = async (req, res) => {
 const getTrades = async (req, res) => {
   try {
     const query = { owner: req.session.account._id };
-    const docs = await Trade.find(query).select('ticker enterTime exitTime enterPrice exitPrice quantity manualPL imageAttachments screenshot comments').lean().exec();
+    const docs = await Trade.find(query).select('ticker enterTime exitTime enterPrice exitPrice quantity manualPL imageAttachments screenshot comments tags').lean().exec();
 
     return res.json({ trades: docs });
   } catch (err) {
@@ -121,6 +123,7 @@ const updateTrade = async (req, res) => {
       manualPL: req.body.manualPL || null,
       screenshot: req.body.screenshot || null,
       comments: req.body.comments || '',
+      tags: req.body.tags || [],
     };
 
     const updatedTrade = await Trade.findOneAndUpdate(
@@ -143,10 +146,53 @@ const updateTrade = async (req, res) => {
       manualPL: updatedTrade.manualPL,
       screenshot: updatedTrade.screenshot,
       comments: updatedTrade.comments,
+      tags: updatedTrade.tags,
     });
   } catch (err) {
     console.log(err);
     return res.status(500).json({ error: 'An error occurred while updating the trade!' });
+  }
+};
+
+const bulkImportTrades = async (req, res) => {
+  if (!req.body.trades || !Array.isArray(req.body.trades)) {
+    return res.status(400).json({ error: 'An array of trades is required!' });
+  }
+
+  if (req.body.trades.length > 500) {
+    return res.status(400).json({ error: 'Maximum 500 trades per import!' });
+  }
+
+  const required = ['ticker', 'enterTime', 'exitTime', 'enterPrice', 'exitPrice', 'quantity'];
+
+  for (let i = 0; i < req.body.trades.length; i++) {
+    const t = req.body.trades[i];
+    for (const field of required) {
+      if (!t[field] && t[field] !== 0) {
+        return res.status(400).json({ error: `Trade ${i + 1} is missing required field: ${field}` });
+      }
+    }
+  }
+
+  try {
+    const tradeDocs = req.body.trades.map((t) => ({
+      ticker: String(t.ticker).toUpperCase().trim(),
+      enterTime: new Date(t.enterTime),
+      exitTime: new Date(t.exitTime),
+      enterPrice: parseFloat(t.enterPrice),
+      exitPrice: parseFloat(t.exitPrice),
+      quantity: parseFloat(t.quantity),
+      manualPL: t.manualPL ? parseFloat(t.manualPL) : null,
+      comments: t.comments || '',
+      tags: t.tags || [],
+      owner: req.session.account._id,
+    }));
+
+    const result = await Trade.insertMany(tradeDocs);
+    return res.status(201).json({ imported: result.length });
+  } catch (err) {
+    console.log(err);
+    return res.status(500).json({ error: 'An error occurred during import' });
   }
 };
 
@@ -156,4 +202,5 @@ module.exports = {
   getTrades,
   removeTrade,
   updateTrade,
+  bulkImportTrades,
 };
