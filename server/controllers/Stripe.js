@@ -75,8 +75,8 @@ const handleWebhook = async (req, res) => {
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object;
-        const accountId = session.metadata.accountId;
-        const plan = session.metadata.plan;
+        const { accountId } = session.metadata;
+        const { plan } = session.metadata;
         if (accountId) {
           await Account.findByIdAndUpdate(accountId, {
             isPremium: true,

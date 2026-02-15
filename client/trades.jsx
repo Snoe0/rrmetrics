@@ -696,6 +696,20 @@ const CalendarView = ({ trades }) => {
     { id: 'monthly', label: 'Monthly', icon: Icons.Layers },
   ];
 
+  // Compute month P&L for the header badge (daily view only)
+  let monthPL = 0;
+  let monthTrades = 0;
+  if (viewMode === 'daily') {
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dk = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      if (dailyData[dk]) {
+        monthPL += dailyData[dk].totalPL;
+        monthTrades += dailyData[dk].tradeCount;
+      }
+    }
+  }
+
   return (
     <div className="bg-bg-surface border border-border rounded-xl p-6">
       {/* Header with view toggle */}
@@ -719,6 +733,17 @@ const CalendarView = ({ trades }) => {
             }} className="p-2 rounded-lg hover:bg-bg-input text-text-secondary transition-colors">
               <Icons.ChevronRight />
             </button>
+          )}
+
+          {/* Month P&L badge (daily view only) */}
+          {viewMode === 'daily' && (
+            <span className={`ml-2 font-mono text-sm font-bold px-2.5 py-1 rounded-md ${
+              monthTrades > 0
+                ? monthPL >= 0 ? 'text-positive bg-positive/10' : 'text-negative bg-negative/10'
+                : 'text-text-muted bg-bg-input'
+            }`}>
+              {monthTrades > 0 ? `$${monthPL.toFixed(2)}` : '--'}
+            </span>
           )}
         </div>
 
@@ -791,54 +816,105 @@ const CalendarView = ({ trades }) => {
 
 // --- Daily Calendar (original view) ---
 const DailyCalendar = ({ year, month, dailyData, onSelectDay }) => {
-  const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-  const days = [];
-  for (let i = 0; i < firstDay; i++) {
-    days.push(<div key={`empty-${i}`} className="h-24 rounded-lg"></div>);
-  }
-
+  // Build weeks as rows: each week is an array of 7 day slots (null for empty)
+  const weeks = [];
+  let currentWeek = new Array(7).fill(null);
   for (let day = 1; day <= daysInMonth; day++) {
+    const dow = new Date(year, month, day).getDay();
     const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    const data = dailyData[dateKey];
-    const hasActivity = data !== undefined;
-    const pl = hasActivity ? data.totalPL : 0;
-
-    let bgClass = 'bg-bg-input';
-    if (hasActivity) {
-      bgClass = pl >= 0 ? 'bg-positive/10 border-positive/30' : 'bg-negative/10 border-negative/30';
+    currentWeek[dow] = { day, dateKey };
+    if (dow === 6 || day === daysInMonth) {
+      weeks.push(currentWeek);
+      currentWeek = new Array(7).fill(null);
     }
-
-    days.push(
-      <div
-        key={day}
-        className={`h-24 rounded-lg border border-border p-2 ${bgClass} ${hasActivity ? 'cursor-pointer hover:brightness-110 transition-all' : ''}`}
-        onClick={() => hasActivity && onSelectDay(dateKey)}
-      >
-        <div className="text-xs text-text-secondary">{day}</div>
-        {hasActivity && (
-          <>
-            <div className={`font-mono text-sm font-semibold mt-1 ${pl >= 0 ? 'text-positive' : 'text-negative'}`}>
-              ${pl.toFixed(0)}
-            </div>
-            <div className="text-text-tertiary text-[10px] mt-0.5">
-              {data.tradeCount} trade{data.tradeCount !== 1 ? 's' : ''}
-            </div>
-          </>
-        )}
-      </div>
-    );
   }
+
+  const colTemplate = 'repeat(7, 1fr) 1px 80px';
 
   return (
     <>
-      <div className="grid grid-cols-7 gap-1 mb-1">
+      {/* Header row: day names + divider + "Week" column */}
+      <div className="grid gap-1 mb-1" style={{ gridTemplateColumns: colTemplate }}>
         {DAY_NAMES.map(d => (
           <div key={d} className="text-center text-xs font-medium text-text-tertiary py-2">{d}</div>
         ))}
+        <div></div>
+        <div className="text-center text-xs font-medium text-text-tertiary py-2">Week</div>
       </div>
-      <div className="grid grid-cols-7 gap-1">{days}</div>
+
+      {/* Week rows */}
+      {weeks.map((week, wi) => {
+        let weekPL = 0;
+        let weekTrades = 0;
+        week.forEach(slot => {
+          if (slot && dailyData[slot.dateKey]) {
+            weekPL += dailyData[slot.dateKey].totalPL;
+            weekTrades += dailyData[slot.dateKey].tradeCount;
+          }
+        });
+
+        return (
+          <div key={wi} className="grid gap-1 mb-1" style={{ gridTemplateColumns: colTemplate }}>
+            {week.map((slot, di) => {
+              if (!slot) return <div key={`empty-${wi}-${di}`} className="h-24 rounded-lg"></div>;
+
+              const data = dailyData[slot.dateKey];
+              const hasActivity = data !== undefined;
+              const pl = hasActivity ? data.totalPL : 0;
+
+              let bgClass = 'bg-bg-input';
+              if (hasActivity) {
+                bgClass = pl >= 0 ? 'bg-positive/10 border-positive/30' : 'bg-negative/10 border-negative/30';
+              }
+
+              return (
+                <div
+                  key={slot.day}
+                  className={`h-24 rounded-lg border border-border p-2 ${bgClass} ${hasActivity ? 'cursor-pointer hover:brightness-110 transition-all' : ''}`}
+                  onClick={() => hasActivity && onSelectDay(slot.dateKey)}
+                >
+                  <div className="text-xs text-text-secondary">{slot.day}</div>
+                  {hasActivity && (
+                    <>
+                      <div className={`font-mono text-sm font-semibold mt-1 ${pl >= 0 ? 'text-positive' : 'text-negative'}`}>
+                        ${pl.toFixed(0)}
+                      </div>
+                      <div className="text-text-tertiary text-[10px] mt-0.5">
+                        {data.tradeCount} trade{data.tradeCount !== 1 ? 's' : ''}
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Vertical divider */}
+            <div className="bg-border my-1 rounded-full"></div>
+
+            {/* Weekly P&L summary cell */}
+            <div className={`h-24 rounded-lg border p-2 flex flex-col items-center justify-center ${
+              weekTrades > 0
+                ? weekPL >= 0 ? 'bg-positive/5 border-positive/20' : 'bg-negative/5 border-negative/20'
+                : 'bg-bg-input border-border'
+            }`}>
+              {weekTrades > 0 ? (
+                <>
+                  <div className={`font-mono text-sm font-bold ${weekPL >= 0 ? 'text-positive' : 'text-negative'}`}>
+                    ${weekPL.toFixed(0)}
+                  </div>
+                  <div className="text-text-tertiary text-[10px] mt-0.5">
+                    {weekTrades} trade{weekTrades !== 1 ? 's' : ''}
+                  </div>
+                </>
+              ) : (
+                <div className="text-text-muted text-xs">--</div>
+              )}
+            </div>
+          </div>
+        );
+      })}
     </>
   );
 };

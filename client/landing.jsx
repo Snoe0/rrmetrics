@@ -286,59 +286,6 @@ const PricingSection = () => {
   );
 };
 
-// // =====================================================
-// // TESTIMONIAL SECTION
-// // =====================================================
-// const TestimonialSection = () => {
-//   const testimonials = [
-//     {
-//       name: 'Alex M.',
-//       role: 'Day Trader',
-//       text: 'RR Metrics completely changed how I review my trades. The analytics helped me identify a pattern that was costing me thousands.',
-//       rating: 5,
-//     },
-//     {
-//       name: 'Sarah K.',
-//       role: 'Swing Trader',
-//       text: 'The auto-sync feature saves me hours every week. I used to manually log trades in spreadsheets. Never going back.',
-//       rating: 5,
-//     },
-//     {
-//       name: 'James T.',
-//       role: 'Futures Trader',
-//       text: 'Being able to attach screenshots and annotate them has made my trade reviews so much more effective. Essential tool for serious traders.',
-//       rating: 5,
-//     },
-//   ];
-
-//   return (
-//     <section className="py-20 px-6">
-//       <div className="max-w-6xl mx-auto">
-//         <div className="text-center mb-14">
-//           <h2 className="text-3xl font-bold text-text-primary mb-4">Trusted by Traders</h2>
-//           <p className="text-text-secondary text-lg">See what our community has to say.</p>
-//         </div>
-//         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-//           {testimonials.map(t => (
-//             <div key={t.name} className="bg-bg-surface rounded-xl p-6 border border-border">
-//               <div className="flex gap-0.5 mb-4">
-//                 {Array.from({ length: t.rating }).map((_, i) => (
-//                   <Icons.Star key={i} className="w-4 h-4 text-warning" />
-//                 ))}
-//               </div>
-//               <p className="text-text-secondary text-sm leading-relaxed mb-6">"{t.text}"</p>
-//               <div>
-//                 <div className="text-text-primary font-semibold text-sm">{t.name}</div>
-//                 <div className="text-text-tertiary text-xs">{t.role}</div>
-//               </div>
-//             </div>
-//           ))}
-//         </div>
-//       </div>
-//     </section>
-//   );
-// };
-
 // =====================================================
 // CTA SECTION
 // =====================================================
@@ -384,7 +331,6 @@ const App = () => (
     <StatsBar />
     <FeaturesSection />
     <PricingSection />
-    <TestimonialSection />
     <CTASection />
     <Footer />
   </div>

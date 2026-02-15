@@ -15,7 +15,7 @@ const AccountSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: function () { return !this.googleId; },
+    required() { return !this.googleId; },
   },
   googleId: {
     type: String,
