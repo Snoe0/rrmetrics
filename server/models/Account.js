@@ -82,16 +82,23 @@ AccountSchema.statics.toAPI = (doc) => ({
   },
 });
 
-AccountSchema.statics.findOrCreateGoogleUser = async function findOrCreateGoogleUser(googleId, email) {
+AccountSchema.statics.findOrCreateGoogleUser = async function findOrCreateGoogleUser(
+  googleId,
+  email,
+) {
   let doc = await this.findOne({ googleId }).exec();
   if (doc) return doc;
 
   // Generate username from email prefix, ensure uniqueness
   let base = email.split('@')[0].replace(/[^A-Za-z0-9_\-.]/g, '').slice(0, 12);
   if (!base) base = 'user';
+  const existing = await this.find({
+    username: new RegExp(`^${base}`),
+  }).select('username').lean().exec();
+  const taken = new Set(existing.map((a) => a.username));
   let username = base;
   let suffix = 1;
-  while (await this.findOne({ username }).exec()) {
+  while (taken.has(username)) {
     username = `${base}${suffix}`;
     suffix++;
   }

@@ -79,70 +79,71 @@ const syncTrades = async (req, res) => {
       return res.json({ message: 'No fills found', synced: 0 });
     }
 
-    // Resolve contract IDs to ticker names (cache to avoid repeated lookups)
-    const contractCache = {};
-    const resolveContract = async (contractId) => {
-      if (contractCache[contractId]) return contractCache[contractId];
-      try {
-        const contract = await api.getContract(token, contractId);
-        contractCache[contractId] = contract.name || `Contract-${contractId}`;
-      } catch (err) {
-        contractCache[contractId] = `Contract-${contractId}`;
-      }
-      return contractCache[contractId];
-    };
-
     // Group fills by orderId to pair entries/exits
-    const fillsByOrder = {};
-    for (const fill of fills) {
+    const fillsByOrder = fills.reduce((acc, fill) => {
       const orderId = fill.orderId || fill.id;
-      if (!fillsByOrder[orderId]) {
-        fillsByOrder[orderId] = [];
-      }
-      fillsByOrder[orderId].push(fill);
-    }
+      if (!acc[orderId]) acc[orderId] = [];
+      acc[orderId].push(fill);
+      return acc;
+    }, {});
 
-    let syncedCount = 0;
     const source = `tradovate_${account.tradovate.environment}`;
 
-    for (const [orderId, orderFills] of Object.entries(fillsByOrder)) {
-      const tradovateOrderId = String(orderId);
+    // Batch-check which orders are already synced
+    const orderIds = Object.keys(fillsByOrder).map(String);
+    const existingTrades = await Trade.find({
+      tradovateOrderId: { $in: orderIds },
+      owner: account._id,
+    }).select('tradovateOrderId').lean().exec();
+    const existingIds = new Set(existingTrades.map((t) => t.tradovateOrderId));
 
-      // Check if already synced
-      const existing = await Trade.findOne({
-        tradovateOrderId,
-        owner: account._id,
-      }).exec();
-
-      if (existing) continue;
-
-      // Use first fill for trade data
-      const fill = orderFills[0];
-      const ticker = await resolveContract(fill.contractId);
-      const qty = orderFills.reduce((sum, f) => sum + (f.qty || 0), 0);
-      const avgPrice = orderFills.reduce((sum, f) => sum + (f.price || 0) * (f.qty || 1), 0)
-        / (qty || 1);
-
-      const fillTime = new Date(fill.timestamp);
-
-      const tradeData = {
-        ticker,
-        enterTime: fillTime,
-        exitTime: fillTime,
-        enterPrice: avgPrice,
-        exitPrice: avgPrice,
-        quantity: Math.abs(qty),
-        tradovateOrderId,
-        tradovateSource: source,
-        owner: account._id,
-      };
-
+    // Pre-resolve all unique contract IDs in parallel
+    const uniqueContractIds = [...new Set(fills.map((f) => f.contractId))];
+    const contractNames = {};
+    await Promise.all(uniqueContractIds.map(async (contractId) => {
       try {
-        const newTrade = new Trade(tradeData);
-        await newTrade.save();
-        syncedCount++;
-      } catch (saveErr) {
-        console.error(`Failed to save trade for order ${orderId}:`, saveErr.message);
+        const contract = await api.getContract(token, contractId);
+        contractNames[contractId] = contract.name || `Contract-${contractId}`;
+      } catch (contractErr) {
+        contractNames[contractId] = `Contract-${contractId}`;
+      }
+    }));
+
+    // Build new trade documents (skip already synced)
+    const newTrades = Object.entries(fillsByOrder)
+      .filter(([orderId]) => !existingIds.has(String(orderId)))
+      .map(([orderId, orderFills]) => {
+        const fill = orderFills[0];
+        const ticker = contractNames[fill.contractId];
+        const qty = orderFills.reduce((sum, f) => sum + (f.qty || 0), 0);
+        const avgPrice = orderFills.reduce(
+          (sum, f) => sum + (f.price || 0) * (f.qty || 1),
+          0,
+        ) / (qty || 1);
+        const fillTime = new Date(fill.timestamp);
+
+        return {
+          ticker,
+          enterTime: fillTime,
+          exitTime: fillTime,
+          enterPrice: avgPrice,
+          exitPrice: avgPrice,
+          quantity: Math.abs(qty),
+          tradovateOrderId: String(orderId),
+          tradovateSource: source,
+          owner: account._id,
+        };
+      });
+
+    let syncedCount = 0;
+    if (newTrades.length > 0) {
+      try {
+        const result = await Trade.insertMany(newTrades, { ordered: false });
+        syncedCount = result.length;
+      } catch (insertErr) {
+        // ordered:false means valid docs are still inserted
+        syncedCount = insertErr.insertedDocs ? insertErr.insertedDocs.length : 0;
+        console.error('Some trades failed to save:', insertErr.message);
       }
     }
 

@@ -167,10 +167,9 @@ const bulkImportTrades = async (req, res) => {
 
   for (let i = 0; i < req.body.trades.length; i++) {
     const t = req.body.trades[i];
-    for (const field of required) {
-      if (!t[field] && t[field] !== 0) {
-        return res.status(400).json({ error: `Trade ${i + 1} is missing required field: ${field}` });
-      }
+    const missingField = required.find((field) => !t[field] && t[field] !== 0);
+    if (missingField) {
+      return res.status(400).json({ error: `Trade ${i + 1} is missing required field: ${missingField}` });
     }
   }
 

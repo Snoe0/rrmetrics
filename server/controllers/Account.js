@@ -139,8 +139,7 @@ const changePass = (req, res) => {
 
     try {
       const hash = await Account.generateHash(newPass);
-      account.password = hash;
-      await account.save();
+      await Account.findByIdAndUpdate(account._id, { password: hash });
       return res.json({ redirect: '/trades' });
     } catch (saveErr) {
       console.error(saveErr);

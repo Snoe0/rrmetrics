@@ -1,11 +1,11 @@
+const Stripe = require('stripe');
 const models = require('../models');
 
 const { Account } = models;
 
 const getStripe = () => {
   if (!process.env.STRIPE_SECRET_KEY) return null;
-  const stripe = require('stripe');
-  return stripe(process.env.STRIPE_SECRET_KEY);
+  return Stripe(process.env.STRIPE_SECRET_KEY);
 };
 
 const createCheckoutSession = async (req, res) => {
