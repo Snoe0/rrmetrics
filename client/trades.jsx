@@ -87,8 +87,8 @@ const groupTradesByDate = (trades) => {
     const pl = trade.manualPL !== null && trade.manualPL !== undefined
       ? trade.manualPL
       : (trade.exitPrice - trade.enterPrice) * trade.quantity;
-    const exitDate = new Date(trade.exitTime);
-    const dateKey = `${exitDate.getFullYear()}-${String(exitDate.getMonth() + 1).padStart(2, '0')}-${String(exitDate.getDate()).padStart(2, '0')}`;
+    const e = toEST(trade.exitTime);
+    const dateKey = `${e.year}-${String(e.month).padStart(2, '0')}-${String(e.day).padStart(2, '0')}`;
     if (!grouped[dateKey]) grouped[dateKey] = { totalPL: 0, tradeCount: 0, trades: [] };
     grouped[dateKey].totalPL += pl;
     grouped[dateKey].tradeCount++;
@@ -98,6 +98,51 @@ const groupTradesByDate = (trades) => {
 };
 
 const getCSSVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+const EST_TZ = 'America/New_York';
+
+// Format a date in EST timezone - returns an object with EST components
+const toEST = (date) => {
+  const d = new Date(date);
+  // Use Intl to get the parts in EST
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: EST_TZ,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  }).formatToParts(d);
+  const get = (type) => parts.find(p => p.type === type).value;
+  return {
+    year: parseInt(get('year'), 10),
+    month: parseInt(get('month'), 10),
+    day: parseInt(get('day'), 10),
+    hours: parseInt(get('hour'), 10) % 24,
+    minutes: parseInt(get('minute'), 10),
+    seconds: parseInt(get('second'), 10),
+  };
+};
+
+const formatDateEST = (dateString) => {
+  return new Date(dateString).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: EST_TZ });
+};
+
+const formatTimeEST = (dateString) => {
+  return new Date(dateString).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: EST_TZ });
+};
+
+const formatFullDateEST = (dateString) => {
+  return new Date(dateString).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: EST_TZ });
+};
+
+// Get EST offset string for the given date (handles EST/EDT)
+const getESTOffset = (date) => {
+  const d = new Date(date);
+  const utcStr = d.toLocaleString('en-US', { timeZone: 'UTC' });
+  const estStr = d.toLocaleString('en-US', { timeZone: EST_TZ });
+  const diffMs = new Date(estStr) - new Date(utcStr);
+  const diffHours = diffMs / 3600000;
+  return diffHours === -4 ? '-04:00' : '-05:00';
+};
 
 const drawTooltip = (ctx, x, y, title, lines, canvasWidth, canvasHeight) => {
   ctx.font = 'bold 12px Inter, sans-serif';
@@ -148,18 +193,22 @@ const handleTrade = (e, onTradeAdded, screenshotData, tags) => {
   helper.hideError();
 
   const ticker = e.target.querySelector('#ticker').value;
-  const enterTime = e.target.querySelector('#enterTime').value;
-  const exitTime = e.target.querySelector('#exitTime').value;
+  const enterTimeRaw = e.target.querySelector('#enterTime').value;
+  const exitTimeRaw = e.target.querySelector('#exitTime').value;
   const enterPrice = e.target.querySelector('#enterPrice').value;
   const exitPrice = e.target.querySelector('#exitPrice').value;
   const quantity = e.target.querySelector('#quantity').value;
   const manualPL = e.target.querySelector('#manualPL').value;
   const comments = e.target.querySelector('#comments').value;
 
-  if (!ticker || !enterTime || !exitTime || !enterPrice || !exitPrice || !quantity) {
+  if (!ticker || !enterTimeRaw || !exitTimeRaw || !enterPrice || !exitPrice || !quantity) {
     helper.handleError('Ticker, enter time, exit time, enter price, exit price, and quantity are required');
     return false;
   }
+
+  // Append EST offset so server parses as Eastern time
+  const enterTime = enterTimeRaw + getESTOffset(new Date(enterTimeRaw));
+  const exitTime = exitTimeRaw + getESTOffset(new Date(exitTimeRaw));
 
   const tradeData = {
     ticker, enterTime, exitTime,
@@ -192,18 +241,21 @@ const handleUpdateTrade = (e, tradeId, onTradeUpdated, screenshotData, tags) => 
   helper.hideError();
 
   const ticker = e.target.querySelector('#ticker').value;
-  const enterTime = e.target.querySelector('#enterTime').value;
-  const exitTime = e.target.querySelector('#exitTime').value;
+  const enterTimeRaw = e.target.querySelector('#enterTime').value;
+  const exitTimeRaw = e.target.querySelector('#exitTime').value;
   const enterPrice = e.target.querySelector('#enterPrice').value;
   const exitPrice = e.target.querySelector('#exitPrice').value;
   const quantity = e.target.querySelector('#quantity').value;
   const manualPL = e.target.querySelector('#manualPL').value;
   const comments = e.target.querySelector('#comments').value;
 
-  if (!ticker || !enterTime || !exitTime || !enterPrice || !exitPrice || !quantity) {
+  if (!ticker || !enterTimeRaw || !exitTimeRaw || !enterPrice || !exitPrice || !quantity) {
     helper.handleError('Ticker, enter time, exit time, enter price, exit price, and quantity are required');
     return false;
   }
+
+  const enterTime = enterTimeRaw + getESTOffset(new Date(enterTimeRaw));
+  const exitTime = exitTimeRaw + getESTOffset(new Date(exitTimeRaw));
 
   const tradeData = {
     _id: tradeId, ticker, enterTime, exitTime,
@@ -597,7 +649,7 @@ const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, dailyNotes, onS
 // =====================================================
 const DayDetailPanel = ({ dateKey, dayData, onClose, dailyNotes, onSaveNote, onDeleteNote }) => {
   const date = new Date(dateKey + 'T00:00:00');
-  const formatted = date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  const formatted = formatFullDateEST(date);
 
   const trades = dayData.trades;
   const wins = trades.filter(t => getTradePL(t) > 0).length;
@@ -680,8 +732,8 @@ const DayDetailPanel = ({ dateKey, dayData, onClose, dailyNotes, onSaveNote, onD
               {trades.map(trade => {
                 const pl = getTradePL(trade);
                 const duration = new Date(trade.exitTime) - new Date(trade.enterTime);
-                const entryTime = new Date(trade.enterTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-                const exitTime = new Date(trade.exitTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                const entryTime = formatTimeEST(trade.enterTime);
+                const exitTime = formatTimeEST(trade.exitTime);
                 return (
                   <div key={trade._id} className="flex items-center justify-between py-2.5 px-3 rounded-lg bg-bg-input border border-border">
                     <div className="flex items-center gap-3">
@@ -1596,15 +1648,9 @@ const TradeListPage = ({ trades, triggerReload, onEdit, subscriptionStatus, onOp
     return sortDir === 'asc' ? <Icons.ChevronUp className="w-3 h-3 ml-1 inline" /> : <Icons.ChevronDown className="w-3 h-3 ml-1 inline" />;
   };
 
-  const formatDateTime = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  };
+  const formatDateTime = (dateString) => formatDateEST(dateString);
 
-  const formatTime = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-  };
+  const formatTime = (dateString) => formatTimeEST(dateString);
 
   return (
     <div className="space-y-6">
@@ -2029,7 +2075,8 @@ const AnalyticsPage = ({ trades }) => {
     const dayLossPL = [0, 0, 0, 0, 0, 0, 0];
 
     trades.forEach(t => {
-      const day = new Date(t.exitTime).getDay();
+      const estDate = toEST(t.exitTime);
+      const day = new Date(estDate.year, estDate.month - 1, estDate.day).getDay();
       const pl = getTradePL(t);
       dayPL[day] += pl;
       dayCounts[day]++;
@@ -2162,9 +2209,9 @@ const AnalyticsPage = ({ trades }) => {
   const timeOfDayStats = (() => {
     const buckets = {};
     trades.forEach(t => {
-      const d = new Date(t.enterTime);
-      const h = d.getHours();
-      const m = d.getMinutes() < 30 ? 0 : 30;
+      const estParts = toEST(t.enterTime);
+      const h = estParts.hours;
+      const m = estParts.minutes < 30 ? 0 : 30;
       const key = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
       if (!buckets[key]) buckets[key] = { totalPL: 0, wins: 0, losses: 0, count: 0 };
       const pl = getTradePL(t);
@@ -2287,9 +2334,9 @@ const AnalyticsPage = ({ trades }) => {
         const gw = stat.wins > 0 ? stat.totalPL > 0 ? stat.totalPL : 0 : 0;
         let grossW = 0, grossL = 0;
         trades.forEach(t => {
-          const d = new Date(t.enterTime);
-          const hh = d.getHours();
-          const mm = d.getMinutes() < 30 ? 0 : 30;
+          const estParts = toEST(t.enterTime);
+          const hh = estParts.hours;
+          const mm = estParts.minutes < 30 ? 0 : 30;
           const key = `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
           if (key === stat.time) {
             const pl = getTradePL(t);
@@ -3529,8 +3576,8 @@ const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, tags }) 
 
   const formatDateTimeForInput = (dateString) => {
     if (!dateString) return '';
-    const d = new Date(dateString);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+    const e = toEST(dateString);
+    return `${e.year}-${String(e.month).padStart(2, '0')}-${String(e.day).padStart(2, '0')}T${String(e.hours).padStart(2, '0')}:${String(e.minutes).padStart(2, '0')}:${String(e.seconds).padStart(2, '0')}`;
   };
 
   const inputClass = "w-full px-3 py-2.5 bg-bg-input border border-border rounded-lg text-text-primary text-sm placeholder-text-muted focus:outline-none focus:border-accent transition-colors";
