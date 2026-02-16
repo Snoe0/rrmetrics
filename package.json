@@ -10,7 +10,11 @@
     "start": "node ./server/app.js",
     "pretest": "eslint ./server --fix",
     "test": "echo \"Tests complete\"",
-    "heroku-postbuild": "webpack"
+    "heroku-postbuild": "webpack",
+    "dev:worker": "cd workers && wrangler dev",
+    "deploy": "npm run webpack && cd workers && wrangler deploy",
+    "d1:migrate": "cd workers && wrangler d1 execute tradingjournal-db --file=schema.sql",
+    "d1:migrate:local": "cd workers && wrangler d1 execute tradingjournal-db --local --file=schema.sql"
   },
   "keywords": [
     "Node",
