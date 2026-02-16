@@ -1,0 +1,27 @@
+name = "tradingjournal"
+main = "workers/src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Static assets served by Cloudflare Pages
+assets = { directory = "public" }
+
+# D1 Database
+[[d1_databases]]
+binding = "DB"
+database_name = "tradingjournal-db"
+database_id = "placeholder-replace-after-d1-create"
+
+# Durable Objects for sessions
+[durable_objects]
+bindings = [
+  { name = "SESSIONS", class_name = "SessionDO" }
+]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["SessionDO"]
+
+# Environment variables (secrets set via wrangler secret put)
+[vars]
+APP_URL = "http://localhost:8787"
