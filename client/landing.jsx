@@ -92,7 +92,7 @@ const Navbar = () => {
           <a href="/login" className="text-text-secondary hover:text-text-primary text-sm font-medium transition-colors px-4 py-2">
             Sign In
           </a>
-          <a href="/signup" className="bg-accent text-accent-text text-sm font-semibold px-5 py-2 rounded-lg hover:brightness-110 transition-all">
+          <a href="/login?signup" className="bg-accent text-accent-text text-sm font-semibold px-5 py-2 rounded-lg hover:brightness-110 transition-all">
             Get Started
           </a>
         </div>
@@ -117,7 +117,7 @@ const HeroSection = () => (
         Track, analyze, and improve your trades with powerful analytics and seamless broker integration.
       </p>
       <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-        <a href="/login" className="bg-accent text-accent-text font-semibold px-8 py-3.5 rounded-lg hover:brightness-110 transition-all text-base flex items-center gap-2">
+        <a href="/login?signup" className="bg-accent text-accent-text font-semibold px-8 py-3.5 rounded-lg hover:brightness-110 transition-all text-base flex items-center gap-2">
           Start Free Trial
           <Icons.ChevronRight className="w-4 h-4" />
         </a>
@@ -268,7 +268,7 @@ const PricingSection = () => {
                 ))}
               </ul>
               <a
-                href="/login"
+                href="/login?signup"
                 className={`mt-6 w-full py-2.5 text-sm font-semibold rounded-lg transition-all text-center block ${
                   plan.accent
                     ? 'bg-accent text-accent-text hover:brightness-110'
@@ -296,7 +296,7 @@ const CTASection = () => (
       <p className="text-text-secondary text-lg mb-8 max-w-lg mx-auto">
         Join other traders already using RR Metrics to track, analyze, and improve their performance.
       </p>
-      <a href="/login" className="inline-flex items-center gap-2 bg-accent text-accent-text font-semibold px-8 py-3.5 rounded-lg hover:brightness-110 transition-all text-base">
+      <a href="/login?signup" className="inline-flex items-center gap-2 bg-accent text-accent-text font-semibold px-8 py-3.5 rounded-lg hover:brightness-110 transition-all text-base">
         Start Free Trial
         <Icons.ChevronRight className="w-4 h-4" />
       </a>

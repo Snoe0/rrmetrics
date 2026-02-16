@@ -274,7 +274,10 @@ const SignupWindow = ({ onSwitchToLogin }) => {
 };
 
 const App = () => {
-  const [isLogin, setIsLogin] = useState(true);
+  const [isLogin, setIsLogin] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return !params.has('signup');
+  });
 
   return (
     <div className="min-h-screen flex">
