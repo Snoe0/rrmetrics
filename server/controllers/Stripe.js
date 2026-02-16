@@ -118,7 +118,32 @@ const handleWebhook = async (req, res) => {
   return res.json({ received: true });
 };
 
+const createBillingPortal = async (req, res) => {
+  const stripe = getStripe();
+  if (!stripe) {
+    return res.status(503).json({ error: 'Stripe is not configured.' });
+  }
+
+  try {
+    const account = await Account.findById(req.session.account._id).exec();
+    if (!account || !account.stripeCustomerId) {
+      return res.status(400).json({ error: 'No billing account found. Please subscribe first.' });
+    }
+
+    const session = await stripe.billingPortal.sessions.create({
+      customer: account.stripeCustomerId,
+      return_url: `${req.protocol}://${req.get('host')}/trades`,
+    });
+
+    return res.json({ url: session.url });
+  } catch (err) {
+    console.error('Billing portal error:', err);
+    return res.status(500).json({ error: 'Failed to create billing portal session.' });
+  }
+};
+
 module.exports = {
   createCheckoutSession,
   handleWebhook,
+  createBillingPortal,
 };

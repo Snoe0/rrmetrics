@@ -410,7 +410,7 @@ const Icons = {
 // =====================================================
 // SIDEBAR
 // =====================================================
-const Sidebar = ({ currentPage, onNavigate }) => {
+const Sidebar = ({ currentPage, onNavigate, subscriptionStatus }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
 
@@ -483,21 +483,23 @@ const Sidebar = ({ currentPage, onNavigate }) => {
         </div>
 
         {/* Upgrade box */}
-        <div className="px-4 pb-3">
-          <div className="bg-bg-surface border border-border rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Icons.Zap className="w-4 h-4 text-accent" />
-              <span className="text-text-primary text-sm font-semibold">Upgrade to Pro</span>
+        {(!subscriptionStatus || !subscriptionStatus.isPremium) && (
+          <div className="px-4 pb-3">
+            <div className="bg-bg-surface border border-border rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Icons.Zap className="w-4 h-4 text-accent" />
+                <span className="text-text-primary text-sm font-semibold">Upgrade to Pro</span>
+              </div>
+              <p className="text-text-tertiary text-xs mb-3">Get advanced analytics, unlimited trades, and priority support.</p>
+              <button
+                className="w-full py-2 bg-accent text-accent-text text-xs font-semibold rounded-lg hover:brightness-110 transition-all"
+                onClick={() => handleNav('upgrade')}
+              >
+                Upgrade Now
+              </button>
             </div>
-            <p className="text-text-tertiary text-xs mb-3">Get advanced analytics, unlimited trades, and priority support.</p>
-            <button
-              className="w-full py-2 bg-accent text-accent-text text-xs font-semibold rounded-lg hover:brightness-110 transition-all"
-              onClick={() => handleNav('upgrade')}
-            >
-              Upgrade Now
-            </button>
           </div>
-        </div>
+        )}
 
         {/* Account section */}
         <div className="px-3 pb-4 border-t border-border pt-3">
@@ -545,7 +547,7 @@ const StatCard = ({ label, value, subValue, color }) => (
 // =====================================================
 // DASHBOARD PAGE
 // =====================================================
-const DashboardPage = ({ trades, subscriptionStatus, onOpenForm }) => {
+const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, dailyNotes, onSaveNote, onDeleteNote }) => {
   const stats = calculateAnalytics(trades);
 
   return (
@@ -585,7 +587,7 @@ const DashboardPage = ({ trades, subscriptionStatus, onOpenForm }) => {
       </div>
 
       {/* Calendar */}
-      <CalendarView trades={trades} />
+      <CalendarView trades={trades} dailyNotes={dailyNotes} onSaveNote={onSaveNote} onDeleteNote={onDeleteNote} />
     </div>
   );
 };
@@ -593,7 +595,7 @@ const DashboardPage = ({ trades, subscriptionStatus, onOpenForm }) => {
 // =====================================================
 // DAY DETAIL PANEL
 // =====================================================
-const DayDetailPanel = ({ dateKey, dayData, onClose }) => {
+const DayDetailPanel = ({ dateKey, dayData, onClose, dailyNotes, onSaveNote, onDeleteNote }) => {
   const date = new Date(dateKey + 'T00:00:00');
   const formatted = date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 
@@ -604,11 +606,34 @@ const DayDetailPanel = ({ dateKey, dayData, onClose }) => {
     ? trades.reduce((sum, t) => sum + (new Date(t.exitTime) - new Date(t.enterTime)), 0) / trades.length
     : 0;
 
+  const existingNote = dailyNotes && dailyNotes.find(n => n.date === dateKey);
+  const [noteText, setNoteText] = useState(existingNote ? existingNote.content : '');
+  const [noteSaving, setNoteSaving] = useState(false);
+
+  useEffect(() => {
+    const found = dailyNotes && dailyNotes.find(n => n.date === dateKey);
+    setNoteText(found ? found.content : '');
+  }, [dateKey, dailyNotes]);
+
   useEffect(() => {
     const handleEscape = (e) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
   }, [onClose]);
+
+  const handleSaveNote = async () => {
+    if (!noteText.trim() || noteSaving) return;
+    setNoteSaving(true);
+    await onSaveNote(dateKey, noteText.trim());
+    setNoteSaving(false);
+  };
+
+  const handleDeleteNote = async () => {
+    setNoteSaving(true);
+    await onDeleteNote(dateKey);
+    setNoteText('');
+    setNoteSaving(false);
+  };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={onClose}>
@@ -625,48 +650,82 @@ const DayDetailPanel = ({ dateKey, dayData, onClose }) => {
         </div>
 
         {/* Summary stats */}
-        <div className="grid grid-cols-4 gap-3 px-6 py-4 border-b border-border">
-          <div className="text-center">
-            <div className="text-text-secondary text-xs mb-1">Total P/L</div>
-            <div className={`font-mono text-sm font-bold ${dayData.totalPL >= 0 ? 'text-positive' : 'text-negative'}`}>
-              ${dayData.totalPL.toFixed(2)}
+        {dayData.tradeCount > 0 && (
+          <div className="grid grid-cols-4 gap-3 px-6 py-4 border-b border-border">
+            <div className="text-center">
+              <div className="text-text-secondary text-xs mb-1">Total P/L</div>
+              <div className={`font-mono text-sm font-bold ${dayData.totalPL >= 0 ? 'text-positive' : 'text-negative'}`}>
+                ${dayData.totalPL.toFixed(2)}
+              </div>
+            </div>
+            <div className="text-center">
+              <div className="text-text-secondary text-xs mb-1">Win Rate</div>
+              <div className="font-mono text-sm font-bold text-text-primary">{winRate}%</div>
+            </div>
+            <div className="text-center">
+              <div className="text-text-secondary text-xs mb-1">Trades</div>
+              <div className="font-mono text-sm font-bold text-text-primary">{dayData.tradeCount}</div>
+            </div>
+            <div className="text-center">
+              <div className="text-text-secondary text-xs mb-1">Avg Duration</div>
+              <div className="font-mono text-sm font-bold text-text-primary">{formatDuration(avgDuration)}</div>
             </div>
           </div>
-          <div className="text-center">
-            <div className="text-text-secondary text-xs mb-1">Win Rate</div>
-            <div className="font-mono text-sm font-bold text-text-primary">{winRate}%</div>
-          </div>
-          <div className="text-center">
-            <div className="text-text-secondary text-xs mb-1">Trades</div>
-            <div className="font-mono text-sm font-bold text-text-primary">{dayData.tradeCount}</div>
-          </div>
-          <div className="text-center">
-            <div className="text-text-secondary text-xs mb-1">Avg Duration</div>
-            <div className="font-mono text-sm font-bold text-text-primary">{formatDuration(avgDuration)}</div>
-          </div>
-        </div>
+        )}
 
         {/* Trade list */}
         <div className="flex-1 overflow-y-auto px-6 py-3">
-          <div className="space-y-2">
-            {trades.map(trade => {
-              const pl = getTradePL(trade);
-              const duration = new Date(trade.exitTime) - new Date(trade.enterTime);
-              const entryTime = new Date(trade.enterTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-              const exitTime = new Date(trade.exitTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-              return (
-                <div key={trade._id} className="flex items-center justify-between py-2.5 px-3 rounded-lg bg-bg-input border border-border">
-                  <div className="flex items-center gap-3">
-                    <span className="font-mono text-sm font-semibold text-text-primary">{trade.ticker}</span>
-                    <span className="text-text-tertiary text-xs">{entryTime} - {exitTime}</span>
-                    <span className="text-text-muted text-xs">{formatDuration(duration)}</span>
+          {trades.length > 0 && (
+            <div className="space-y-2 mb-4">
+              {trades.map(trade => {
+                const pl = getTradePL(trade);
+                const duration = new Date(trade.exitTime) - new Date(trade.enterTime);
+                const entryTime = new Date(trade.enterTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                const exitTime = new Date(trade.exitTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+                return (
+                  <div key={trade._id} className="flex items-center justify-between py-2.5 px-3 rounded-lg bg-bg-input border border-border">
+                    <div className="flex items-center gap-3">
+                      <span className="font-mono text-sm font-semibold text-text-primary">{trade.ticker}</span>
+                      <span className="text-text-tertiary text-xs">{entryTime} - {exitTime}</span>
+                      <span className="text-text-muted text-xs">{formatDuration(duration)}</span>
+                    </div>
+                    <span className={`font-mono text-sm font-semibold ${pl >= 0 ? 'text-positive' : 'text-negative'}`}>
+                      {pl >= 0 ? '+' : ''}${pl.toFixed(2)}
+                    </span>
                   </div>
-                  <span className={`font-mono text-sm font-semibold ${pl >= 0 ? 'text-positive' : 'text-negative'}`}>
-                    {pl >= 0 ? '+' : ''}${pl.toFixed(2)}
-                  </span>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
+          )}
+
+          {/* Daily Note */}
+          <div className="border-t border-border pt-3">
+            <label className="text-text-secondary text-xs font-medium mb-1.5 block">Daily Note</label>
+            <textarea
+              className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-text-primary text-sm placeholder-text-muted focus:outline-none focus:border-accent transition-colors resize-none"
+              rows="3"
+              placeholder="Add a note for this day..."
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+            />
+            <div className="flex items-center gap-2 mt-2">
+              <button
+                className="px-3 py-1.5 bg-accent text-accent-text text-xs font-semibold rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
+                onClick={handleSaveNote}
+                disabled={noteSaving || !noteText.trim()}
+              >
+                {noteSaving ? 'Saving...' : 'Save Note'}
+              </button>
+              {existingNote && (
+                <button
+                  className="px-3 py-1.5 text-xs text-text-tertiary hover:text-negative transition-colors"
+                  onClick={handleDeleteNote}
+                  disabled={noteSaving}
+                >
+                  Delete Note
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -681,7 +740,7 @@ const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'Ju
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-const CalendarView = ({ trades }) => {
+const CalendarView = ({ trades, dailyNotes, onSaveNote, onDeleteNote }) => {
   const [viewMode, setViewMode] = useState('daily'); // 'daily' | 'heatmap' | 'monthly'
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState(null);
@@ -785,6 +844,7 @@ const CalendarView = ({ trades }) => {
           month={month}
           dailyData={dailyData}
           onSelectDay={setSelectedDay}
+          dailyNotes={dailyNotes}
         />
       )}
 
@@ -803,11 +863,14 @@ const CalendarView = ({ trades }) => {
         />
       )}
 
-      {selectedDay && dailyData[selectedDay] && (
+      {selectedDay && (
         <DayDetailPanel
           dateKey={selectedDay}
-          dayData={dailyData[selectedDay]}
+          dayData={dailyData[selectedDay] || { totalPL: 0, tradeCount: 0, trades: [] }}
           onClose={() => setSelectedDay(null)}
+          dailyNotes={dailyNotes}
+          onSaveNote={onSaveNote}
+          onDeleteNote={onDeleteNote}
         />
       )}
     </div>
@@ -815,7 +878,7 @@ const CalendarView = ({ trades }) => {
 };
 
 // --- Daily Calendar (original view) ---
-const DailyCalendar = ({ year, month, dailyData, onSelectDay }) => {
+const DailyCalendar = ({ year, month, dailyData, onSelectDay, dailyNotes }) => {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
   // Build weeks as rows: each week is an array of 7 day slots (null for empty)
@@ -863,6 +926,7 @@ const DailyCalendar = ({ year, month, dailyData, onSelectDay }) => {
               const data = dailyData[slot.dateKey];
               const hasActivity = data !== undefined;
               const pl = hasActivity ? data.totalPL : 0;
+              const hasNote = dailyNotes && dailyNotes.some(n => n.date === slot.dateKey);
 
               let bgClass = 'bg-bg-input';
               if (hasActivity) {
@@ -872,10 +936,15 @@ const DailyCalendar = ({ year, month, dailyData, onSelectDay }) => {
               return (
                 <div
                   key={slot.day}
-                  className={`h-24 rounded-lg border border-border p-2 ${bgClass} ${hasActivity ? 'cursor-pointer hover:brightness-110 transition-all' : ''}`}
-                  onClick={() => hasActivity && onSelectDay(slot.dateKey)}
+                  className={`h-24 rounded-lg border border-border p-2 ${bgClass} cursor-pointer hover:brightness-110 transition-all`}
+                  onClick={() => onSelectDay(slot.dateKey)}
                 >
-                  <div className="text-xs text-text-secondary">{slot.day}</div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-text-secondary">{slot.day}</span>
+                    {hasNote && (
+                      <svg className="w-3 h-3 text-accent" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z"></path></svg>
+                    )}
+                  </div>
                   {hasActivity && (
                     <>
                       <div className={`font-mono text-sm font-semibold mt-1 ${pl >= 0 ? 'text-positive' : 'text-negative'}`}>
@@ -1402,7 +1471,7 @@ const TradeListPage = ({ trades, triggerReload, onEdit, subscriptionStatus, onOp
   const [sortDir, setSortDir] = useState('desc');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [sideFilter, setSideFilter] = useState('all');
+  const [sideFilters, setSideFilters] = useState([]);
   const [filterTags, setFilterTags] = useState([]);
   const [csvImportOpen, setCsvImportOpen] = useState(false);
   const [showNewTagInline, setShowNewTagInline] = useState(false);
@@ -1473,12 +1542,16 @@ const TradeListPage = ({ trades, triggerReload, onEdit, subscriptionStatus, onOp
     );
   }
 
-  if (sideFilter !== 'all') {
+  if (sideFilters.length > 0) {
     filtered = filtered.filter(t => {
       const pl = getTradePL(t);
-      if (sideFilter === 'wins') return pl > 0;
-      if (sideFilter === 'losses') return pl < 0;
-      return true;
+      return sideFilters.every(f => {
+        if (f === 'wins') return pl > 0;
+        if (f === 'losses') return pl < 0;
+        if (f === 'long') return t.quantity > 0;
+        if (f === 'short') return t.quantity < 0;
+        return true;
+      });
     });
   }
 
@@ -1594,15 +1667,31 @@ const TradeListPage = ({ trades, triggerReload, onEdit, subscriptionStatus, onOp
           onChange={(e) => setDateTo(e.target.value)}
           className="px-3 py-2.5 bg-bg-input border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent transition-colors"
         />
-        <select
-          value={sideFilter}
-          onChange={(e) => setSideFilter(e.target.value)}
-          className="px-3 py-2.5 bg-bg-input border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent transition-colors"
-        >
-          <option value="all">All Results</option>
-          <option value="wins">Wins Only</option>
-          <option value="losses">Losses Only</option>
-        </select>
+        <div className="flex items-center gap-1.5">
+          {[
+            { id: 'long', label: 'Long', activeClass: 'bg-positive/15 border-positive/50 text-positive' },
+            { id: 'short', label: 'Short', activeClass: 'bg-negative/15 border-negative/50 text-negative' },
+            { id: 'wins', label: 'Wins', activeClass: 'bg-positive/15 border-positive/50 text-positive' },
+            { id: 'losses', label: 'Losses', activeClass: 'bg-negative/15 border-negative/50 text-negative' },
+          ].map(opt => {
+            const isActive = sideFilters.includes(opt.id);
+            return (
+              <button
+                key={opt.id}
+                className={`px-2.5 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                  isActive
+                    ? opt.activeClass
+                    : 'bg-bg-input border-border text-text-secondary hover:text-text-primary'
+                }`}
+                onClick={() => setSideFilters(prev =>
+                  prev.includes(opt.id) ? prev.filter(f => f !== opt.id) : [...prev, opt.id]
+                )}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
         <div className="flex flex-wrap items-center gap-1.5">
           {tags && tags.map(tag => {
             const isActive = filterTags.includes(tag._id);
@@ -1720,6 +1809,13 @@ const TradeListPage = ({ trades, triggerReload, onEdit, subscriptionStatus, onOp
                       </td>
                       <td className="px-4 py-3">
                         <span className="font-mono text-sm font-semibold text-text-primary">{trade.ticker}</span>
+                        <span className={`ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
+                          trade.quantity > 0
+                            ? 'bg-positive/15 text-positive'
+                            : 'bg-negative/15 text-negative'
+                        }`}>
+                          {trade.quantity > 0 ? 'LONG' : 'SHORT'}
+                        </span>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-1">
@@ -2097,14 +2193,14 @@ const AnalyticsPage = ({ trades }) => {
 
     const rect = canvas.parentElement.getBoundingClientRect();
     canvas.width = rect.width * dpr;
-    canvas.height = 280 * dpr;
+    canvas.height = 320 * dpr;
     canvas.style.width = rect.width + 'px';
-    canvas.style.height = '280px';
+    canvas.style.height = '320px';
     ctx.scale(dpr, dpr);
 
     const w = rect.width;
-    const h = 280;
-    const padding = { top: 20, right: 20, bottom: 50, left: 60 };
+    const h = 320;
+    const padding = { top: 20, right: 20, bottom: 90, left: 60 };
 
     const values = timeOfDayStats.map(s => s.totalPL);
     const maxVal = Math.max(...values.map(Math.abs), 1);
@@ -2172,12 +2268,14 @@ const AnalyticsPage = ({ trades }) => {
       // Time label
       ctx.fillStyle = textTertiary;
       ctx.font = '10px JetBrains Mono, monospace';
-      ctx.textAlign = 'center';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
       ctx.save();
-      ctx.translate(x + barWidth / 2, h - 5);
+      ctx.translate(x + barWidth / 2, padding.top + chartH + 12);
       ctx.rotate(-Math.PI / 4);
       ctx.fillText(stat.time, 0, 0);
       ctx.restore();
+      ctx.textBaseline = 'alphabetic';
     });
 
     timeBarRects.current = rects;
@@ -2270,6 +2368,69 @@ const AnalyticsPage = ({ trades }) => {
         <StatCard label="Expectancy" value={`$${expectancy.toFixed(2)}`} color={expectancy >= 0 ? 'text-positive' : 'text-negative'} />
         <StatCard label="Max Drawdown" value={`$${maxDrawdown.toFixed(2)}`} color="text-negative" />
       </div>
+
+      {/* Long vs Short Breakdown */}
+      {(() => {
+        const longTrades = trades.filter(t => t.quantity > 0);
+        const shortTrades = trades.filter(t => t.quantity < 0);
+        const longStats = calculateAnalytics(longTrades);
+        const shortStats = calculateAnalytics(shortTrades);
+        return (
+          <div className="bg-bg-surface border border-border rounded-xl p-6">
+            <h3 className="text-text-primary font-semibold mb-4">Long vs Short Breakdown</h3>
+            <div className="grid grid-cols-2 gap-6">
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase bg-positive/15 text-positive">LONG</span>
+                  <span className="text-text-secondary text-sm">{longStats.totalTrades} trades</span>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-text-secondary">Win Rate</span>
+                    <span className="font-mono text-text-primary">{longStats.winRate.toFixed(1)}%</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-text-secondary">Avg P/L</span>
+                    <span className={`font-mono font-semibold ${longStats.totalTrades > 0 ? (longStats.totalPL / longStats.totalTrades >= 0 ? 'text-positive' : 'text-negative') : 'text-text-primary'}`}>
+                      ${longStats.totalTrades > 0 ? (longStats.totalPL / longStats.totalTrades).toFixed(2) : '0.00'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-text-secondary">Total P/L</span>
+                    <span className={`font-mono font-semibold ${longStats.totalPL >= 0 ? 'text-positive' : 'text-negative'}`}>
+                      ${longStats.totalPL.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase bg-negative/15 text-negative">SHORT</span>
+                  <span className="text-text-secondary text-sm">{shortStats.totalTrades} trades</span>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-text-secondary">Win Rate</span>
+                    <span className="font-mono text-text-primary">{shortStats.winRate.toFixed(1)}%</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-text-secondary">Avg P/L</span>
+                    <span className={`font-mono font-semibold ${shortStats.totalTrades > 0 ? (shortStats.totalPL / shortStats.totalTrades >= 0 ? 'text-positive' : 'text-negative') : 'text-text-primary'}`}>
+                      ${shortStats.totalTrades > 0 ? (shortStats.totalPL / shortStats.totalTrades).toFixed(2) : '0.00'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-text-secondary">Total P/L</span>
+                    <span className={`font-mono font-semibold ${shortStats.totalPL >= 0 ? 'text-positive' : 'text-negative'}`}>
+                      ${shortStats.totalPL.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Charts row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -2394,7 +2555,7 @@ const TAG_COLOR_PRESETS = [
   '#8B5CF6', '#EC4899', '#6B7280', '#F97316',
 ];
 
-const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, tags, triggerReload }) => {
+const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, tags, triggerReload, subscriptionStatus }) => {
   const [activeTab, setActiveTab] = useState('brokers');
   const [tvUsername, setTvUsername] = useState('');
   const [tvPassword, setTvPassword] = useState('');
@@ -2552,6 +2713,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, tags, 
   const tabs = [
     { id: 'brokers', label: 'Broker Connections' },
     { id: 'tags', label: 'Tags' },
+    { id: 'subscription', label: 'Subscription' },
     { id: 'account', label: 'Account' },
     { id: 'preferences', label: 'Preferences' },
   ];
@@ -2860,6 +3022,86 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, tags, 
                   </div>
                 ))}
               </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Subscription tab */}
+      {activeTab === 'subscription' && (
+        <div className="bg-bg-surface border border-border rounded-xl p-6 space-y-6">
+          <h3 className="text-text-primary font-semibold">Subscription</h3>
+          <div className="flex items-center gap-4">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold uppercase ${
+                  subscriptionStatus && subscriptionStatus.isPremium
+                    ? 'bg-accent/15 text-accent'
+                    : subscriptionStatus && subscriptionStatus.isTrialActive
+                      ? 'bg-info/15 text-info'
+                      : 'bg-text-muted/15 text-text-secondary'
+                }`}>
+                  {subscriptionStatus && subscriptionStatus.isPremium
+                    ? (subscriptionStatus.plan || 'Pro')
+                    : subscriptionStatus && subscriptionStatus.isTrialActive
+                      ? 'Free Trial'
+                      : 'Free'}
+                </span>
+                {subscriptionStatus && subscriptionStatus.subscriptionStatus && (
+                  <span className={`text-xs ${
+                    subscriptionStatus.subscriptionStatus === 'active' ? 'text-positive'
+                      : subscriptionStatus.subscriptionStatus === 'canceled' ? 'text-negative'
+                        : 'text-warning'
+                  }`}>
+                    {subscriptionStatus.subscriptionStatus.charAt(0).toUpperCase() + subscriptionStatus.subscriptionStatus.slice(1)}
+                  </span>
+                )}
+              </div>
+              {subscriptionStatus && subscriptionStatus.isTrialActive && (
+                <p className="text-text-tertiary text-sm">
+                  {subscriptionStatus.trialDaysRemaining} day{subscriptionStatus.trialDaysRemaining !== 1 ? 's' : ''} remaining in your trial
+                </p>
+              )}
+              {subscriptionStatus && subscriptionStatus.createdDate && (
+                <p className="text-text-muted text-xs mt-1">
+                  Account created: {new Date(subscriptionStatus.createdDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="border-t border-border pt-4 space-y-3">
+            {subscriptionStatus && subscriptionStatus.isPremium ? (
+              <button
+                className="flex items-center gap-2 px-4 py-2.5 bg-bg-input border border-border text-text-primary text-sm font-semibold rounded-lg hover:border-accent transition-all"
+                onClick={async () => {
+                  try {
+                    const response = await fetch('/api/stripe/billing-portal', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                    });
+                    const data = await response.json();
+                    if (data.url) {
+                      window.location.href = data.url;
+                    } else if (data.error) {
+                      alert(data.error);
+                    }
+                  } catch (err) {
+                    console.error('Failed to open billing portal:', err);
+                  }
+                }}
+              >
+                <Icons.Settings className="w-4 h-4" />
+                Manage Subscription
+              </button>
+            ) : (
+              <button
+                className="flex items-center gap-2 px-4 py-2.5 bg-accent text-accent-text text-sm font-semibold rounded-lg hover:brightness-110 transition-all"
+                onClick={() => onNavigate('upgrade')}
+              >
+                <Icons.Zap className="w-4 h-4" />
+                Upgrade Now
+              </button>
             )}
           </div>
         </div>
@@ -3345,6 +3587,7 @@ const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, tags }) 
               <div>
                 <label htmlFor="quantity" className={labelClass}>Quantity</label>
                 <input id="quantity" type="number" step="0.01" name="quantity" placeholder="1" defaultValue={isEditing ? editingTrade.quantity : ''} className={inputClass} />
+                <p className="text-text-muted text-xs mt-0.5">Use negative for short trades</p>
               </div>
               <div>
                 <label htmlFor="manualPL" className={labelClass}>P/L (Optional)</label>
@@ -3566,6 +3809,7 @@ const App = () => {
   const [subscriptionStatus, setSubscriptionStatus] = useState(null);
   const [syncNotification, setSyncNotification] = useState(null);
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
+  const [dailyNotes, setDailyNotes] = useState([]);
 
   const triggerReload = () => setReloadTrades(!reloadTrades);
 
@@ -3635,6 +3879,51 @@ const App = () => {
     fetchSubscriptionStatus();
   }, []);
 
+  useEffect(() => {
+    const loadDailyNotes = async () => {
+      try {
+        const response = await fetch('/getDailyNotes');
+        const data = await response.json();
+        setDailyNotes(data.notes || []);
+      } catch (err) {
+        console.error('Failed to fetch daily notes:', err);
+      }
+    };
+    loadDailyNotes();
+  }, [reloadTrades]);
+
+  const handleSaveNote = async (date, content) => {
+    try {
+      const response = await fetch('/saveDailyNote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, content }),
+      });
+      const data = await response.json();
+      if (!data.error) {
+        setDailyNotes(prev => {
+          const filtered = prev.filter(n => n.date !== date);
+          return [...filtered, data.note];
+        });
+      }
+    } catch (err) {
+      console.error('Failed to save note:', err);
+    }
+  };
+
+  const handleDeleteNote = async (date) => {
+    try {
+      await fetch('/removeDailyNote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date }),
+      });
+      setDailyNotes(prev => prev.filter(n => n.date !== date));
+    } catch (err) {
+      console.error('Failed to delete note:', err);
+    }
+  };
+
   // Auto-sync Tradovate on mount
   useEffect(() => {
     const autoSync = async () => {
@@ -3668,7 +3957,7 @@ const App = () => {
   const renderPage = () => {
     switch (currentPage) {
       case 'dashboard':
-        return <DashboardPage trades={trades} subscriptionStatus={subscriptionStatus} onOpenForm={openForm} />;
+        return <DashboardPage trades={trades} subscriptionStatus={subscriptionStatus} onOpenForm={openForm} dailyNotes={dailyNotes} onSaveNote={handleSaveNote} onDeleteNote={handleDeleteNote} />;
       case 'trades':
         return (
           <TradeListPage
@@ -3683,17 +3972,17 @@ const App = () => {
       case 'analytics':
         return <AnalyticsPage trades={trades} />;
       case 'settings':
-        return <SettingsPage onSyncComplete={triggerReload} onNavigate={setCurrentPage} theme={theme} onThemeChange={handleThemeChange} tags={tags} triggerReload={triggerReload} />;
+        return <SettingsPage onSyncComplete={triggerReload} onNavigate={setCurrentPage} theme={theme} onThemeChange={handleThemeChange} tags={tags} triggerReload={triggerReload} subscriptionStatus={subscriptionStatus} />;
       case 'upgrade':
         return <UpgradePage />;
       default:
-        return <DashboardPage trades={trades} subscriptionStatus={subscriptionStatus} onOpenForm={openForm} />;
+        return <DashboardPage trades={trades} subscriptionStatus={subscriptionStatus} onOpenForm={openForm} dailyNotes={dailyNotes} onSaveNote={handleSaveNote} onDeleteNote={handleDeleteNote} />;
     }
   };
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} />
+      <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} subscriptionStatus={subscriptionStatus} />
       <main className="flex-1 lg:ml-60 min-h-screen">
         <div className="p-6 lg:p-8 max-w-7xl">
           <TrialBanner subscriptionStatus={subscriptionStatus} />

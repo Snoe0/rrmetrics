@@ -92,7 +92,7 @@ const Navbar = () => {
           <a href="/login" className="text-text-secondary hover:text-text-primary text-sm font-medium transition-colors px-4 py-2">
             Sign In
           </a>
-          <a href="/login" className="bg-accent text-accent-text text-sm font-semibold px-5 py-2 rounded-lg hover:brightness-110 transition-all">
+          <a href="/signup" className="bg-accent text-accent-text text-sm font-semibold px-5 py-2 rounded-lg hover:brightness-110 transition-all">
             Get Started
           </a>
         </div>

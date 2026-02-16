@@ -14,6 +14,10 @@ const router = (app) => {
   app.post('/updateTag', mid.requiresLogin, controllers.Tag.updateTag);
   app.post('/removeTag', mid.requiresLogin, controllers.Tag.removeTag);
 
+  app.get('/getDailyNotes', mid.requiresLogin, controllers.DailyNote.getNotes);
+  app.post('/saveDailyNote', mid.requiresLogin, controllers.DailyNote.saveNote);
+  app.post('/removeDailyNote', mid.requiresLogin, controllers.DailyNote.deleteNote);
+
   app.get('/login', mid.requiresSecure, mid.requiresLogout, controllers.Account.loginPage);
   app.post('/login', mid.requiresSecure, mid.requiresLogout, controllers.Account.login);
 
@@ -41,6 +45,7 @@ const router = (app) => {
   // Stripe routes
   app.post('/api/stripe/create-checkout-session', mid.requiresLogin, controllers.Stripe.createCheckoutSession);
   app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), controllers.Stripe.handleWebhook);
+  app.post('/api/stripe/billing-portal', mid.requiresLogin, controllers.Stripe.createBillingPortal);
 
   // Upgrade page
   app.get('/upgrade', mid.requiresLogin, controllers.Account.upgradePage);
