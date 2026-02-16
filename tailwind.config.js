@@ -3,6 +3,7 @@ module.exports = {
   content: [
     './client/**/*.{js,jsx}',
     './views/**/*.handlebars',
+    './public/**/*.html',
   ],
   theme: {
     extend: {

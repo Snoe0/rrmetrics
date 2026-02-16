@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#111827"/>
+      <stop offset="100%" stop-color="#1a1a2e"/>
+    </linearGradient>
+    <linearGradient id="g" x1="0" y1="0" x2="0.8" y2="1">
+      <stop offset="0%" stop-color="#BFFF00"/>
+      <stop offset="100%" stop-color="#8AE600"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="128" height="128" rx="22" fill="url(#bg)"/>
+  <!-- First R -->
+  <!-- Stem -->
+  <rect x="18" y="28" width="10" height="60" rx="2" fill="url(#g)"/>
+  <!-- Bowl top -->
+  <rect x="18" y="28" width="30" height="10" rx="2" fill="url(#g)"/>
+  <!-- Bowl right side -->
+  <rect x="48" y="28" width="10" height="30" rx="2" fill="url(#g)"/>
+  <!-- Bowl mid bar -->
+  <rect x="18" y="54" width="30" height="10" rx="2" fill="url(#g)"/>
+  <!-- Leg -->
+  <polygon points="38,64 60,88 49,88 28,64" fill="url(#g)"/>
+  <!-- Second R -->
+  <!-- Stem -->
+  <rect x="68" y="28" width="10" height="60" rx="2" fill="url(#g)"/>
+  <!-- Bowl top -->
+  <rect x="68" y="28" width="30" height="10" rx="2" fill="url(#g)"/>
+  <!-- Bowl right side -->
+  <rect x="98" y="28" width="10" height="30" rx="2" fill="url(#g)"/>
+  <!-- Bowl mid bar -->
+  <rect x="68" y="54" width="30" height="10" rx="2" fill="url(#g)"/>
+  <!-- Leg -->
+  <polygon points="88,64 110,88 99,88 78,64" fill="url(#g)"/>
+  <!-- Uptrend accent line -->
+  <polyline points="22,106 48,100 74,103 108,92" fill="none" stroke="#BFFF00" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity="0.45"/>
+  <!-- Dot at end -->
+  <circle cx="108" cy="92" r="3" fill="#BFFF00" opacity="0.6"/>
+</svg>

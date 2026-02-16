@@ -38,7 +38,7 @@ module.exports = {
         aggregateTimeout: 200,
     },
     output: {
-        path: path.resolve(__dirname, 'hosted'),
+        path: path.resolve(__dirname, 'public/assets'),
         filename: '[name]Bundle.js',
     },
 };
