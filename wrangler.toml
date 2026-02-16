@@ -6,21 +6,26 @@ compatibility_flags = ["nodejs_compat"]
 # Static assets served by Cloudflare Pages
 assets = { directory = "public" }
 
-# D1 Database
+# D1 Database (accounts only)
 [[d1_databases]]
 binding = "DB"
 database_name = "rrmetrics"
 database_id = "e1bbb5a7-9bc5-4ddb-81a3-4491424541fe"
 
-# Durable Objects for sessions
+# Durable Objects
 [durable_objects]
 bindings = [
-  { name = "SESSIONS", class_name = "SessionDO" }
+  { name = "SESSIONS", class_name = "SessionDO" },
+  { name = "USER_DATA", class_name = "UserDataDO" }
 ]
 
 [[migrations]]
 tag = "v1"
 new_classes = ["SessionDO"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["UserDataDO"]
 
 # Environment variables (secrets set via wrangler secret put)
 [vars]

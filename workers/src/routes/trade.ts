@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { Env, SessionData } from '../bindings';
-import * as tradesDb from '../db/trades';
+import { getUserDataStub } from '../utils/user-data';
 import { requiresLogin } from '../middleware/auth';
 
 type HonoEnv = {
@@ -14,7 +15,9 @@ const trade = new Hono<HonoEnv>();
 trade.get('/getTrades', requiresLogin, async (c) => {
   const session = c.get('session')!;
   try {
-    const trades = await tradesDb.findByOwner(c.env.DB, session.account._id);
+    const stub = getUserDataStub(c.env, session.account._id);
+    const res = await stub.fetch(new Request('http://do/trades'));
+    const trades = await res.json();
     return c.json({ trades });
   } catch (err) {
     console.error('getTrades error:', err);
@@ -42,27 +45,36 @@ const makeTradeHandler = async (c: any) => {
   }
 
   try {
-    const newTrade = await tradesDb.create(c.env.DB, {
-      ticker: body.ticker,
-      enterTime: body.enterTime,
-      exitTime: body.exitTime,
-      enterPrice: body.enterPrice,
-      exitPrice: body.exitPrice,
-      quantity: body.quantity,
-      manualPL: body.manualPL || null,
-      imageAttachments: body.imageAttachments || [],
-      screenshot: body.screenshot || null,
-      comments: body.comments || '',
-      tags: body.tags || [],
-      owner: session.account._id,
-    });
+    const stub = getUserDataStub(c.env, session.account._id);
+    const res = await stub.fetch(
+      new Request('http://do/trades', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ticker: body.ticker,
+          enterTime: body.enterTime,
+          exitTime: body.exitTime,
+          enterPrice: body.enterPrice,
+          exitPrice: body.exitPrice,
+          quantity: body.quantity,
+          manualPL: body.manualPL || null,
+          imageAttachments: body.imageAttachments || [],
+          screenshot: body.screenshot || null,
+          comments: body.comments || '',
+          tags: body.tags || [],
+        }),
+      }),
+    );
 
+    if (!res.ok) {
+      const err = await res.json() as any;
+      return c.json({ error: err.error || 'An error occurred' }, res.status as ContentfulStatusCode);
+    }
+
+    const newTrade = await res.json();
     return c.json(newTrade, 201);
   } catch (err: any) {
     console.error('makeTrade error:', err);
-    if (err.message?.includes('UNIQUE constraint')) {
-      return c.json({ error: 'Trade already exists!' }, 400);
-    }
     return c.json({ error: 'An error occurred' }, 500);
   }
 };
@@ -79,10 +91,20 @@ trade.post('/removeTrade', requiresLogin, async (c) => {
   }
 
   try {
-    const deleted = await tradesDb.deleteById(c.env.DB, body._id, session.account._id);
-    if (!deleted) {
-      return c.json({ error: 'Trade not found!' }, 404);
+    const stub = getUserDataStub(c.env, session.account._id);
+    const res = await stub.fetch(
+      new Request('http://do/trades', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ _id: body._id }),
+      }),
+    );
+
+    if (!res.ok) {
+      const err = await res.json() as any;
+      return c.json({ error: err.error || 'Trade not found!' }, res.status as ContentfulStatusCode);
     }
+
     return c.json({ message: 'Trade deleted successfully!' });
   } catch (err) {
     console.error('removeTrade error:', err);
@@ -114,23 +136,33 @@ trade.post('/updateTrade', requiresLogin, async (c) => {
   }
 
   try {
-    const updated = await tradesDb.updateById(c.env.DB, body._id, session.account._id, {
-      ticker: body.ticker,
-      enterTime: body.enterTime,
-      exitTime: body.exitTime,
-      enterPrice: body.enterPrice,
-      exitPrice: body.exitPrice,
-      quantity: body.quantity,
-      manualPL: body.manualPL || null,
-      screenshot: body.screenshot || null,
-      comments: body.comments || '',
-      tags: body.tags || [],
-    });
+    const stub = getUserDataStub(c.env, session.account._id);
+    const res = await stub.fetch(
+      new Request('http://do/trades', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          _id: body._id,
+          ticker: body.ticker,
+          enterTime: body.enterTime,
+          exitTime: body.exitTime,
+          enterPrice: body.enterPrice,
+          exitPrice: body.exitPrice,
+          quantity: body.quantity,
+          manualPL: body.manualPL || null,
+          screenshot: body.screenshot || null,
+          comments: body.comments || '',
+          tags: body.tags || [],
+        }),
+      }),
+    );
 
-    if (!updated) {
-      return c.json({ error: 'Trade not found!' }, 404);
+    if (!res.ok) {
+      const err = await res.json() as any;
+      return c.json({ error: err.error || 'Trade not found!' }, res.status as ContentfulStatusCode);
     }
 
+    const updated = await res.json();
     return c.json(updated);
   } catch (err) {
     console.error('updateTrade error:', err);
@@ -175,11 +207,24 @@ trade.post('/importTrades', requiresLogin, async (c) => {
       manualPL: t.manualPL ? parseFloat(t.manualPL) : null,
       comments: t.comments || '',
       tags: t.tags || [],
-      owner: session.account._id,
     }));
 
-    const imported = await tradesDb.bulkInsert(c.env.DB, tradeDocs);
-    return c.json({ imported }, 201);
+    const stub = getUserDataStub(c.env, session.account._id);
+    const res = await stub.fetch(
+      new Request('http://do/trades/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trades: tradeDocs }),
+      }),
+    );
+
+    if (!res.ok) {
+      const err = await res.json() as any;
+      return c.json({ error: err.error || 'An error occurred during import' }, res.status as ContentfulStatusCode);
+    }
+
+    const result = await res.json();
+    return c.json(result, 201);
   } catch (err) {
     console.error('importTrades error:', err);
     return c.json({ error: 'An error occurred during import' }, 500);

@@ -10,8 +10,9 @@ import tradovateRoutes from './routes/tradovate';
 import stripeRoutes from './routes/stripe';
 import pageRoutes from './routes/pages';
 
-// Re-export the Durable Object class
+// Re-export the Durable Object classes
 export { SessionDO } from './session-do';
+export { UserDataDO } from './user-data-do';
 
 type HonoEnv = {
   Bindings: Env;

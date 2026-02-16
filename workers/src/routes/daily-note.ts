@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { Env, SessionData } from '../bindings';
-import * as dailyNotesDb from '../db/daily-notes';
+import { getUserDataStub } from '../utils/user-data';
 import { requiresLogin } from '../middleware/auth';
 
 type HonoEnv = {
@@ -14,7 +15,9 @@ const dailyNote = new Hono<HonoEnv>();
 dailyNote.get('/getDailyNotes', requiresLogin, async (c) => {
   const session = c.get('session')!;
   try {
-    const notes = await dailyNotesDb.findByOwner(c.env.DB, session.account._id);
+    const stub = getUserDataStub(c.env, session.account._id);
+    const res = await stub.fetch(new Request('http://do/daily-notes'));
+    const notes = await res.json();
     return c.json({ notes });
   } catch (err) {
     console.error('getDailyNotes error:', err);
@@ -33,12 +36,22 @@ dailyNote.post('/saveDailyNote', requiresLogin, async (c) => {
   }
 
   try {
-    const note = await dailyNotesDb.upsert(c.env.DB, {
-      date,
-      content,
-      owner: session.account._id,
-    });
-    return c.json({ note });
+    const stub = getUserDataStub(c.env, session.account._id);
+    const res = await stub.fetch(
+      new Request('http://do/daily-notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date, content }),
+      }),
+    );
+
+    if (!res.ok) {
+      const err = await res.json() as any;
+      return c.json({ error: err.error || 'Failed to save note' }, res.status as ContentfulStatusCode);
+    }
+
+    const result = await res.json();
+    return c.json(result);
   } catch (err) {
     console.error('saveDailyNote error:', err);
     return c.json({ error: 'Failed to save note' }, 500);
@@ -56,7 +69,20 @@ dailyNote.post('/removeDailyNote', requiresLogin, async (c) => {
   }
 
   try {
-    await dailyNotesDb.deleteByOwnerAndDate(c.env.DB, session.account._id, date);
+    const stub = getUserDataStub(c.env, session.account._id);
+    const res = await stub.fetch(
+      new Request('http://do/daily-notes', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date }),
+      }),
+    );
+
+    if (!res.ok) {
+      const err = await res.json() as any;
+      return c.json({ error: err.error || 'Failed to delete note' }, res.status as ContentfulStatusCode);
+    }
+
     return c.json({ message: 'Note deleted' });
   } catch (err) {
     console.error('removeDailyNote error:', err);

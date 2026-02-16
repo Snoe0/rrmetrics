@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import type { Env, SessionData } from '../bindings';
-import * as tagsDb from '../db/tags';
-import { removeTagFromAllTrades } from '../db/trade-tags';
+import { getUserDataStub } from '../utils/user-data';
 import { requiresLogin } from '../middleware/auth';
 
 type HonoEnv = {
@@ -15,7 +15,9 @@ const tag = new Hono<HonoEnv>();
 tag.get('/getTags', requiresLogin, async (c) => {
   const session = c.get('session')!;
   try {
-    const tags = await tagsDb.findByOwner(c.env.DB, session.account._id);
+    const stub = getUserDataStub(c.env, session.account._id);
+    const res = await stub.fetch(new Request('http://do/tags'));
+    const tags = await res.json();
     return c.json({ tags });
   } catch (err) {
     console.error('getTags error:', err);
@@ -33,17 +35,27 @@ tag.post('/makeTag', requiresLogin, async (c) => {
   }
 
   try {
-    const newTag = await tagsDb.create(c.env.DB, {
-      name: body.name.trim(),
-      color: body.color,
-      owner: session.account._id,
-    });
+    const stub = getUserDataStub(c.env, session.account._id);
+    const res = await stub.fetch(
+      new Request('http://do/tags', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: body.name.trim(), color: body.color }),
+      }),
+    );
+
+    if (!res.ok) {
+      const err = await res.json() as any;
+      return c.json(
+        { error: err.error || 'An error occurred' },
+        res.status as ContentfulStatusCode,
+      );
+    }
+
+    const newTag = await res.json();
     return c.json(newTag, 201);
   } catch (err: any) {
     console.error('makeTag error:', err);
-    if (err.message?.includes('UNIQUE constraint')) {
-      return c.json({ error: 'A tag with that name already exists!' }, 400);
-    }
     return c.json({ error: 'An error occurred' }, 500);
   }
 });
@@ -58,22 +70,31 @@ tag.post('/updateTag', requiresLogin, async (c) => {
   }
 
   try {
-    const updateData: { name?: string; color?: string } = {};
+    const updateData: { _id: string; name?: string; color?: string } = { _id: body._id };
     if (body.name) updateData.name = body.name.trim();
     if (body.color) updateData.color = body.color;
 
-    const updated = await tagsDb.updateById(c.env.DB, body._id, session.account._id, updateData);
+    const stub = getUserDataStub(c.env, session.account._id);
+    const res = await stub.fetch(
+      new Request('http://do/tags', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateData),
+      }),
+    );
 
-    if (!updated) {
-      return c.json({ error: 'Tag not found!' }, 404);
+    if (!res.ok) {
+      const err = await res.json() as any;
+      return c.json(
+        { error: err.error || 'An error occurred while updating the tag!' },
+        res.status as ContentfulStatusCode,
+      );
     }
 
+    const updated = await res.json();
     return c.json(updated);
   } catch (err: any) {
     console.error('updateTag error:', err);
-    if (err.message?.includes('UNIQUE constraint')) {
-      return c.json({ error: 'A tag with that name already exists!' }, 400);
-    }
     return c.json({ error: 'An error occurred while updating the tag!' }, 500);
   }
 });
@@ -88,13 +109,22 @@ tag.post('/removeTag', requiresLogin, async (c) => {
   }
 
   try {
-    const deleted = await tagsDb.deleteById(c.env.DB, body._id, session.account._id);
-    if (!deleted) {
-      return c.json({ error: 'Tag not found!' }, 404);
-    }
+    const stub = getUserDataStub(c.env, session.account._id);
+    const res = await stub.fetch(
+      new Request('http://do/tags', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ _id: body._id }),
+      }),
+    );
 
-    // Remove tag from all trade associations
-    await removeTagFromAllTrades(c.env.DB, body._id);
+    if (!res.ok) {
+      const err = await res.json() as any;
+      return c.json(
+        { error: err.error || 'Tag not found!' },
+        res.status as ContentfulStatusCode,
+      );
+    }
 
     return c.json({ message: 'Tag deleted successfully!' });
   } catch (err) {

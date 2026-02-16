@@ -1,6 +1,7 @@
 export interface Env {
   DB: D1Database;
   SESSIONS: DurableObjectNamespace;
+  USER_DATA: DurableObjectNamespace;
   ASSETS: Fetcher;
   ENCRYPTION_KEY: string;
   RESEND_API_KEY: string;

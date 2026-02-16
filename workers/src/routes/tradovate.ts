@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { Env, SessionData } from '../bindings';
 import * as accountsDb from '../db/accounts';
-import * as tradesDb from '../db/trades';
+import { getUserDataStub } from '../utils/user-data';
 import { encrypt, decrypt } from '../utils/crypto';
 import { TradovateAPI } from '../services/TradovateAPI';
 import { requiresLogin } from '../middleware/auth';
@@ -109,11 +109,18 @@ tradovate.post('/api/tradovate/sync', requiresLogin, async (c) => {
 
     const source = `tradovate_${account.tradovate_environment}` as 'tradovate_demo' | 'tradovate_live';
 
-    // Check which orders are already synced
+    // Check which orders are already synced via user's DO
     const orderIds = Object.keys(fillsByOrder);
-    const existingIds = new Set(
-      await tradesDb.findByTradovateOrderIds(c.env.DB, orderIds, account.id),
+    const stub = getUserDataStub(c.env, account.id);
+    const existingRes = await stub.fetch(
+      new Request('http://do/trades/tradovate-order-ids', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderIds }),
+      }),
     );
+    const existingOrderIds: string[] = await existingRes.json();
+    const existingIds = new Set(existingOrderIds);
 
     // Resolve contract names
     const uniqueContractIds = [...new Set(fills.map((f) => f.contractId))];
@@ -149,13 +156,20 @@ tradovate.post('/api/tradovate/sync', requiresLogin, async (c) => {
           quantity: Math.abs(qty),
           tradovateOrderId: orderId,
           tradovateSource: source,
-          owner: account.id,
         };
       });
 
     let syncedCount = 0;
     if (newTrades.length > 0) {
-      syncedCount = await tradesDb.bulkInsert(c.env.DB, newTrades);
+      const bulkRes = await stub.fetch(
+        new Request('http://do/trades/bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ trades: newTrades }),
+        }),
+      );
+      const bulkResult = await bulkRes.json() as any;
+      syncedCount = bulkResult.imported || 0;
     }
 
     await accountsDb.updateById(c.env.DB, account.id, {
