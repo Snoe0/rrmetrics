@@ -9,8 +9,8 @@ assets = { directory = "public" }
 # D1 Database
 [[d1_databases]]
 binding = "DB"
-database_name = "tradingjournal-db"
-database_id = "placeholder-replace-after-d1-create"
+database_name = "rrmetrics"
+database_id = "e1bbb5a7-9bc5-4ddb-81a3-4491424541fe"
 
 # Durable Objects for sessions
 [durable_objects]
@@ -24,4 +24,4 @@ new_classes = ["SessionDO"]
 
 # Environment variables (secrets set via wrangler secret put)
 [vars]
-APP_URL = "http://localhost:8787"
+APP_URL = "https://rrmetrics.com"
