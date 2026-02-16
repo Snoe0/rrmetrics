@@ -22,8 +22,8 @@ trade.get('/getTrades', requiresLogin, async (c) => {
   }
 });
 
-// POST /makeTrade
-trade.post('/makeTrade', requiresLogin, async (c) => {
+// POST /makeTrade and POST /trades (client form submits to /trades)
+const makeTradeHandler = async (c: any) => {
   const session = c.get('session')!;
   const body = await c.req.json();
 
@@ -65,7 +65,9 @@ trade.post('/makeTrade', requiresLogin, async (c) => {
     }
     return c.json({ error: 'An error occurred' }, 500);
   }
-});
+};
+trade.post('/makeTrade', requiresLogin, makeTradeHandler);
+trade.post('/trades', requiresLogin, makeTradeHandler);
 
 // POST /removeTrade
 trade.post('/removeTrade', requiresLogin, async (c) => {
