@@ -44,7 +44,7 @@ stripeRoutes.post('/api/stripe/create-checkout-session', requiresLogin, async (c
     let customerId = account.stripe_customer_id;
     if (!customerId) {
       const customer = await stripe.customers.create({
-        metadata: { accountId: account.id, username: account.username },
+        metadata: { accountId: account.id, email: account.email },
       });
       customerId = customer.id;
       await accountsDb.updateById(c.env.DB, account.id, { stripeCustomerId: customerId });

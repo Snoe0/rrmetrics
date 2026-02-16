@@ -18,21 +18,21 @@ const account = new Hono<HonoEnv>();
 // POST /login
 account.post('/login', requiresLogout, async (c) => {
   const body = await c.req.json();
-  const username = `${body.username || ''}`;
+  const email = `${body.email || ''}`.trim().toLowerCase();
   const password = `${body.pass || ''}`;
 
-  if (!username || !password) {
+  if (!email || !password) {
     return c.json({ error: 'All fields are required!' }, 400);
   }
 
-  const row = await accountsDb.findByUsername(c.env.DB, username);
+  const row = await accountsDb.findByEmail(c.env.DB, email);
   if (!row) {
-    return c.json({ error: 'Wrong username or password!' }, 401);
+    return c.json({ error: 'Wrong email or password!' }, 401);
   }
 
   const match = await comparePassword(password, row.password);
   if (!match) {
-    return c.json({ error: 'Wrong username or password!' }, 401);
+    return c.json({ error: 'Wrong email or password!' }, 401);
   }
 
   const sessionId = generateSessionId();
@@ -46,12 +46,11 @@ account.post('/login', requiresLogout, async (c) => {
 // POST /signup
 account.post('/signup', requiresLogout, async (c) => {
   const body = await c.req.json();
-  const username = `${body.username || ''}`;
+  const email = `${body.email || ''}`.trim().toLowerCase();
   const pass = `${body.pass || ''}`;
   const pass2 = `${body.pass2 || ''}`;
-  const email = body.email ? `${body.email}`.trim().toLowerCase() : null;
 
-  if (!username || !pass || !pass2) {
+  if (!email || !pass || !pass2) {
     return c.json({ error: 'All fields are required!' }, 400);
   }
 
@@ -59,17 +58,11 @@ account.post('/signup', requiresLogout, async (c) => {
     return c.json({ error: 'Passwords do not match!' }, 400);
   }
 
-  // Validate username format
-  if (!/^[A-Za-z0-9_\-.]{1,16}$/.test(username)) {
-    return c.json({ error: 'Username must be 1-16 characters: letters, numbers, _, -, .' }, 400);
-  }
-
   try {
     const hash = await generateHash(pass);
     const newAccount = await accountsDb.create(c.env.DB, {
-      username,
+      email,
       password: hash,
-      email: email || null,
     });
 
     const sessionId = generateSessionId();
@@ -79,8 +72,8 @@ account.post('/signup', requiresLogout, async (c) => {
     c.header('Set-Cookie', cookie);
     return c.json({ redirect: '/trades' });
   } catch (err: any) {
-    if (err.message?.includes('UNIQUE constraint failed') || err.message?.includes('accounts.username')) {
-      return c.json({ error: 'Username already in use.' }, 400);
+    if (err.message?.includes('UNIQUE constraint failed') || err.message?.includes('accounts.email')) {
+      return c.json({ error: 'Email already in use.' }, 400);
     }
     console.error('Signup error:', err);
     return c.json({ error: 'An error occurred.' }, 500);
@@ -113,7 +106,7 @@ account.post('/changePass', requiresLogin, async (c) => {
     return c.json({ error: 'New passwords do not match!' }, 400);
   }
 
-  const row = await accountsDb.findByUsername(c.env.DB, session.account.username);
+  const row = await accountsDb.findById(c.env.DB, session.account._id);
   if (!row) {
     return c.json({ error: 'Account not found.' }, 404);
   }
@@ -131,17 +124,17 @@ account.post('/changePass', requiresLogin, async (c) => {
 // POST /forgot-password
 account.post('/forgot-password', requiresLogout, async (c) => {
   const body = await c.req.json();
-  const username = `${body.username || ''}`.trim();
+  const email = `${body.email || ''}`.trim().toLowerCase();
 
-  if (!username) {
-    return c.json({ error: 'Username is required.' }, 400);
+  if (!email) {
+    return c.json({ error: 'Email is required.' }, 400);
   }
 
   try {
-    const row = await accountsDb.findByUsername(c.env.DB, username);
-    const genericMsg = 'If an account with that username exists and has an email on file, a reset link has been sent.';
+    const row = await accountsDb.findByEmail(c.env.DB, email);
+    const genericMsg = 'If an account with that email exists, a reset link has been sent.';
 
-    if (!row || !row.email) {
+    if (!row) {
       return c.json({ message: genericMsg });
     }
 

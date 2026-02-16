@@ -8,15 +8,15 @@ const handleLogin = (e) => {
   e.preventDefault();
   helper.hideError();
 
-  const username = e.target.querySelector('#user').value;
+  const email = e.target.querySelector('#email').value;
   const pass = e.target.querySelector('#pass').value;
 
-  if (!username || !pass) {
-    helper.handleError('Username or password is empty');
+  if (!email || !pass) {
+    helper.handleError('Email or password is empty');
     return false;
   }
 
-  helper.sendPost(e.target.action, { username, pass });
+  helper.sendPost(e.target.action, { email, pass });
   return false;
 };
 
@@ -24,12 +24,11 @@ const handleSignup = (e) => {
   e.preventDefault();
   helper.hideError();
 
-  const username = e.target.querySelector('#user').value;
+  const email = e.target.querySelector('#email').value;
   const pass = e.target.querySelector('#pass').value;
   const pass2 = e.target.querySelector('#pass2').value;
-  const email = e.target.querySelector('#email').value;
 
-  if (!username || !pass || !pass2) {
+  if (!email || !pass || !pass2) {
     helper.handleError('All fields are required');
     return false;
   }
@@ -39,7 +38,7 @@ const handleSignup = (e) => {
     return false;
   }
 
-  helper.sendPost(e.target.action, { username, pass, pass2, email });
+  helper.sendPost(e.target.action, { email, pass, pass2 });
   return false;
 };
 
@@ -58,13 +57,13 @@ const LoginWindow = ({ onSwitchToSignup, onSwitchToForgot }) => {
 
       <div className="space-y-5">
         <div>
-          <label htmlFor="user" className="block text-sm font-medium text-text-secondary mb-2">Username</label>
+          <label htmlFor="email" className="block text-sm font-medium text-text-secondary mb-2">Email</label>
           <input
-            id="user"
-            type="text"
-            name="username"
-            placeholder="Enter your username"
-            autoComplete="username"
+            id="email"
+            type="email"
+            name="email"
+            placeholder="you@example.com"
+            autoComplete="email"
             className="w-full px-4 py-3 bg-bg-input border border-border rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
           />
         </div>
@@ -119,21 +118,7 @@ const SignupWindow = ({ onSwitchToLogin }) => {
 
       <div className="space-y-5">
         <div>
-          <label htmlFor="user" className="block text-sm font-medium text-text-secondary mb-2">Username</label>
-          <input
-            id="user"
-            type="text"
-            name="username"
-            placeholder="Choose a username"
-            autoComplete="username"
-            className="w-full px-4 py-3 bg-bg-input border border-border rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
-          />
-        </div>
-
-        <div>
-          <label htmlFor="email" className="block text-sm font-medium text-text-secondary mb-2">
-            Email <span className="text-text-muted font-normal">(for password recovery)</span>
-          </label>
+          <label htmlFor="email" className="block text-sm font-medium text-text-secondary mb-2">Email</label>
           <input
             id="email"
             type="email"
@@ -196,9 +181,9 @@ const ForgotPasswordWindow = ({ onSwitchToLogin }) => {
     setError(null);
     setLoading(true);
 
-    const username = e.target.querySelector('#forgotUser').value.trim();
-    if (!username) {
-      setError('Please enter your username.');
+    const email = e.target.querySelector('#forgotEmail').value.trim();
+    if (!email) {
+      setError('Please enter your email.');
       setLoading(false);
       return;
     }
@@ -207,7 +192,7 @@ const ForgotPasswordWindow = ({ onSwitchToLogin }) => {
       const res = await fetch('/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username }),
+        body: JSON.stringify({ email }),
       });
       const data = await res.json();
       if (data.error) {
@@ -231,7 +216,7 @@ const ForgotPasswordWindow = ({ onSwitchToLogin }) => {
         </div>
         <h2 className="text-2xl font-bold text-text-primary mb-2">Check Your Email</h2>
         <p className="text-text-secondary text-sm mb-8">
-          If an account with that username exists and has an email on file, we've sent a password reset link.
+          If an account with that email exists, we've sent a password reset link.
         </p>
         <button
           type="button"
@@ -247,7 +232,7 @@ const ForgotPasswordWindow = ({ onSwitchToLogin }) => {
   return (
     <form onSubmit={handleSubmit} className="w-full">
       <h2 className="text-2xl font-bold text-text-primary mb-1">Forgot Password</h2>
-      <p className="text-text-secondary text-sm mb-8">Enter your username and we'll send a reset link to your email on file.</p>
+      <p className="text-text-secondary text-sm mb-8">Enter your email and we'll send a reset link.</p>
 
       {error && (
         <div className="mb-4 p-3 bg-negative/20 border border-negative/40 rounded-lg">
@@ -256,12 +241,12 @@ const ForgotPasswordWindow = ({ onSwitchToLogin }) => {
       )}
 
       <div>
-        <label htmlFor="forgotUser" className="block text-sm font-medium text-text-secondary mb-2">Username</label>
+        <label htmlFor="forgotEmail" className="block text-sm font-medium text-text-secondary mb-2">Email</label>
         <input
-          id="forgotUser"
-          type="text"
-          placeholder="Enter your username"
-          autoComplete="username"
+          id="forgotEmail"
+          type="email"
+          placeholder="you@example.com"
+          autoComplete="email"
           className="w-full px-4 py-3 bg-bg-input border border-border rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
         />
       </div>

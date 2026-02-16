@@ -19,7 +19,7 @@ export interface SessionData {
 
 export interface AccountAPI {
   _id: string;
-  username: string;
+  email: string;
   isPremium: boolean;
   subscriptionPlan: string;
   subscriptionStatus: string | null;
@@ -34,7 +34,6 @@ export interface AccountAPI {
   };
   createdDate: string;
   hasPassword: boolean;
-  hasEmail: boolean;
   tradovate: {
     configured: boolean;
     environment: string;
@@ -44,9 +43,8 @@ export interface AccountAPI {
 
 export interface AccountRow {
   id: string;
-  username: string;
+  email: string;
   password: string;
-  email: string | null;
   is_premium: number;
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;

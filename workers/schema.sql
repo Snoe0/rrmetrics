@@ -3,9 +3,8 @@
 
 CREATE TABLE IF NOT EXISTS accounts (
   id TEXT PRIMARY KEY,
-  username TEXT NOT NULL UNIQUE,
+  email TEXT NOT NULL UNIQUE,
   password TEXT NOT NULL,
-  email TEXT DEFAULT NULL,
   is_premium INTEGER NOT NULL DEFAULT 0,
   stripe_customer_id TEXT DEFAULT NULL,
   stripe_subscription_id TEXT DEFAULT NULL,
@@ -82,6 +81,6 @@ CREATE INDEX IF NOT EXISTS idx_daily_notes_owner ON daily_notes(owner);
 CREATE INDEX IF NOT EXISTS idx_daily_notes_owner_date ON daily_notes(owner, date);
 CREATE INDEX IF NOT EXISTS idx_trade_tags_trade_id ON trade_tags(trade_id);
 CREATE INDEX IF NOT EXISTS idx_trade_tags_tag_id ON trade_tags(tag_id);
-CREATE INDEX IF NOT EXISTS idx_accounts_username ON accounts(username);
+CREATE INDEX IF NOT EXISTS idx_accounts_email ON accounts(email);
 CREATE INDEX IF NOT EXISTS idx_accounts_reset_token ON accounts(reset_token);
 CREATE INDEX IF NOT EXISTS idx_accounts_stripe_customer_id ON accounts(stripe_customer_id);

@@ -5,7 +5,7 @@ import { generateId } from '../utils/id';
 export function toAPI(row: AccountRow): AccountAPI {
   return {
     _id: row.id,
-    username: row.username,
+    email: row.email,
     isPremium: !!row.is_premium,
     subscriptionPlan: row.subscription_plan || 'trial',
     subscriptionStatus: row.subscription_status || null,
@@ -20,7 +20,6 @@ export function toAPI(row: AccountRow): AccountAPI {
     },
     createdDate: row.created_date,
     hasPassword: !!row.password,
-    hasEmail: !!row.email,
     tradovate: {
       configured: !!row.tradovate_username,
       environment: row.tradovate_environment || 'demo',
@@ -33,8 +32,8 @@ export async function findById(db: D1Database, id: string): Promise<AccountRow |
   return db.prepare('SELECT * FROM accounts WHERE id = ?').bind(id).first<AccountRow>();
 }
 
-export async function findByUsername(db: D1Database, username: string): Promise<AccountRow | null> {
-  return db.prepare('SELECT * FROM accounts WHERE username = ?').bind(username).first<AccountRow>();
+export async function findByEmail(db: D1Database, email: string): Promise<AccountRow | null> {
+  return db.prepare('SELECT * FROM accounts WHERE email = ?').bind(email).first<AccountRow>();
 }
 
 export async function findByResetToken(db: D1Database, hashedToken: string): Promise<AccountRow | null> {
@@ -53,16 +52,16 @@ export async function findByStripeCustomerId(db: D1Database, customerId: string)
 
 export async function create(
   db: D1Database,
-  data: { username: string; password: string; email?: string | null },
+  data: { email: string; password: string },
 ): Promise<AccountRow> {
   const id = generateId();
   const now = new Date().toISOString();
   await db
     .prepare(
-      `INSERT INTO accounts (id, username, password, email, created_date)
-       VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO accounts (id, email, password, created_date)
+       VALUES (?, ?, ?, ?)`,
     )
-    .bind(id, data.username, data.password, data.email || null, now)
+    .bind(id, data.email, data.password, now)
     .run();
   return (await findById(db, id))!;
 }
