@@ -97,7 +97,11 @@ const groupTradesByDate = (trades) => {
   return grouped;
 };
 
-const getCSSVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const getCSSVar = (name) => {
+  const val = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  if (/^\d+ \d+ \d+$/.test(val)) return `rgb(${val})`;
+  return val;
+};
 
 const EST_TZ = 'America/New_York';
 
@@ -142,6 +146,15 @@ const getESTOffset = (date) => {
   const diffMs = new Date(estStr) - new Date(utcStr);
   const diffHours = diffMs / 3600000;
   return diffHours === -4 ? '-04:00' : '-05:00';
+};
+
+const colorToRgba = (color, alpha) => {
+  const rgbMatch = color.match(/^rgb\((\d+),?\s*(\d+),?\s*(\d+)\)$/);
+  if (rgbMatch) return `rgba(${rgbMatch[1]}, ${rgbMatch[2]}, ${rgbMatch[3]}, ${alpha})`;
+  const r = parseInt(color.slice(1, 3), 16);
+  const g = parseInt(color.slice(3, 5), 16);
+  const b = parseInt(color.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
 
 const drawTooltip = (ctx, x, y, title, lines, canvasWidth, canvasHeight) => {
@@ -1076,15 +1089,15 @@ const YearHeatmap = ({ year, dailyData, onSelectDay }) => {
     const intensity = Math.min(Math.abs(pl) / maxPL, 1);
     if (pl === 0) return 'bg-text-muted/30';
     if (pl > 0) {
-      if (intensity < 0.25) return 'bg-positive/20';
-      if (intensity < 0.5) return 'bg-positive/40';
-      if (intensity < 0.75) return 'bg-positive/60';
-      return 'bg-positive/80';
+      if (intensity < 0.25) return 'bg-positive/35';
+      if (intensity < 0.5) return 'bg-positive/55';
+      if (intensity < 0.75) return 'bg-positive/75';
+      return 'bg-positive';
     }
-    if (intensity < 0.25) return 'bg-negative/20';
-    if (intensity < 0.5) return 'bg-negative/40';
-    if (intensity < 0.75) return 'bg-negative/60';
-    return 'bg-negative/80';
+    if (intensity < 0.25) return 'bg-negative/35';
+    if (intensity < 0.5) return 'bg-negative/55';
+    if (intensity < 0.75) return 'bg-negative/75';
+    return 'bg-negative';
   };
 
   // Find which weeks correspond to month boundaries for labels
@@ -1098,85 +1111,132 @@ const YearHeatmap = ({ year, dailyData, onSelectDay }) => {
     }
   });
 
+  // Compute stats for the side panel
+  const tradingDays = Object.keys(dailyData).filter(k => k.startsWith(`${year}-`)).length;
+  const totalTrades = Object.keys(dailyData).filter(k => k.startsWith(`${year}-`)).reduce((s, k) => s + dailyData[k].tradeCount, 0);
+  const totalPL = Object.keys(dailyData).filter(k => k.startsWith(`${year}-`)).reduce((s, k) => s + dailyData[k].totalPL, 0);
+  const avgDailyTrades = tradingDays > 0 ? (totalTrades / tradingDays) : 0;
+  const avgDailyPL = tradingDays > 0 ? (totalPL / tradingDays) : 0;
+  const daysInYear = (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)) ? 366 : 365;
+  const tradingWeekdays = (() => {
+    let count = 0;
+    for (let d = new Date(year, 0, 1); d.getFullYear() === year; d.setDate(d.getDate() + 1)) {
+      if (d.getDay() !== 0 && d.getDay() !== 6) count++;
+    }
+    return count;
+  })();
+  const pctYearTrading = tradingWeekdays > 0 ? ((tradingDays / tradingWeekdays) * 100) : 0;
+  const winDays = Object.keys(dailyData).filter(k => k.startsWith(`${year}-`) && dailyData[k].totalPL > 0).length;
+  const lossDays = Object.keys(dailyData).filter(k => k.startsWith(`${year}-`) && dailyData[k].totalPL < 0).length;
+
   return (
-    <div className="relative">
-      {/* Month labels */}
-      <div className="flex ml-8 mb-1 text-[10px] text-text-tertiary" style={{ gap: 0 }}>
-        {(() => {
-          const labels = [];
-          let lastIdx = -1;
-          monthLabels.forEach(({ weekIndex, label }) => {
-            const left = weekIndex * 15; // ~15px per column
-            if (lastIdx === -1 || left - lastIdx > 28) {
-              labels.push(<span key={label} style={{ position: 'absolute', left: `${32 + left}px` }}>{label}</span>);
-              lastIdx = left;
-            }
-          });
-          return labels;
-        })()}
-      </div>
-
-      <div className="flex gap-0 mt-5">
-        {/* Day-of-week labels */}
-        <div className="flex flex-col gap-[3px] mr-1.5 text-[10px] text-text-tertiary pt-0">
-          {['Sun', '', 'Tue', '', 'Thu', '', 'Sat'].map((label, i) => (
-            <div key={i} className="h-[13px] flex items-center justify-end w-6">{label}</div>
-          ))}
+    <div>
+      <div className="relative">
+        {/* Month labels */}
+        <div className="flex ml-8 mb-1 text-[11px] text-text-tertiary" style={{ gap: 0 }}>
+          {(() => {
+            const labels = [];
+            let lastIdx = -1;
+            monthLabels.forEach(({ weekIndex, label }) => {
+              const left = weekIndex * 18;
+              if (lastIdx === -1 || left - lastIdx > 32) {
+                labels.push(<span key={label} style={{ position: 'absolute', left: `${36 + left}px` }}>{label}</span>);
+                lastIdx = left;
+              }
+            });
+            return labels;
+          })()}
         </div>
 
-        {/* Heatmap grid */}
-        <div className="flex gap-[3px] overflow-x-auto">
-          {weeks.map((week, wi) => (
-            <div key={wi} className="flex flex-col gap-[3px]">
-              {week.map((day, di) => {
-                if (!day) return <div key={di} className="w-[13px] h-[13px]" />;
-                const data = dailyData[day.dateKey];
-                const hasActivity = !!data;
-                return (
-                  <div
-                    key={di}
-                    className={`w-[13px] h-[13px] rounded-[2px] ${getHeatColor(day.dateKey)} ${hasActivity ? 'cursor-pointer' : ''} transition-all`}
-                    onMouseEnter={(e) => {
-                      if (!hasActivity) return;
-                      const rect = e.target.getBoundingClientRect();
-                      setTooltip({ x: rect.left, y: rect.top - 8, dateKey: day.dateKey, pl: data.totalPL, trades: data.tradeCount });
-                    }}
-                    onMouseLeave={() => setTooltip(null)}
-                    onClick={() => hasActivity && onSelectDay(day.dateKey)}
-                  />
-                );
-              })}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Legend */}
-      <div className="flex items-center gap-2 mt-3 text-[10px] text-text-tertiary justify-end">
-        <span>Loss</span>
-        <div className="flex gap-[2px]">
-          <div className="w-[13px] h-[13px] rounded-[2px] bg-negative/80" />
-          <div className="w-[13px] h-[13px] rounded-[2px] bg-negative/40" />
-          <div className="w-[13px] h-[13px] rounded-[2px] bg-bg-input" />
-          <div className="w-[13px] h-[13px] rounded-[2px] bg-positive/40" />
-          <div className="w-[13px] h-[13px] rounded-[2px] bg-positive/80" />
-        </div>
-        <span>Profit</span>
-      </div>
-
-      {/* Tooltip */}
-      {tooltip && (
-        <div
-          className="fixed z-50 bg-bg-page border border-border rounded-lg px-3 py-2 shadow-lg pointer-events-none"
-          style={{ left: tooltip.x, top: tooltip.y, transform: 'translate(-50%, -100%)' }}
-        >
-          <div className="text-[11px] text-text-secondary">{tooltip.dateKey}</div>
-          <div className={`font-mono text-sm font-semibold ${tooltip.pl >= 0 ? 'text-positive' : 'text-negative'}`}>
-            ${tooltip.pl.toFixed(2)}
+        <div className="flex gap-0 mt-5">
+          {/* Day-of-week labels */}
+          <div className="flex flex-col gap-[3px] mr-2 text-[11px] text-text-tertiary pt-0">
+            {['Sun', '', 'Tue', '', 'Thu', '', 'Sat'].map((label, i) => (
+              <div key={i} className="h-[15px] flex items-center justify-end w-7">{label}</div>
+            ))}
           </div>
-          <div className="text-[10px] text-text-tertiary">{tooltip.trades} trade{tooltip.trades !== 1 ? 's' : ''}</div>
+
+          {/* Heatmap grid */}
+          <div className="flex gap-[3px] overflow-x-auto">
+            {weeks.map((week, wi) => (
+              <div key={wi} className="flex flex-col gap-[3px]">
+                {week.map((day, di) => {
+                  if (!day) return <div key={di} className="w-[15px] h-[15px]" />;
+                  const data = dailyData[day.dateKey];
+                  const hasActivity = !!data;
+                  return (
+                    <div
+                      key={di}
+                      className={`w-[15px] h-[15px] rounded-[2px] ${getHeatColor(day.dateKey)} ${hasActivity ? 'cursor-pointer' : ''} transition-all`}
+                      onMouseEnter={(e) => {
+                        if (!hasActivity) return;
+                        const rect = e.target.getBoundingClientRect();
+                        setTooltip({ x: rect.left, y: rect.top - 8, dateKey: day.dateKey, pl: data.totalPL, trades: data.tradeCount });
+                      }}
+                      onMouseLeave={() => setTooltip(null)}
+                      onClick={() => hasActivity && onSelectDay(day.dateKey)}
+                    />
+                  );
+                })}
+              </div>
+            ))}
+          </div>
         </div>
-      )}
+
+        {/* Legend */}
+        <div className="flex items-center gap-2 mt-3 text-[10px] text-text-tertiary justify-end">
+          <span>Loss</span>
+          <div className="flex gap-[2px]">
+            <div className="w-[13px] h-[13px] rounded-[2px] bg-negative" />
+            <div className="w-[13px] h-[13px] rounded-[2px] bg-negative/55" />
+            <div className="w-[13px] h-[13px] rounded-[2px] bg-bg-input" />
+            <div className="w-[13px] h-[13px] rounded-[2px] bg-positive/55" />
+            <div className="w-[13px] h-[13px] rounded-[2px] bg-positive" />
+          </div>
+          <span>Profit</span>
+        </div>
+
+        {/* Tooltip */}
+        {tooltip && (
+          <div
+            className="fixed z-50 bg-bg-page border border-border rounded-lg px-3 py-2 shadow-lg pointer-events-none"
+            style={{ left: tooltip.x, top: tooltip.y, transform: 'translate(-50%, -100%)' }}
+          >
+            <div className="text-[11px] text-text-secondary">{tooltip.dateKey}</div>
+            <div className={`font-mono text-sm font-semibold ${tooltip.pl >= 0 ? 'text-positive' : 'text-negative'}`}>
+              ${tooltip.pl.toFixed(2)}
+            </div>
+            <div className="text-[10px] text-text-tertiary">{tooltip.trades} trade{tooltip.trades !== 1 ? 's' : ''}</div>
+          </div>
+        )}
+      </div>
+
+      {/* Stats row */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+        <div className="bg-bg-input rounded-lg p-3 border border-border">
+          <div className="text-text-tertiary text-[10px] uppercase tracking-wider mb-1">Avg Daily Trades</div>
+          <div className="font-mono text-lg font-bold text-text-primary">{avgDailyTrades.toFixed(1)}</div>
+        </div>
+        <div className="bg-bg-input rounded-lg p-3 border border-border">
+          <div className="text-text-tertiary text-[10px] uppercase tracking-wider mb-1">Avg Daily P&L</div>
+          <div className={`font-mono text-lg font-bold ${avgDailyPL >= 0 ? 'text-positive' : 'text-negative'}`}>
+            ${avgDailyPL.toFixed(2)}
+          </div>
+        </div>
+        <div className="bg-bg-input rounded-lg p-3 border border-border">
+          <div className="text-text-tertiary text-[10px] uppercase tracking-wider mb-1">Year Active</div>
+          <div className="font-mono text-lg font-bold text-text-primary">{pctYearTrading.toFixed(1)}%</div>
+          <div className="text-text-muted text-[10px] mt-0.5">{tradingDays} of {tradingWeekdays} weekdays</div>
+        </div>
+        <div className="bg-bg-input rounded-lg p-3 border border-border">
+          <div className="text-text-tertiary text-[10px] uppercase tracking-wider mb-1">Win / Loss Days</div>
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-sm font-bold text-positive">{winDays}</span>
+            <span className="text-text-muted text-xs">/</span>
+            <span className="font-mono text-sm font-bold text-negative">{lossDays}</span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
@@ -2022,7 +2082,9 @@ const AnalyticsPage = ({ trades }) => {
         else ctx.lineTo(x, y);
       });
 
-      const lineColor = cumPL[cumPL.length - 1] >= 0 ? '#10B981' : '#EF4444';
+      const posColor = getCSSVar('--positive');
+      const negColor = getCSSVar('--negative');
+      const lineColor = cumPL[cumPL.length - 1] >= 0 ? posColor : negColor;
       ctx.strokeStyle = lineColor;
       ctx.lineWidth = 2;
       ctx.stroke();
@@ -2034,13 +2096,14 @@ const AnalyticsPage = ({ trades }) => {
       ctx.lineTo(padding.left, zeroY);
       ctx.closePath();
 
+      const gradColor = cumPL[cumPL.length - 1] >= 0 ? posColor : negColor;
       const gradient = ctx.createLinearGradient(0, padding.top, 0, h - padding.bottom);
       if (cumPL[cumPL.length - 1] >= 0) {
-        gradient.addColorStop(0, 'rgba(16, 185, 129, 0.15)');
-        gradient.addColorStop(1, 'rgba(16, 185, 129, 0)');
+        gradient.addColorStop(0, colorToRgba(gradColor, 0.15));
+        gradient.addColorStop(1, colorToRgba(gradColor, 0));
       } else {
-        gradient.addColorStop(0, 'rgba(239, 68, 68, 0)');
-        gradient.addColorStop(1, 'rgba(239, 68, 68, 0.15)');
+        gradient.addColorStop(0, colorToRgba(gradColor, 0));
+        gradient.addColorStop(1, colorToRgba(gradColor, 0.15));
       }
       ctx.fillStyle = gradient;
       ctx.fill();
@@ -2111,15 +2174,17 @@ const AnalyticsPage = ({ trades }) => {
     const barGap = chartW / 7;
     const rects = [];
 
+    const dayPosColor = getCSSVar('--positive');
+    const dayNegColor = getCSSVar('--negative');
+
     dayPL.forEach((val, i) => {
       const x = padding.left + barGap * i + (barGap - barWidth) / 2;
       const barH = (Math.abs(val) / maxVal) * (chartH / 2);
       const y = val >= 0 ? zeroY - barH : zeroY;
 
       const isHovered = hoveredDayIndex === i;
-      ctx.fillStyle = val >= 0
-        ? (isHovered ? '#34D399' : '#10B981')
-        : (isHovered ? '#F87171' : '#EF4444');
+      const baseColor = val >= 0 ? dayPosColor : dayNegColor;
+      ctx.fillStyle = isHovered ? baseColor + 'CC' : baseColor;
       ctx.beginPath();
       ctx.roundRect(x, y, barWidth, barH, 4);
       ctx.fill();
@@ -2147,9 +2212,9 @@ const AnalyticsPage = ({ trades }) => {
         { label: 'Trades', value: `${dayCounts[i]}` },
         { label: 'Win Rate', value: `${wr}%` },
         { label: 'Profit Factor', value: pf },
-        { label: 'Avg Win', value: `$${avgW}`, color: '#10B981' },
-        { label: 'Avg Loss', value: `-$${avgL}`, color: '#EF4444' },
-        { label: 'Total P/L', value: `$${dayPL[i].toFixed(2)}`, color: dayPL[i] >= 0 ? '#10B981' : '#EF4444' },
+        { label: 'Avg Win', value: `$${avgW}`, color: dayPosColor },
+        { label: 'Avg Loss', value: `-$${avgL}`, color: dayNegColor },
+        { label: 'Total P/L', value: `$${dayPL[i].toFixed(2)}`, color: dayPL[i] >= 0 ? dayPosColor : dayNegColor },
       ], w, h);
     }
   }, [trades, hoveredDayIndex, document.documentElement.dataset.theme]);
@@ -2296,6 +2361,8 @@ const AnalyticsPage = ({ trades }) => {
     const barGap = chartW / n;
     const barWidth = barGap * 0.6;
     const rects = [];
+    const timePosColor = getCSSVar('--positive');
+    const timeNegColor = getCSSVar('--negative');
 
     timeOfDayStats.forEach((stat, i) => {
       const x = padding.left + barGap * i + (barGap - barWidth) / 2;
@@ -2303,9 +2370,8 @@ const AnalyticsPage = ({ trades }) => {
       const y = stat.totalPL >= 0 ? zeroY - barH : zeroY;
 
       const isHovered = hoveredTimeIndex === i;
-      ctx.fillStyle = stat.totalPL >= 0
-        ? (isHovered ? '#34D399' : '#10B981')
-        : (isHovered ? '#F87171' : '#EF4444');
+      const timeBaseColor = stat.totalPL >= 0 ? timePosColor : timeNegColor;
+      ctx.fillStyle = isHovered ? timeBaseColor + 'CC' : timeBaseColor;
       ctx.beginPath();
       ctx.roundRect(x, y, barWidth, barH, 3);
       ctx.fill();
@@ -2350,8 +2416,8 @@ const AnalyticsPage = ({ trades }) => {
         { label: 'Trades', value: `${stat.count}` },
         { label: 'Win Rate', value: `${stat.winRate.toFixed(1)}%` },
         { label: 'Profit Factor', value: pf },
-        { label: 'Avg P/L', value: `$${stat.avgPL.toFixed(2)}`, color: stat.avgPL >= 0 ? '#10B981' : '#EF4444' },
-        { label: 'Total P/L', value: `$${stat.totalPL.toFixed(2)}`, color: stat.totalPL >= 0 ? '#10B981' : '#EF4444' },
+        { label: 'Avg P/L', value: `$${stat.avgPL.toFixed(2)}`, color: stat.avgPL >= 0 ? timePosColor : timeNegColor },
+        { label: 'Total P/L', value: `$${stat.totalPL.toFixed(2)}`, color: stat.totalPL >= 0 ? timePosColor : timeNegColor },
       ], w, h);
     }
   }, [trades, hoveredTimeIndex, document.documentElement.dataset.theme]);
@@ -2602,7 +2668,7 @@ const TAG_COLOR_PRESETS = [
   '#8B5CF6', '#EC4899', '#6B7280', '#F97316',
 ];
 
-const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, tags, triggerReload, subscriptionStatus }) => {
+const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, customColors, tags, triggerReload, subscriptionStatus }) => {
   const [activeTab, setActiveTab] = useState('brokers');
   const [tvUsername, setTvUsername] = useState('');
   const [tvPassword, setTvPassword] = useState('');
@@ -2760,7 +2826,6 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, tags, 
   const tabs = [
     { id: 'brokers', label: 'Broker Connections' },
     { id: 'tags', label: 'Tags' },
-    { id: 'subscription', label: 'Subscription' },
     { id: 'account', label: 'Account' },
     { id: 'preferences', label: 'Preferences' },
   ];
@@ -3074,99 +3139,100 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, tags, 
         </div>
       )}
 
-      {/* Subscription tab */}
-      {activeTab === 'subscription' && (
-        <div className="bg-bg-surface border border-border rounded-xl p-6 space-y-6">
-          <h3 className="text-text-primary font-semibold">Subscription</h3>
-          <div className="flex items-center gap-4">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold uppercase ${
-                  subscriptionStatus && subscriptionStatus.isPremium
-                    ? 'bg-accent/15 text-accent'
-                    : subscriptionStatus && subscriptionStatus.isTrialActive
-                      ? 'bg-info/15 text-info'
-                      : 'bg-text-muted/15 text-text-secondary'
-                }`}>
-                  {subscriptionStatus && subscriptionStatus.isPremium
-                    ? (subscriptionStatus.plan || 'Pro')
-                    : subscriptionStatus && subscriptionStatus.isTrialActive
-                      ? 'Free Trial'
-                      : 'Free'}
-                </span>
-                {subscriptionStatus && subscriptionStatus.subscriptionStatus && (
-                  <span className={`text-xs ${
-                    subscriptionStatus.subscriptionStatus === 'active' ? 'text-positive'
-                      : subscriptionStatus.subscriptionStatus === 'canceled' ? 'text-negative'
-                        : 'text-warning'
+      {/* Account tab */}
+      {activeTab === 'account' && (
+        <div className="space-y-6">
+          {/* Subscription section */}
+          <div className="bg-bg-surface border border-border rounded-xl p-6 space-y-6">
+            <h3 className="text-text-primary font-semibold">Subscription</h3>
+            <div className="flex items-center gap-4">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold uppercase ${
+                    subscriptionStatus && subscriptionStatus.isPremium
+                      ? 'bg-accent/15 text-accent'
+                      : subscriptionStatus && subscriptionStatus.isTrialActive
+                        ? 'bg-info/15 text-info'
+                        : 'bg-text-muted/15 text-text-secondary'
                   }`}>
-                    {subscriptionStatus.subscriptionStatus.charAt(0).toUpperCase() + subscriptionStatus.subscriptionStatus.slice(1)}
+                    {subscriptionStatus && subscriptionStatus.isPremium
+                      ? (subscriptionStatus.plan || 'Pro')
+                      : subscriptionStatus && subscriptionStatus.isTrialActive
+                        ? 'Free Trial'
+                        : 'Free'}
                   </span>
+                  {subscriptionStatus && subscriptionStatus.subscriptionStatus && (
+                    <span className={`text-xs ${
+                      subscriptionStatus.subscriptionStatus === 'active' ? 'text-positive'
+                        : subscriptionStatus.subscriptionStatus === 'canceled' ? 'text-negative'
+                          : 'text-warning'
+                    }`}>
+                      {subscriptionStatus.subscriptionStatus.charAt(0).toUpperCase() + subscriptionStatus.subscriptionStatus.slice(1)}
+                    </span>
+                  )}
+                </div>
+                {subscriptionStatus && subscriptionStatus.isTrialActive && (
+                  <p className="text-text-tertiary text-sm">
+                    {subscriptionStatus.trialDaysRemaining} day{subscriptionStatus.trialDaysRemaining !== 1 ? 's' : ''} remaining in your trial
+                  </p>
+                )}
+                {subscriptionStatus && subscriptionStatus.createdDate && (
+                  <p className="text-text-muted text-xs mt-1">
+                    Account created: {new Date(subscriptionStatus.createdDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                  </p>
                 )}
               </div>
-              {subscriptionStatus && subscriptionStatus.isTrialActive && (
-                <p className="text-text-tertiary text-sm">
-                  {subscriptionStatus.trialDaysRemaining} day{subscriptionStatus.trialDaysRemaining !== 1 ? 's' : ''} remaining in your trial
-                </p>
-              )}
-              {subscriptionStatus && subscriptionStatus.createdDate && (
-                <p className="text-text-muted text-xs mt-1">
-                  Account created: {new Date(subscriptionStatus.createdDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-                </p>
+            </div>
+
+            <div className="border-t border-border pt-4 space-y-3">
+              {subscriptionStatus && subscriptionStatus.isPremium ? (
+                <button
+                  className="flex items-center gap-2 px-4 py-2.5 bg-bg-input border border-border text-text-primary text-sm font-semibold rounded-lg hover:border-accent transition-all"
+                  onClick={async () => {
+                    try {
+                      const response = await fetch('/api/stripe/billing-portal', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                      });
+                      const data = await response.json();
+                      if (data.url) {
+                        window.location.href = data.url;
+                      } else if (data.error) {
+                        alert(data.error);
+                      }
+                    } catch (err) {
+                      console.error('Failed to open billing portal:', err);
+                    }
+                  }}
+                >
+                  <Icons.Settings className="w-4 h-4" />
+                  Manage Subscription
+                </button>
+              ) : (
+                <button
+                  className="flex items-center gap-2 px-4 py-2.5 bg-accent text-accent-text text-sm font-semibold rounded-lg hover:brightness-110 transition-all"
+                  onClick={() => onNavigate('upgrade')}
+                >
+                  <Icons.Zap className="w-4 h-4" />
+                  Upgrade Now
+                </button>
               )}
             </div>
           </div>
 
-          <div className="border-t border-border pt-4 space-y-3">
-            {subscriptionStatus && subscriptionStatus.isPremium ? (
-              <button
-                className="flex items-center gap-2 px-4 py-2.5 bg-bg-input border border-border text-text-primary text-sm font-semibold rounded-lg hover:border-accent transition-all"
-                onClick={async () => {
-                  try {
-                    const response = await fetch('/api/stripe/billing-portal', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                    });
-                    const data = await response.json();
-                    if (data.url) {
-                      window.location.href = data.url;
-                    } else if (data.error) {
-                      alert(data.error);
-                    }
-                  } catch (err) {
-                    console.error('Failed to open billing portal:', err);
-                  }
-                }}
-              >
-                <Icons.Settings className="w-4 h-4" />
-                Manage Subscription
-              </button>
-            ) : (
-              <button
-                className="flex items-center gap-2 px-4 py-2.5 bg-accent text-accent-text text-sm font-semibold rounded-lg hover:brightness-110 transition-all"
-                onClick={() => onNavigate('upgrade')}
-              >
-                <Icons.Zap className="w-4 h-4" />
-                Upgrade Now
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Account tab */}
-      {activeTab === 'account' && (
-        <div className="bg-bg-surface border border-border rounded-xl p-6 space-y-4">
-          <h3 className="text-text-primary font-semibold">Account Settings</h3>
-          <div className="space-y-3">
-            <a href="/changePass" className="flex items-center gap-3 px-4 py-3 bg-bg-input border border-border rounded-lg text-text-secondary hover:text-text-primary transition-colors no-underline">
-              <Icons.Lock className="w-5 h-5" />
-              <span className="text-sm">Change Password</span>
-            </a>
-            <a href="/logout" className="flex items-center gap-3 px-4 py-3 bg-bg-input border border-border rounded-lg text-text-secondary hover:text-negative transition-colors no-underline">
-              <Icons.LogOut className="w-5 h-5" />
-              <span className="text-sm">Log Out</span>
-            </a>
+          {/* Account settings section */}
+          <div className="bg-bg-surface border border-border rounded-xl p-6 space-y-4">
+            <h3 className="text-text-primary font-semibold">Account Settings</h3>
+            <div className="space-y-3">
+              <a href="/changePass" className="flex items-center gap-3 px-4 py-3 bg-bg-input border border-border rounded-lg text-text-secondary hover:text-text-primary transition-colors no-underline">
+                <Icons.Lock className="w-5 h-5" />
+                <span className="text-sm">Change Password</span>
+              </a>
+              <a href="/logout" className="flex items-center gap-3 px-4 py-3 bg-bg-input border border-border rounded-lg text-text-secondary hover:text-negative transition-colors no-underline">
+                <Icons.LogOut className="w-5 h-5" />
+                <span className="text-sm">Log Out</span>
+              </a>
+            </div>
           </div>
         </div>
       )}
@@ -3197,8 +3263,68 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, tags, 
               >
                 Light
               </button>
+              {subscriptionStatus && subscriptionStatus.isPremium ? (
+                <button
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                    theme === 'custom' ? 'bg-bg-surface text-text-primary' : 'text-text-secondary hover:text-text-primary'
+                  }`}
+                  onClick={() => onThemeChange('custom', customColors)}
+                >
+                  Custom
+                </button>
+              ) : (
+                <button
+                  className="px-4 py-2 rounded-md text-sm font-medium text-text-muted cursor-not-allowed"
+                  title="Upgrade to Pro to use custom themes"
+                  disabled
+                >
+                  Custom
+                  <Icons.Lock className="w-3 h-3 inline ml-1 opacity-50" />
+                </button>
+              )}
             </div>
           </div>
+
+          {theme === 'custom' && subscriptionStatus && subscriptionStatus.isPremium && (
+            <div className="mt-4 pt-4 border-t border-border space-y-4">
+              <div className="text-text-secondary text-sm font-medium">Custom Colors</div>
+              <div className="grid grid-cols-3 gap-4">
+                {[
+                  { key: 'bgPage', label: 'Background', defaultVal: '#0B0E14' },
+                  { key: 'bgSurface', label: 'Elements', defaultVal: '#111111' },
+                  { key: 'textPrimary', label: 'Text', defaultVal: '#FFFFFF' },
+                  { key: 'accent', label: 'Primary / Accent', defaultVal: '#3B82F6' },
+                  { key: 'positive', label: 'Bullish (Positive)', defaultVal: '#10B981' },
+                  { key: 'negative', label: 'Bearish (Negative)', defaultVal: '#EF4444' },
+                ].map(({ key, label, defaultVal }) => (
+                  <div key={key} className="flex items-center gap-3">
+                    <input
+                      type="color"
+                      value={(customColors && customColors[key]) || defaultVal}
+                      onChange={(e) => {
+                        const updated = { ...customColors, [key]: e.target.value };
+                        onThemeChange('custom', updated);
+                      }}
+                      className="w-10 h-10 rounded-lg border border-border cursor-pointer bg-transparent p-0.5"
+                    />
+                    <div>
+                      <div className="text-text-primary text-sm">{label}</div>
+                      <div className="text-text-muted text-xs font-mono">{(customColors && customColors[key]) || defaultVal}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button
+                className="text-text-tertiary text-xs hover:text-text-secondary transition-colors"
+                onClick={() => {
+                  const defaults = { bgPage: '#0B0E14', bgSurface: '#111111', textPrimary: '#FFFFFF', accent: '#3B82F6', positive: '#10B981', negative: '#EF4444' };
+                  onThemeChange('custom', defaults);
+                }}
+              >
+                Reset to defaults
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -3856,15 +3982,56 @@ const App = () => {
   const [subscriptionStatus, setSubscriptionStatus] = useState(null);
   const [syncNotification, setSyncNotification] = useState(null);
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
+  const [customColors, setCustomColors] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('customColors')) || {}; } catch { return {}; }
+  });
   const [dailyNotes, setDailyNotes] = useState([]);
 
   const triggerReload = () => setReloadTrades(!reloadTrades);
 
   // Apply theme to DOM and persist
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
+    const root = document.documentElement;
+    if (theme === 'custom') {
+      // Start from dark base, then override with custom colors
+      root.setAttribute('data-theme', 'dark');
+      const hexToChannels = (hex) => {
+        const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+        return [r, g, b];
+      };
+      const toRgbStr = (r, g, b) => `${r} ${g} ${b}`;
+      const clamp = (v) => Math.min(255, Math.max(0, Math.round(v)));
+
+      if (customColors.bgPage) {
+        const [r, g, b] = hexToChannels(customColors.bgPage);
+        root.style.setProperty('--bg-page', toRgbStr(r, g, b));
+      }
+      if (customColors.bgSurface) {
+        const [r, g, b] = hexToChannels(customColors.bgSurface);
+        root.style.setProperty('--bg-surface', toRgbStr(r, g, b));
+        root.style.setProperty('--bg-input', toRgbStr(clamp(r + 15), clamp(g + 15), clamp(b + 15)));
+        root.style.setProperty('--border', toRgbStr(clamp(r + 20), clamp(g + 20), clamp(b + 20)));
+      }
+      if (customColors.textPrimary) {
+        const [tr, tg, tb] = hexToChannels(customColors.textPrimary);
+        root.style.setProperty('--text-primary', toRgbStr(tr, tg, tb));
+        const bgHex = customColors.bgPage || '#0B0E14';
+        const [br, bg2, bb] = hexToChannels(bgHex);
+        const blend = (fg, bg, a) => clamp(fg * a + bg * (1 - a));
+        root.style.setProperty('--text-secondary', toRgbStr(blend(tr, br, 0.6), blend(tg, bg2, 0.6), blend(tb, bb, 0.6)));
+        root.style.setProperty('--text-tertiary', toRgbStr(blend(tr, br, 0.43), blend(tg, bg2, 0.43), blend(tb, bb, 0.43)));
+        root.style.setProperty('--text-muted', toRgbStr(blend(tr, br, 0.25), blend(tg, bg2, 0.25), blend(tb, bb, 0.25)));
+      }
+      if (customColors.accent) { const [r, g, b] = hexToChannels(customColors.accent); root.style.setProperty('--accent', toRgbStr(r, g, b)); }
+      if (customColors.positive) { const [r, g, b] = hexToChannels(customColors.positive); root.style.setProperty('--positive', toRgbStr(r, g, b)); }
+      if (customColors.negative) { const [r, g, b] = hexToChannels(customColors.negative); root.style.setProperty('--negative', toRgbStr(r, g, b)); }
+    } else {
+      root.setAttribute('data-theme', theme);
+      ['--bg-page', '--bg-surface', '--bg-input', '--border', '--text-primary', '--text-secondary', '--text-tertiary', '--text-muted', '--accent', '--positive', '--negative'].forEach(p => root.style.removeProperty(p));
+    }
     localStorage.setItem('theme', theme);
-  }, [theme]);
+    localStorage.setItem('customColors', JSON.stringify(customColors));
+  }, [theme, customColors]);
 
   // Fetch theme from account on mount
   useEffect(() => {
@@ -3874,6 +4041,7 @@ const App = () => {
         const data = await response.json();
         if (data.account && data.account.theme) {
           setTheme(data.account.theme);
+          if (data.account.customColors) setCustomColors(data.account.customColors);
         }
       } catch (err) {
         console.error('Failed to fetch account theme:', err);
@@ -3882,12 +4050,13 @@ const App = () => {
     fetchAccountTheme();
   }, []);
 
-  const handleThemeChange = (newTheme) => {
+  const handleThemeChange = (newTheme, newCustomColors) => {
     setTheme(newTheme);
+    if (newCustomColors) setCustomColors(newCustomColors);
     fetch('/api/preferences/theme', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ theme: newTheme }),
+      body: JSON.stringify({ theme: newTheme, customColors: newCustomColors || customColors }),
     }).catch(err => console.error('Failed to save theme:', err));
   };
 
@@ -4019,7 +4188,7 @@ const App = () => {
       case 'analytics':
         return <AnalyticsPage trades={trades} />;
       case 'settings':
-        return <SettingsPage onSyncComplete={triggerReload} onNavigate={setCurrentPage} theme={theme} onThemeChange={handleThemeChange} tags={tags} triggerReload={triggerReload} subscriptionStatus={subscriptionStatus} />;
+        return <SettingsPage onSyncComplete={triggerReload} onNavigate={setCurrentPage} theme={theme} onThemeChange={handleThemeChange} customColors={customColors} tags={tags} triggerReload={triggerReload} subscriptionStatus={subscriptionStatus} />;
       case 'upgrade':
         return <UpgradePage />;
       default:

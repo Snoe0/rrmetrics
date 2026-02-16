@@ -1,4 +1,5 @@
 const bcrypt = require('bcrypt');
+const crypto = require('crypto');
 const mongoose = require('mongoose');
 
 const saltRounds = 10;
@@ -15,12 +16,12 @@ const AccountSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required() { return !this.googleId; },
+    required: true,
   },
-  googleId: {
+  email: {
     type: String,
-    unique: true,
-    sparse: true,
+    trim: true,
+    lowercase: true,
     default: null,
   },
   isPremium: {
@@ -47,8 +48,24 @@ const AccountSchema = new mongoose.Schema({
   },
   theme: {
     type: String,
-    enum: ['dark', 'light'],
+    enum: ['dark', 'light', 'custom'],
     default: 'dark',
+  },
+  customColors: {
+    bgPage: { type: String, default: null },
+    bgSurface: { type: String, default: null },
+    textPrimary: { type: String, default: null },
+    accent: { type: String, default: null },
+    positive: { type: String, default: null },
+    negative: { type: String, default: null },
+  },
+  resetToken: {
+    type: String,
+    default: null,
+  },
+  resetExpires: {
+    type: Date,
+    default: null,
   },
   tradovate: {
     username: { type: String, default: null },
@@ -72,9 +89,10 @@ AccountSchema.statics.toAPI = (doc) => ({
   subscriptionPlan: doc.subscriptionPlan || 'trial',
   subscriptionStatus: doc.subscriptionStatus || null,
   theme: doc.theme || 'dark',
+  customColors: doc.customColors || {},
   createdDate: doc.createdDate,
   hasPassword: !!doc.password,
-  isGoogleAccount: !!doc.googleId,
+  hasEmail: !!doc.email,
   tradovate: {
     configured: !!(doc.tradovate && doc.tradovate.username),
     environment: doc.tradovate ? doc.tradovate.environment : 'demo',
@@ -82,33 +100,27 @@ AccountSchema.statics.toAPI = (doc) => ({
   },
 });
 
-AccountSchema.statics.findOrCreateGoogleUser = async function findOrCreateGoogleUser(
-  googleId,
-  email,
-) {
-  let doc = await this.findOne({ googleId }).exec();
-  if (doc) return doc;
+AccountSchema.statics.generateHash = (password) => bcrypt.hash(password, saltRounds);
 
-  // Generate username from email prefix, ensure uniqueness
-  let base = email.split('@')[0].replace(/[^A-Za-z0-9_\-.]/g, '').slice(0, 12);
-  if (!base) base = 'user';
-  const existing = await this.find({
-    username: new RegExp(`^${base}`),
-  }).select('username').lean().exec();
-  const taken = new Set(existing.map((a) => a.username));
-  let username = base;
-  let suffix = 1;
-  while (taken.has(username)) {
-    username = `${base}${suffix}`;
-    suffix++;
-  }
+AccountSchema.statics.generateResetToken = async function generateResetToken(username) {
+  const doc = await this.findOne({ username }).exec();
+  if (!doc || !doc.email) return null;
 
-  doc = new this({ username, googleId });
+  const token = crypto.randomBytes(32).toString('hex');
+  doc.resetToken = crypto.createHash('sha256').update(token).digest('hex');
+  doc.resetExpires = Date.now() + 60 * 60 * 1000; // 1 hour
   await doc.save();
-  return doc;
+  return { token, email: doc.email };
 };
 
-AccountSchema.statics.generateHash = (password) => bcrypt.hash(password, saltRounds);
+AccountSchema.statics.findByResetToken = async function findByResetToken(token) {
+  const hashed = crypto.createHash('sha256').update(token).digest('hex');
+  const doc = await this.findOne({
+    resetToken: hashed,
+    resetExpires: { $gt: Date.now() },
+  }).exec();
+  return doc;
+};
 
 AccountSchema.statics.authenticate = async (username, password, callback) => {
   try {

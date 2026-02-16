@@ -22,7 +22,8 @@ const router = (app) => {
   app.post('/login', mid.requiresSecure, mid.requiresLogout, controllers.Account.login);
 
   app.post('/signup', mid.requiresSecure, mid.requiresLogout, controllers.Account.signup);
-  app.post('/auth/google', mid.requiresSecure, mid.requiresLogout, controllers.Account.googleLogin);
+  app.post('/forgot-password', mid.requiresSecure, mid.requiresLogout, controllers.Account.forgotPassword);
+  app.post('/reset-password', mid.requiresSecure, mid.requiresLogout, controllers.Account.resetPassword);
 
   app.get('/logout', mid.requiresLogin, controllers.Account.logout);
 

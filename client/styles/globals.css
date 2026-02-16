@@ -4,36 +4,36 @@
 
 @layer base {
   :root {
-    --accent: #BFFF00;
-    --bg-page: #000000;
-    --bg-surface: #111111;
-    --bg-input: #1A1A1A;
-    --border: #1A1A1A;
-    --text-primary: #FFFFFF;
-    --text-secondary: #999999;
-    --text-tertiary: #6e6e6e;
-    --text-muted: #404040;
-    --positive: #10B981;
-    --negative: #EF4444;
-    --info: #3B82F6;
-    --warning: #F59E0B;
-    --accent-text: #000000;
+    --accent: 191 255 0;
+    --bg-page: 0 0 0;
+    --bg-surface: 17 17 17;
+    --bg-input: 26 26 26;
+    --border: 26 26 26;
+    --text-primary: 255 255 255;
+    --text-secondary: 153 153 153;
+    --text-tertiary: 110 110 110;
+    --text-muted: 64 64 64;
+    --positive: 16 185 129;
+    --negative: 239 68 68;
+    --info: 59 130 246;
+    --warning: 245 158 11;
+    --accent-text: 0 0 0;
     --scrollbar-track: #0a0a0a;
     --scrollbar-thumb: #333333;
     --scrollbar-thumb-hover: #555555;
   }
 
   [data-theme="light"] {
-    --accent: #10B981;
-    --bg-page: #F5F5F5;
-    --bg-surface: #FFFFFF;
-    --bg-input: #F0F0F0;
-    --border: #E0E0E0;
-    --text-primary: #1A1A1A;
-    --text-secondary: #666666;
-    --text-tertiary: #999999;
-    --text-muted: #CCCCCC;
-    --accent-text: #000000;
+    --accent: 16 185 129;
+    --bg-page: 245 245 245;
+    --bg-surface: 255 255 255;
+    --bg-input: 240 240 240;
+    --border: 224 224 224;
+    --text-primary: 26 26 26;
+    --text-secondary: 102 102 102;
+    --text-tertiary: 153 153 153;
+    --text-muted: 204 204 204;
+    --accent-text: 0 0 0;
     --scrollbar-track: #E8E8E8;
     --scrollbar-thumb: #C0C0C0;
     --scrollbar-thumb-hover: #A0A0A0;
