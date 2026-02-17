@@ -1,23 +1,23 @@
 import { Hono } from 'hono';
-import type { Env, SessionData } from '../bindings';
-import * as accountsDb from '../db/accounts';
-import { getUserDataStub } from '../utils/user-data';
+import type { Env, AuthContext } from '../bindings';
+import * as profilesDb from '../db/profiles';
+import * as tradesDb from '../db/trades';
 import { encrypt, decrypt } from '../utils/crypto';
 import { TradovateAPI } from '../services/TradovateAPI';
-import { requiresLogin } from '../middleware/auth';
-import { saveSession } from '../middleware/session';
+import { requiresLogin } from '../middleware/supabase-auth';
+import { createServiceClient } from '../lib/supabase';
 
 type HonoEnv = {
   Bindings: Env;
-  Variables: { session: SessionData | null; sessionId: string | null };
+  Variables: AuthContext;
 };
 
 const tradovate = new Hono<HonoEnv>();
 
 // POST /api/tradovate/credentials
 tradovate.post('/api/tradovate/credentials', requiresLogin, async (c) => {
-  const session = c.get('session')!;
-  const sessionId = c.get('sessionId')!;
+  const user = c.get('user');
+  const supabase = c.get('supabase');
   const body = await c.req.json();
   const { username, password, cid, secret, environment } = body;
 
@@ -34,26 +34,16 @@ tradovate.post('/api/tradovate/credentials', requiresLogin, async (c) => {
     const api = new TradovateAPI(environment || 'demo');
     await api.authenticate({ username, password, cid, secret });
 
-    // Encrypt and save
-    const account = await accountsDb.findById(c.env.DB, session.account._id);
-    if (!account) return c.json({ error: 'Account not found' }, 404);
-
+    // Encrypt and save using service client (bypasses RLS for encrypted field updates)
+    const serviceClient = createServiceClient(c.env);
     const encKey = c.env.ENCRYPTION_KEY;
-    await accountsDb.updateById(c.env.DB, account.id, {
+    await profilesDb.updateById(serviceClient, user.id, {
       tradovateUsername: await encrypt(username, encKey),
       tradovatePassword: await encrypt(password, encKey),
       tradovateCid: await encrypt(cid, encKey),
       tradovateSecret: await encrypt(secret, encKey),
       tradovateEnvironment: environment || 'demo',
     });
-
-    // Refresh session
-    const updatedRow = await accountsDb.findById(c.env.DB, account.id);
-    if (updatedRow) {
-      const newSession: SessionData = { account: accountsDb.toAPI(updatedRow) };
-      const cookie = await saveSession(c.env, sessionId, newSession);
-      c.header('Set-Cookie', cookie);
-    }
 
     return c.json({ message: 'Tradovate credentials saved and validated' });
   } catch (err: any) {
@@ -64,38 +54,34 @@ tradovate.post('/api/tradovate/credentials', requiresLogin, async (c) => {
 
 // POST /api/tradovate/sync
 tradovate.post('/api/tradovate/sync', requiresLogin, async (c) => {
-  const session = c.get('session')!;
-  const sessionId = c.get('sessionId')!;
+  const user = c.get('user');
+  const supabase = c.get('supabase');
 
   try {
-    const account = await accountsDb.findById(c.env.DB, session.account._id);
-    if (!account || !account.tradovate_username) {
+    const serviceClient = createServiceClient(c.env);
+    const profile = await profilesDb.findById(serviceClient, user.id);
+    if (!profile || !profile.tradovate_username) {
       return c.json({ error: 'Tradovate credentials not configured' }, 400);
     }
 
     const encKey = c.env.ENCRYPTION_KEY;
     const credentials = {
-      username: await decrypt(account.tradovate_username, encKey),
-      password: await decrypt(account.tradovate_password!, encKey),
-      cid: await decrypt(account.tradovate_cid!, encKey),
-      secret: await decrypt(account.tradovate_secret!, encKey),
+      username: await decrypt(profile.tradovate_username, encKey),
+      password: await decrypt(profile.tradovate_password!, encKey),
+      cid: await decrypt(profile.tradovate_cid!, encKey),
+      secret: await decrypt(profile.tradovate_secret!, encKey),
     };
 
-    const api = new TradovateAPI(account.tradovate_environment);
+    const api = new TradovateAPI(profile.tradovate_environment);
     const authData = await api.authenticate(credentials);
     const token = authData.accessToken;
 
     const fills = await api.getFills(token);
 
     if (!fills || fills.length === 0) {
-      await accountsDb.updateById(c.env.DB, account.id, {
+      await profilesDb.updateById(serviceClient, user.id, {
         tradovateLastSyncTime: new Date().toISOString(),
       });
-      const updatedRow = await accountsDb.findById(c.env.DB, account.id);
-      if (updatedRow) {
-        const cookie = await saveSession(c.env, sessionId, { account: accountsDb.toAPI(updatedRow) });
-        c.header('Set-Cookie', cookie);
-      }
       return c.json({ message: 'No fills found', synced: 0 });
     }
 
@@ -107,19 +93,11 @@ tradovate.post('/api/tradovate/sync', requiresLogin, async (c) => {
       fillsByOrder[orderId].push(fill);
     }
 
-    const source = `tradovate_${account.tradovate_environment}` as 'tradovate_demo' | 'tradovate_live';
+    const source = `tradovate_${profile.tradovate_environment}` as 'tradovate_demo' | 'tradovate_live';
 
-    // Check which orders are already synced via user's DO
+    // Check which orders are already synced
     const orderIds = Object.keys(fillsByOrder);
-    const stub = getUserDataStub(c.env, account.id);
-    const existingRes = await stub.fetch(
-      new Request('http://do/trades/tradovate-order-ids', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderIds }),
-      }),
-    );
-    const existingOrderIds: string[] = await existingRes.json();
+    const existingOrderIds = await tradesDb.findByTradovateOrderIds(supabase, user.id, orderIds);
     const existingIds = new Set(existingOrderIds);
 
     // Resolve contract names
@@ -161,25 +139,13 @@ tradovate.post('/api/tradovate/sync', requiresLogin, async (c) => {
 
     let syncedCount = 0;
     if (newTrades.length > 0) {
-      const bulkRes = await stub.fetch(
-        new Request('http://do/trades/bulk', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ trades: newTrades }),
-        }),
-      );
-      const bulkResult = await bulkRes.json() as any;
-      syncedCount = bulkResult.imported || 0;
+      const result = await tradesDb.bulkInsertTrades(supabase, user.id, newTrades);
+      syncedCount = result.imported;
     }
 
-    await accountsDb.updateById(c.env.DB, account.id, {
+    await profilesDb.updateById(serviceClient, user.id, {
       tradovateLastSyncTime: new Date().toISOString(),
     });
-    const updatedRow = await accountsDb.findById(c.env.DB, account.id);
-    if (updatedRow) {
-      const cookie = await saveSession(c.env, sessionId, { account: accountsDb.toAPI(updatedRow) });
-      c.header('Set-Cookie', cookie);
-    }
 
     return c.json({ message: `Synced ${syncedCount} new trades`, synced: syncedCount });
   } catch (err: any) {
@@ -190,15 +156,16 @@ tradovate.post('/api/tradovate/sync', requiresLogin, async (c) => {
 
 // GET /api/tradovate/status
 tradovate.get('/api/tradovate/status', requiresLogin, async (c) => {
-  const session = c.get('session')!;
+  const user = c.get('user');
   try {
-    const account = await accountsDb.findById(c.env.DB, session.account._id);
-    if (!account) return c.json({ error: 'Account not found' }, 404);
+    const serviceClient = createServiceClient(c.env);
+    const profile = await profilesDb.findById(serviceClient, user.id);
+    if (!profile) return c.json({ error: 'Account not found' }, 404);
 
     return c.json({
-      configured: !!account.tradovate_username,
-      environment: account.tradovate_environment || 'demo',
-      lastSyncTime: account.tradovate_last_sync_time || null,
+      configured: !!profile.tradovate_username,
+      environment: profile.tradovate_environment || 'demo',
+      lastSyncTime: profile.tradovate_last_sync_time || null,
     });
   } catch (err: any) {
     console.error('Tradovate status error:', err.message);
@@ -208,14 +175,11 @@ tradovate.get('/api/tradovate/status', requiresLogin, async (c) => {
 
 // DELETE /api/tradovate/credentials
 tradovate.delete('/api/tradovate/credentials', requiresLogin, async (c) => {
-  const session = c.get('session')!;
-  const sessionId = c.get('sessionId')!;
+  const user = c.get('user');
 
   try {
-    const account = await accountsDb.findById(c.env.DB, session.account._id);
-    if (!account) return c.json({ error: 'Account not found' }, 404);
-
-    await accountsDb.updateById(c.env.DB, account.id, {
+    const serviceClient = createServiceClient(c.env);
+    await profilesDb.updateById(serviceClient, user.id, {
       tradovateUsername: null,
       tradovatePassword: null,
       tradovateCid: null,
@@ -223,12 +187,6 @@ tradovate.delete('/api/tradovate/credentials', requiresLogin, async (c) => {
       tradovateEnvironment: 'demo',
       tradovateLastSyncTime: null,
     });
-
-    const updatedRow = await accountsDb.findById(c.env.DB, account.id);
-    if (updatedRow) {
-      const cookie = await saveSession(c.env, sessionId, { account: accountsDb.toAPI(updatedRow) });
-      c.header('Set-Cookie', cookie);
-    }
 
     return c.json({ message: 'Tradovate credentials removed' });
   } catch (err: any) {

@@ -24,6 +24,7 @@
   "author": "Cody Van De Mark / Austin Willoughby",
   "license": "Apache 2.0",
   "dependencies": {
+    "@supabase/supabase-js": "^2.95.3",
     "bcrypt": "^6.0.0",
     "compression": "^1.8.1",
     "dotenv": "^17.2.3",

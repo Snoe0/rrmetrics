@@ -1,12 +1,13 @@
 import { Hono } from 'hono';
 import Stripe from 'stripe';
-import type { Env, SessionData } from '../bindings';
-import * as accountsDb from '../db/accounts';
-import { requiresLogin } from '../middleware/auth';
+import type { Env, AuthContext } from '../bindings';
+import * as profilesDb from '../db/profiles';
+import { requiresLogin } from '../middleware/supabase-auth';
+import { createServiceClient } from '../lib/supabase';
 
 type HonoEnv = {
   Bindings: Env;
-  Variables: { session: SessionData | null; sessionId: string | null };
+  Variables: AuthContext;
 };
 
 const stripeRoutes = new Hono<HonoEnv>();
@@ -23,7 +24,8 @@ stripeRoutes.post('/api/stripe/create-checkout-session', requiresLogin, async (c
     return c.json({ error: 'Stripe is not configured. Set STRIPE_SECRET_KEY in environment.' }, 503);
   }
 
-  const session = c.get('session')!;
+  const user = c.get('user');
+  const profile = c.get('profile');
   const body = await c.req.json();
   const { plan } = body;
 
@@ -38,16 +40,15 @@ stripeRoutes.post('/api/stripe/create-checkout-session', requiresLogin, async (c
   }
 
   try {
-    const account = await accountsDb.findById(c.env.DB, session.account._id);
-    if (!account) return c.json({ error: 'Account not found.' }, 404);
+    const serviceClient = createServiceClient(c.env);
 
-    let customerId = account.stripe_customer_id;
+    let customerId = profile.stripe_customer_id;
     if (!customerId) {
       const customer = await stripe.customers.create({
-        metadata: { accountId: account.id, email: account.email },
+        metadata: { accountId: user.id, email: profile.email },
       });
       customerId = customer.id;
-      await accountsDb.updateById(c.env.DB, account.id, { stripeCustomerId: customerId });
+      await profilesDb.updateById(serviceClient, user.id, { stripeCustomerId: customerId });
     }
 
     const checkoutSession = await stripe.checkout.sessions.create({
@@ -57,7 +58,7 @@ stripeRoutes.post('/api/stripe/create-checkout-session', requiresLogin, async (c
       mode: 'subscription',
       success_url: `${c.env.APP_URL}/upgrade?success=true`,
       cancel_url: `${c.env.APP_URL}/upgrade?canceled=true`,
-      metadata: { accountId: account.id, plan },
+      metadata: { accountId: user.id, plan },
     });
 
     return c.json({ url: checkoutSession.url });
@@ -67,7 +68,7 @@ stripeRoutes.post('/api/stripe/create-checkout-session', requiresLogin, async (c
   }
 });
 
-// POST /api/stripe/webhook (raw body)
+// POST /api/stripe/webhook (raw body — no auth needed)
 stripeRoutes.post('/api/stripe/webhook', async (c) => {
   const stripe = getStripe(c.env);
   if (!stripe) return c.text('Stripe not configured', 503);
@@ -88,6 +89,8 @@ stripeRoutes.post('/api/stripe/webhook', async (c) => {
     return c.text(`Webhook Error: ${err.message}`, 400);
   }
 
+  const serviceClient = createServiceClient(c.env);
+
   try {
     switch (event.type) {
       case 'checkout.session.completed': {
@@ -95,8 +98,7 @@ stripeRoutes.post('/api/stripe/webhook', async (c) => {
         const accountId = checkoutSession.metadata?.accountId;
         const plan = checkoutSession.metadata?.plan;
         if (accountId) {
-          await accountsDb.updateById(c.env.DB, accountId, {
-            isPremium: true,
+          await profilesDb.updateById(serviceClient, accountId, {
             stripeSubscriptionId: checkoutSession.subscription as string,
             subscriptionPlan: plan || 'pro',
             subscriptionStatus: 'active',
@@ -106,27 +108,28 @@ stripeRoutes.post('/api/stripe/webhook', async (c) => {
       }
       case 'customer.subscription.updated': {
         const subscription = event.data.object as Stripe.Subscription;
-        const account = await accountsDb.findByStripeCustomerId(
-          c.env.DB,
+        const account = await profilesDb.findByStripeCustomerId(
+          serviceClient,
           subscription.customer as string,
         );
         if (account) {
-          await accountsDb.updateById(c.env.DB, account.id, {
+          const isActive = ['active', 'trialing'].includes(subscription.status);
+          await profilesDb.updateById(serviceClient, account.id, {
             subscriptionStatus: subscription.status,
-            isPremium: ['active', 'trialing'].includes(subscription.status),
+            subscriptionPlan: isActive ? (account.subscription_plan || 'pro') : 'trial',
           });
         }
         break;
       }
       case 'customer.subscription.deleted': {
         const subscription = event.data.object as Stripe.Subscription;
-        const account = await accountsDb.findByStripeCustomerId(
-          c.env.DB,
+        const account = await profilesDb.findByStripeCustomerId(
+          serviceClient,
           subscription.customer as string,
         );
         if (account) {
-          await accountsDb.updateById(c.env.DB, account.id, {
-            isPremium: false,
+          await profilesDb.updateById(serviceClient, account.id, {
+            subscriptionPlan: 'trial',
             subscriptionStatus: 'canceled',
           });
         }
@@ -150,16 +153,15 @@ stripeRoutes.post('/api/stripe/billing-portal', requiresLogin, async (c) => {
     return c.json({ error: 'Stripe is not configured.' }, 503);
   }
 
-  const session = c.get('session')!;
+  const profile = c.get('profile');
 
   try {
-    const account = await accountsDb.findById(c.env.DB, session.account._id);
-    if (!account || !account.stripe_customer_id) {
+    if (!profile.stripe_customer_id) {
       return c.json({ error: 'No billing account found. Please subscribe first.' }, 400);
     }
 
     const portalSession = await stripe.billingPortal.sessions.create({
-      customer: account.stripe_customer_id,
+      customer: profile.stripe_customer_id,
       return_url: `${c.env.APP_URL}/trades`,
     });
 

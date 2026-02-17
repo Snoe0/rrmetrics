@@ -1,23 +1,21 @@
 import { Hono } from 'hono';
-import type { ContentfulStatusCode } from 'hono/utils/http-status';
-import type { Env, SessionData } from '../bindings';
-import { getUserDataStub } from '../utils/user-data';
-import { requiresLogin } from '../middleware/auth';
+import type { Env, AuthContext } from '../bindings';
+import * as dailyNotesDb from '../db/daily-notes';
+import { requiresLogin } from '../middleware/supabase-auth';
 
 type HonoEnv = {
   Bindings: Env;
-  Variables: { session: SessionData | null; sessionId: string | null };
+  Variables: AuthContext;
 };
 
 const dailyNote = new Hono<HonoEnv>();
 
 // GET /api/getDailyNotes
 dailyNote.get('/api/getDailyNotes', requiresLogin, async (c) => {
-  const session = c.get('session')!;
+  const user = c.get('user');
+  const supabase = c.get('supabase');
   try {
-    const stub = getUserDataStub(c.env, session.account._id);
-    const res = await stub.fetch(new Request('http://do/daily-notes'));
-    const notes = await res.json();
+    const notes = await dailyNotesDb.getDailyNotes(supabase, user.id);
     return c.json({ notes });
   } catch (err) {
     console.error('getDailyNotes error:', err);
@@ -27,7 +25,8 @@ dailyNote.get('/api/getDailyNotes', requiresLogin, async (c) => {
 
 // POST /api/saveDailyNote
 dailyNote.post('/api/saveDailyNote', requiresLogin, async (c) => {
-  const session = c.get('session')!;
+  const user = c.get('user');
+  const supabase = c.get('supabase');
   const body = await c.req.json();
   const { date, content } = body;
 
@@ -36,21 +35,7 @@ dailyNote.post('/api/saveDailyNote', requiresLogin, async (c) => {
   }
 
   try {
-    const stub = getUserDataStub(c.env, session.account._id);
-    const res = await stub.fetch(
-      new Request('http://do/daily-notes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date, content }),
-      }),
-    );
-
-    if (!res.ok) {
-      const err = await res.json() as any;
-      return c.json({ error: err.error || 'Failed to save note' }, res.status as ContentfulStatusCode);
-    }
-
-    const result = await res.json();
+    const result = await dailyNotesDb.upsertDailyNote(supabase, user.id, { date, content });
     return c.json(result);
   } catch (err) {
     console.error('saveDailyNote error:', err);
@@ -60,7 +45,8 @@ dailyNote.post('/api/saveDailyNote', requiresLogin, async (c) => {
 
 // POST /api/removeDailyNote
 dailyNote.post('/api/removeDailyNote', requiresLogin, async (c) => {
-  const session = c.get('session')!;
+  const user = c.get('user');
+  const supabase = c.get('supabase');
   const body = await c.req.json();
   const { date } = body;
 
@@ -69,20 +55,7 @@ dailyNote.post('/api/removeDailyNote', requiresLogin, async (c) => {
   }
 
   try {
-    const stub = getUserDataStub(c.env, session.account._id);
-    const res = await stub.fetch(
-      new Request('http://do/daily-notes', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date }),
-      }),
-    );
-
-    if (!res.ok) {
-      const err = await res.json() as any;
-      return c.json({ error: err.error || 'Failed to delete note' }, res.status as ContentfulStatusCode);
-    }
-
+    await dailyNotesDb.deleteDailyNote(supabase, user.id, date);
     return c.json({ message: 'Note deleted' });
   } catch (err) {
     console.error('removeDailyNote error:', err);

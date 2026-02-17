@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
-import type { Env, SessionData } from './bindings';
+import type { Env, AuthContext } from './bindings';
 import { securityHeaders } from './middleware/security';
-import { sessionMiddleware } from './middleware/session';
+import { authMiddleware } from './middleware/supabase-auth';
 import accountRoutes from './routes/account';
 import tradeRoutes from './routes/trade';
 import tagRoutes from './routes/tag';
@@ -10,20 +10,16 @@ import tradovateRoutes from './routes/tradovate';
 import stripeRoutes from './routes/stripe';
 import pageRoutes from './routes/pages';
 
-// Re-export the Durable Object classes
-export { SessionDO } from './session-do';
-export { UserDataDO } from './user-data-do';
-
 type HonoEnv = {
   Bindings: Env;
-  Variables: { session: SessionData | null; sessionId: string | null };
+  Variables: AuthContext;
 };
 
 const app = new Hono<HonoEnv>();
 
 // Global middleware
 app.use('*', securityHeaders);
-app.use('*', sessionMiddleware);
+app.use('*', authMiddleware);
 
 // Health check
 app.get('/api/health', (c) => c.json({ status: 'ok' }));
@@ -36,7 +32,7 @@ app.route('/', dailyNoteRoutes);
 app.route('/', tradovateRoutes);
 app.route('/', stripeRoutes);
 
-// Page routes (HTML serving with auth guards)
+// Page routes (HTML serving)
 app.route('/', pageRoutes);
 
 export default app;

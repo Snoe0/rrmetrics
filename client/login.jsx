@@ -1,59 +1,51 @@
-const helper = require('./helper.js');
 const React = require('react');
-const { useState } = React;
+const { useState, useEffect } = React;
 const { createRoot } = require('react-dom/client');
+const { supabase } = require('./supabase.js');
 require('./styles/globals.css');
 
-const handleLogin = (e) => {
-  e.preventDefault();
-  helper.hideError();
-
-  const email = e.target.querySelector('#email').value;
-  const pass = e.target.querySelector('#pass').value;
-
-  if (!email || !pass) {
-    helper.handleError('Email or password is empty');
-    return false;
-  }
-
-  helper.sendPost(e.target.action, { email, pass });
-  return false;
-};
-
-const handleSignup = (e) => {
-  e.preventDefault();
-  helper.hideError();
-
-  const email = e.target.querySelector('#email').value;
-  const pass = e.target.querySelector('#pass').value;
-  const pass2 = e.target.querySelector('#pass2').value;
-
-  if (!email || !pass || !pass2) {
-    helper.handleError('All fields are required');
-    return false;
-  }
-
-  if (pass !== pass2) {
-    helper.handleError('Passwords do not match');
-    return false;
-  }
-
-  helper.sendPost(e.target.action, { email, pass, pass2 });
-  return false;
-};
-
 const LoginWindow = ({ onSwitchToSignup, onSwitchToForgot }) => {
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    const email = e.target.querySelector('#email').value.trim();
+    const pass = e.target.querySelector('#pass').value;
+
+    if (!email || !pass) {
+      setError('Email or password is empty');
+      setLoading(false);
+      return;
+    }
+
+    const { error: authError } = await supabase.auth.signInWithPassword({
+      email,
+      password: pass,
+    });
+
+    if (authError) {
+      setError(authError.message);
+      setLoading(false);
+      return;
+    }
+
+    window.location = '/trades';
+  };
+
   return (
-    <form
-      id="loginForm"
-      name="loginForm"
-      onSubmit={handleLogin}
-      action="/api/login"
-      method="POST"
-      className="w-full"
-    >
+    <form onSubmit={handleLogin} className="w-full">
       <h2 className="text-2xl font-bold text-text-primary mb-1">Welcome back</h2>
       <p className="text-text-secondary text-sm mb-8">Enter your credentials to access your account</p>
+
+      {error && (
+        <div className="mb-4 p-3 bg-negative/20 border border-negative/40 rounded-lg">
+          <span className="text-negative text-sm">{error}</span>
+        </div>
+      )}
 
       <div className="space-y-5">
         <div>
@@ -88,9 +80,10 @@ const LoginWindow = ({ onSwitchToSignup, onSwitchToForgot }) => {
 
       <button
         type="submit"
-        className="w-full mt-8 py-3 bg-accent text-accent-text font-semibold rounded-lg hover:brightness-110 transition-all"
+        disabled={loading}
+        className="w-full mt-8 py-3 bg-accent text-accent-text font-semibold rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
       >
-        Sign In
+        {loading ? 'Signing in...' : 'Sign In'}
       </button>
 
       <p className="text-center text-text-secondary text-sm mt-6">
@@ -104,17 +97,54 @@ const LoginWindow = ({ onSwitchToSignup, onSwitchToForgot }) => {
 };
 
 const SignupWindow = ({ onSwitchToLogin }) => {
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleSignup = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    const email = e.target.querySelector('#email').value.trim();
+    const pass = e.target.querySelector('#pass').value;
+    const pass2 = e.target.querySelector('#pass2').value;
+
+    if (!email || !pass || !pass2) {
+      setError('All fields are required');
+      setLoading(false);
+      return;
+    }
+
+    if (pass !== pass2) {
+      setError('Passwords do not match');
+      setLoading(false);
+      return;
+    }
+
+    const { error: authError } = await supabase.auth.signUp({
+      email,
+      password: pass,
+    });
+
+    if (authError) {
+      setError(authError.message);
+      setLoading(false);
+      return;
+    }
+
+    window.location = '/trades';
+  };
+
   return (
-    <form
-      id="signupForm"
-      name="signupForm"
-      onSubmit={handleSignup}
-      action="/api/signup"
-      method="POST"
-      className="w-full"
-    >
+    <form onSubmit={handleSignup} className="w-full">
       <h2 className="text-2xl font-bold text-text-primary mb-1">Create Account</h2>
       <p className="text-text-secondary text-sm mb-8">Start your trading journey with RR Metrics</p>
+
+      {error && (
+        <div className="mb-4 p-3 bg-negative/20 border border-negative/40 rounded-lg">
+          <span className="text-negative text-sm">{error}</span>
+        </div>
+      )}
 
       <div className="space-y-5">
         <div>
@@ -156,9 +186,10 @@ const SignupWindow = ({ onSwitchToLogin }) => {
 
       <button
         type="submit"
-        className="w-full mt-8 py-3 bg-accent text-accent-text font-semibold rounded-lg hover:brightness-110 transition-all"
+        disabled={loading}
+        className="w-full mt-8 py-3 bg-accent text-accent-text font-semibold rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
       >
-        Create Account
+        {loading ? 'Creating account...' : 'Create Account'}
       </button>
 
       <p className="text-center text-text-secondary text-sm mt-6">
@@ -188,20 +219,14 @@ const ForgotPasswordWindow = ({ onSwitchToLogin }) => {
       return;
     }
 
-    try {
-      const res = await fetch('/api/forgot-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
-      });
-      const data = await res.json();
-      if (data.error) {
-        setError(data.error);
-      } else {
-        setSubmitted(true);
-      }
-    } catch (err) {
-      setError('Something went wrong. Please try again.');
+    const { error: authError } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/changePass`,
+    });
+
+    if (authError) {
+      setError(authError.message);
+    } else {
+      setSubmitted(true);
     }
     setLoading(false);
   };
@@ -273,9 +298,22 @@ const App = () => {
   const [view, setView] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.has('signup')) return 'signup';
-    if (params.has('reset')) return 'reset';
     return 'login';
   });
+  const [checking, setChecking] = useState(true);
+
+  // Redirect to /trades if already authenticated
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        window.location = '/trades';
+      } else {
+        setChecking(false);
+      }
+    });
+  }, []);
+
+  if (checking) return null;
 
   const renderView = () => {
     switch (view) {
@@ -283,8 +321,6 @@ const App = () => {
         return <SignupWindow onSwitchToLogin={() => setView('login')} />;
       case 'forgot':
         return <ForgotPasswordWindow onSwitchToLogin={() => setView('login')} />;
-      case 'reset':
-        return <ResetPasswordWindow onSwitchToLogin={() => setView('login')} />;
       default:
         return (
           <LoginWindow
@@ -338,131 +374,10 @@ const App = () => {
             <span className="text-text-primary font-semibold text-[15px] tracking-[3px] uppercase">RR Metrics</span>
           </div>
 
-          <div id="errorDiv" className="hidden mb-4 p-3 bg-negative/20 border border-negative/40 rounded-lg">
-            <span id="errorMessage" className="text-negative text-sm"></span>
-          </div>
-
           {renderView()}
         </div>
       </div>
     </div>
-  );
-};
-
-const ResetPasswordWindow = ({ onSwitchToLogin }) => {
-  const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(false);
-  const [loading, setLoading] = useState(false);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
-
-    const pass = e.target.querySelector('#newPass').value;
-    const pass2 = e.target.querySelector('#newPass2').value;
-
-    if (!pass || !pass2) {
-      setError('All fields are required.');
-      setLoading(false);
-      return;
-    }
-    if (pass !== pass2) {
-      setError('Passwords do not match.');
-      setLoading(false);
-      return;
-    }
-
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get('reset');
-
-    try {
-      const res = await fetch('/api/reset-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, pass, pass2 }),
-      });
-      const data = await res.json();
-      if (data.error) {
-        setError(data.error);
-      } else {
-        setSuccess(true);
-      }
-    } catch (err) {
-      setError('Something went wrong. Please try again.');
-    }
-    setLoading(false);
-  };
-
-  if (success) {
-    return (
-      <div className="w-full text-center">
-        <div className="w-14 h-14 bg-positive/20 rounded-full flex items-center justify-center mx-auto mb-5">
-          <svg className="w-7 h-7 text-positive" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="20 6 9 17 4 12"></polyline>
-          </svg>
-        </div>
-        <h2 className="text-2xl font-bold text-text-primary mb-2">Password Reset</h2>
-        <p className="text-text-secondary text-sm mb-8">Your password has been updated successfully.</p>
-        <button
-          type="button"
-          className="bg-accent text-accent-text font-semibold px-8 py-3 rounded-lg hover:brightness-110 transition-all"
-          onClick={onSwitchToLogin}
-        >
-          Sign In
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="w-full">
-      <h2 className="text-2xl font-bold text-text-primary mb-1">Reset Password</h2>
-      <p className="text-text-secondary text-sm mb-8">Enter your new password below.</p>
-
-      {error && (
-        <div className="mb-4 p-3 bg-negative/20 border border-negative/40 rounded-lg">
-          <span className="text-negative text-sm">{error}</span>
-        </div>
-      )}
-
-      <div className="space-y-5">
-        <div>
-          <label htmlFor="newPass" className="block text-sm font-medium text-text-secondary mb-2">New Password</label>
-          <input
-            id="newPass"
-            type="password"
-            placeholder="Enter new password"
-            autoComplete="new-password"
-            className="w-full px-4 py-3 bg-bg-input border border-border rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
-          />
-        </div>
-        <div>
-          <label htmlFor="newPass2" className="block text-sm font-medium text-text-secondary mb-2">Confirm New Password</label>
-          <input
-            id="newPass2"
-            type="password"
-            placeholder="Confirm new password"
-            autoComplete="new-password"
-            className="w-full px-4 py-3 bg-bg-input border border-border rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
-          />
-        </div>
-      </div>
-
-      <button
-        type="submit"
-        disabled={loading}
-        className="w-full mt-8 py-3 bg-accent text-accent-text font-semibold rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
-      >
-        {loading ? 'Resetting...' : 'Reset Password'}
-      </button>
-
-      <p className="text-center text-text-secondary text-sm mt-6">
-        <button type="button" className="text-accent hover:underline font-medium" onClick={onSwitchToLogin}>
-          Back to Sign In
-        </button>
-      </p>
-    </form>
   );
 };
 

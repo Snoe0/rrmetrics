@@ -1,6 +1,7 @@
 const React = require('react');
 const { useState, useEffect } = React;
 const { createRoot } = require('react-dom/client');
+const { authFetch, supabase } = require('./helper.js');
 require('./styles/globals.css');
 
 // =====================================================
@@ -58,7 +59,7 @@ const App = () => {
     setLoading(planId);
     setError(null);
     try {
-      const res = await fetch('/api/stripe/create-checkout-session', {
+      const res = await authFetch('/api/stripe/create-checkout-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ plan: planId }),
@@ -76,12 +77,18 @@ const App = () => {
     }
   };
 
+  const [pricing, setPricing] = useState({ pro: '19', elite: '24', trialDays: '14' });
+
+  useEffect(() => {
+    fetch('/api/pricing').then(r => r.json()).then(setPricing).catch(() => {});
+  }, []);
+
   const plans = [
     {
       id: 'trial',
       name: 'Trial',
       price: '$0',
-      period: '14 days',
+      period: `${pricing.trialDays} days`,
       features: ['Up to 50 trades', 'Basic analytics', 'Single broker connection', 'Email support'],
       accent: false,
       popular: false,
@@ -89,7 +96,7 @@ const App = () => {
     {
       id: 'pro',
       name: 'Pro',
-      price: '$19',
+      price: `$${pricing.pro}`,
       period: '/month',
       features: ['Unlimited trades', 'Advanced analytics', 'All broker connections', 'Priority support', 'Export to CSV', 'Custom tags'],
       accent: true,
@@ -98,7 +105,7 @@ const App = () => {
     {
       id: 'elite',
       name: 'Elite',
-      price: '$24',
+      price: `$${pricing.elite}`,
       period: '/month',
       features: ['Everything in Pro', 'AI trade insights', 'Team collaboration', 'API access', 'Custom dashboards', 'Dedicated account manager'],
       accent: false,
@@ -211,7 +218,12 @@ const App = () => {
   );
 };
 
-const init = () => {
+const init = async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) {
+    window.location = '/login';
+    return;
+  }
   const root = createRoot(document.getElementById('content'));
   root.render(<App />);
 };

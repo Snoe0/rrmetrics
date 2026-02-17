@@ -1,23 +1,21 @@
 import { Hono } from 'hono';
-import type { ContentfulStatusCode } from 'hono/utils/http-status';
-import type { Env, SessionData } from '../bindings';
-import { getUserDataStub } from '../utils/user-data';
-import { requiresLogin } from '../middleware/auth';
+import type { Env, AuthContext } from '../bindings';
+import * as tradesDb from '../db/trades';
+import { requiresLogin } from '../middleware/supabase-auth';
 
 type HonoEnv = {
   Bindings: Env;
-  Variables: { session: SessionData | null; sessionId: string | null };
+  Variables: AuthContext;
 };
 
 const trade = new Hono<HonoEnv>();
 
 // GET /api/getTrades
 trade.get('/api/getTrades', requiresLogin, async (c) => {
-  const session = c.get('session')!;
+  const user = c.get('user');
+  const supabase = c.get('supabase');
   try {
-    const stub = getUserDataStub(c.env, session.account._id);
-    const res = await stub.fetch(new Request('http://do/trades'));
-    const trades = await res.json();
+    const trades = await tradesDb.getTrades(supabase, user.id);
     return c.json({ trades });
   } catch (err) {
     console.error('getTrades error:', err);
@@ -25,9 +23,10 @@ trade.get('/api/getTrades', requiresLogin, async (c) => {
   }
 });
 
-// POST /makeTrade and POST /trades (client form submits to /trades)
+// POST /makeTrade and POST /trades
 const makeTradeHandler = async (c: any) => {
-  const session = c.get('session')!;
+  const user = c.get('user');
+  const supabase = c.get('supabase');
   const body = await c.req.json();
 
   if (
@@ -45,37 +44,24 @@ const makeTradeHandler = async (c: any) => {
   }
 
   try {
-    const stub = getUserDataStub(c.env, session.account._id);
-    const res = await stub.fetch(
-      new Request('http://do/trades', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ticker: body.ticker,
-          enterTime: body.enterTime,
-          exitTime: body.exitTime,
-          enterPrice: body.enterPrice,
-          exitPrice: body.exitPrice,
-          quantity: body.quantity,
-          manualPL: body.manualPL || null,
-          imageAttachments: body.imageAttachments || [],
-          screenshot: body.screenshot || null,
-          comments: body.comments || '',
-          tags: body.tags || [],
-        }),
-      }),
-    );
+    const newTrade = await tradesDb.createTrade(supabase, user.id, {
+      ticker: body.ticker,
+      enterTime: body.enterTime,
+      exitTime: body.exitTime,
+      enterPrice: body.enterPrice,
+      exitPrice: body.exitPrice,
+      quantity: body.quantity,
+      manualPL: body.manualPL || null,
+      imageAttachments: body.imageAttachments || [],
+      screenshot: body.screenshot || null,
+      comments: body.comments || '',
+      tags: body.tags || [],
+    });
 
-    if (!res.ok) {
-      const err = await res.json() as any;
-      return c.json({ error: err.error || 'An error occurred' }, res.status as ContentfulStatusCode);
-    }
-
-    const newTrade = await res.json();
     return c.json(newTrade, 201);
   } catch (err: any) {
     console.error('makeTrade error:', err);
-    return c.json({ error: 'An error occurred' }, 500);
+    return c.json({ error: err.message || 'An error occurred' }, 500);
   }
 };
 trade.post('/api/makeTrade', requiresLogin, makeTradeHandler);
@@ -83,7 +69,8 @@ trade.post('/api/trades', requiresLogin, makeTradeHandler);
 
 // POST /api/removeTrade
 trade.post('/api/removeTrade', requiresLogin, async (c) => {
-  const session = c.get('session')!;
+  const user = c.get('user');
+  const supabase = c.get('supabase');
   const body = await c.req.json();
 
   if (!body._id) {
@@ -91,20 +78,7 @@ trade.post('/api/removeTrade', requiresLogin, async (c) => {
   }
 
   try {
-    const stub = getUserDataStub(c.env, session.account._id);
-    const res = await stub.fetch(
-      new Request('http://do/trades', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ _id: body._id }),
-      }),
-    );
-
-    if (!res.ok) {
-      const err = await res.json() as any;
-      return c.json({ error: err.error || 'Trade not found!' }, res.status as ContentfulStatusCode);
-    }
-
+    await tradesDb.deleteTrade(supabase, user.id, body._id);
     return c.json({ message: 'Trade deleted successfully!' });
   } catch (err) {
     console.error('removeTrade error:', err);
@@ -114,7 +88,8 @@ trade.post('/api/removeTrade', requiresLogin, async (c) => {
 
 // POST /api/updateTrade
 trade.post('/api/updateTrade', requiresLogin, async (c) => {
-  const session = c.get('session')!;
+  const user = c.get('user');
+  const supabase = c.get('supabase');
   const body = await c.req.json();
 
   if (!body._id) {
@@ -136,33 +111,20 @@ trade.post('/api/updateTrade', requiresLogin, async (c) => {
   }
 
   try {
-    const stub = getUserDataStub(c.env, session.account._id);
-    const res = await stub.fetch(
-      new Request('http://do/trades', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          _id: body._id,
-          ticker: body.ticker,
-          enterTime: body.enterTime,
-          exitTime: body.exitTime,
-          enterPrice: body.enterPrice,
-          exitPrice: body.exitPrice,
-          quantity: body.quantity,
-          manualPL: body.manualPL || null,
-          screenshot: body.screenshot || null,
-          comments: body.comments || '',
-          tags: body.tags || [],
-        }),
-      }),
-    );
+    const updated = await tradesDb.updateTrade(supabase, user.id, {
+      _id: body._id,
+      ticker: body.ticker,
+      enterTime: body.enterTime,
+      exitTime: body.exitTime,
+      enterPrice: body.enterPrice,
+      exitPrice: body.exitPrice,
+      quantity: body.quantity,
+      manualPL: body.manualPL || null,
+      screenshot: body.screenshot || null,
+      comments: body.comments || '',
+      tags: body.tags || [],
+    });
 
-    if (!res.ok) {
-      const err = await res.json() as any;
-      return c.json({ error: err.error || 'Trade not found!' }, res.status as ContentfulStatusCode);
-    }
-
-    const updated = await res.json();
     return c.json(updated);
   } catch (err) {
     console.error('updateTrade error:', err);
@@ -172,7 +134,8 @@ trade.post('/api/updateTrade', requiresLogin, async (c) => {
 
 // POST /api/importTrades
 trade.post('/api/importTrades', requiresLogin, async (c) => {
-  const session = c.get('session')!;
+  const user = c.get('user');
+  const supabase = c.get('supabase');
   const body = await c.req.json();
 
   if (!body.trades || !Array.isArray(body.trades)) {
@@ -209,21 +172,7 @@ trade.post('/api/importTrades', requiresLogin, async (c) => {
       tags: t.tags || [],
     }));
 
-    const stub = getUserDataStub(c.env, session.account._id);
-    const res = await stub.fetch(
-      new Request('http://do/trades/bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ trades: tradeDocs }),
-      }),
-    );
-
-    if (!res.ok) {
-      const err = await res.json() as any;
-      return c.json({ error: err.error || 'An error occurred during import' }, res.status as ContentfulStatusCode);
-    }
-
-    const result = await res.json();
+    const result = await tradesDb.bulkInsertTrades(supabase, user.id, tradeDocs);
     return c.json(result, 201);
   } catch (err) {
     console.error('importTrades error:', err);

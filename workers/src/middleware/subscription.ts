@@ -1,5 +1,5 @@
 import { createMiddleware } from 'hono/factory';
-import type { Env, SessionData } from '../bindings';
+import type { Env, AuthContext } from '../bindings';
 
 interface SubscriptionStatus {
   isPremium: boolean;
@@ -8,25 +8,19 @@ interface SubscriptionStatus {
 }
 
 /**
- * Computes subscription/trial status from the session's account data.
+ * Computes subscription/trial status from the user's profile data.
  * Sets `subscriptionStatus` on the context variables.
  */
 export const checkSubscriptionStatus = createMiddleware<{
   Bindings: Env;
-  Variables: {
-    session: SessionData | null;
-    sessionId: string | null;
-    subscriptionStatus: SubscriptionStatus;
-  };
+  Variables: AuthContext & { subscriptionStatus: SubscriptionStatus };
 }>(async (c, next) => {
-  const session = c.get('session');
-  if (!session) {
+  const profile = c.get('profile');
+  if (!profile) {
     return next();
   }
 
-  const { account } = session;
-
-  if (account.isPremium) {
+  if ((profile.subscription_plan || 'trial') !== 'trial') {
     c.set('subscriptionStatus', {
       isPremium: true,
       isTrialActive: false,
@@ -35,8 +29,8 @@ export const checkSubscriptionStatus = createMiddleware<{
     return next();
   }
 
-  const TRIAL_DAYS = 7;
-  const accountCreated = new Date(account.createdDate);
+  const TRIAL_DAYS = parseInt(c.env.TRIAL_DAYS || '14', 10);
+  const accountCreated = new Date(profile.created_at);
   const now = new Date();
   const daysSinceCreation = Math.floor(
     (now.getTime() - accountCreated.getTime()) / (1000 * 60 * 60 * 24),

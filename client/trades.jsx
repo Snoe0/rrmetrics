@@ -1,4 +1,5 @@
 const helper = require('./helper.js');
+const { authFetch, supabase } = helper;
 const React = require('react');
 const { useState, useEffect, useRef } = React;
 const { createRoot } = require('react-dom/client');
@@ -585,10 +586,10 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus }) => {
                   <Icons.Lock className="w-4 h-4" />
                   Change Password
                 </a>
-                <a href="/api/logout" className="flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:bg-bg-input hover:text-text-primary transition-colors no-underline">
+                <button onClick={() => { supabase.auth.signOut().then(() => { window.location = '/'; }); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:bg-bg-input hover:text-text-primary transition-colors">
                   <Icons.LogOut className="w-4 h-4" />
                   Log Out
-                </a>
+                </button>
               </div>
             )}
           </div>
@@ -1406,7 +1407,7 @@ const CSVImportModal = ({ isOpen, onClose, triggerReload }) => {
     setImporting(true);
     setError(null);
     try {
-      const response = await fetch('/api/importTrades', {
+      const response = await authFetch('/api/importTrades', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ trades: mappedTrades }),
@@ -1595,7 +1596,7 @@ const TradeListPage = ({ trades, triggerReload, onEdit, subscriptionStatus, onOp
     if (!inlineTagName.trim() || inlineTagCreating) return;
     setInlineTagCreating(true);
     try {
-      const response = await fetch('/api/makeTag', {
+      const response = await authFetch('/api/makeTag', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: inlineTagName.trim(), color: inlineTagColor }),
@@ -2689,7 +2690,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
 
   const fetchStatus = async () => {
     try {
-      const response = await fetch('/api/tradovate/status');
+      const response = await authFetch('/api/tradovate/status');
       const data = await response.json();
       setTvStatus(data);
       if (data.environment) setTvEnvironment(data.environment);
@@ -2703,7 +2704,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
     setSaving(true);
     setMessage(null);
     try {
-      const response = await fetch('/api/tradovate/credentials', {
+      const response = await authFetch('/api/tradovate/credentials', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2729,7 +2730,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
     setSyncing(true);
     setMessage(null);
     try {
-      const response = await fetch('/api/tradovate/sync', {
+      const response = await authFetch('/api/tradovate/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
@@ -2750,7 +2751,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
   const handleDeleteCredentials = async () => {
     setMessage(null);
     try {
-      const response = await fetch('/api/tradovate/credentials', { method: 'DELETE' });
+      const response = await authFetch('/api/tradovate/credentials', { method: 'DELETE' });
       const data = await response.json();
       if (data.error) {
         setMessage({ type: 'error', text: data.error });
@@ -2766,7 +2767,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
   const handleCreateTag = async () => {
     if (!newTagName.trim()) return;
     try {
-      const response = await fetch('/api/makeTag', {
+      const response = await authFetch('/api/makeTag', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newTagName.trim(), color: newTagColor }),
@@ -2787,7 +2788,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
   const handleEditTag = async (tagId) => {
     if (!editTagName.trim()) return;
     try {
-      const response = await fetch('/api/updateTag', {
+      const response = await authFetch('/api/updateTag', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ _id: tagId, name: editTagName.trim(), color: editTagColor }),
@@ -2807,7 +2808,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
   const handleDeleteTag = async (tagId) => {
     if (!confirm('Delete this tag? It will be removed from all trades.')) return;
     try {
-      const response = await fetch('/api/removeTag', {
+      const response = await authFetch('/api/removeTag', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ _id: tagId }),
@@ -3190,7 +3191,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                   className="flex items-center gap-2 px-4 py-2.5 bg-bg-input border border-border text-text-primary text-sm font-semibold rounded-lg hover:border-accent transition-all"
                   onClick={async () => {
                     try {
-                      const response = await fetch('/api/stripe/billing-portal', {
+                      const response = await authFetch('/api/stripe/billing-portal', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                       });
@@ -3228,10 +3229,10 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                 <Icons.Lock className="w-5 h-5" />
                 <span className="text-sm">Change Password</span>
               </a>
-              <a href="/api/logout" className="flex items-center gap-3 px-4 py-3 bg-bg-input border border-border rounded-lg text-text-secondary hover:text-negative transition-colors no-underline">
+              <button onClick={() => { supabase.auth.signOut().then(() => { window.location = '/'; }); }} className="flex items-center gap-3 px-4 py-3 bg-bg-input border border-border rounded-lg text-text-secondary hover:text-negative transition-colors w-full">
                 <Icons.LogOut className="w-5 h-5" />
                 <span className="text-sm">Log Out</span>
-              </a>
+              </button>
             </div>
           </div>
         </div>
@@ -3633,7 +3634,7 @@ const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, tags }) 
     if (!quickTagName.trim() || creatingTag) return;
     setCreatingTag(true);
     try {
-      const response = await fetch('/api/makeTag', {
+      const response = await authFetch('/api/makeTag', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: quickTagName.trim(), color: quickTagColor }),
@@ -3942,7 +3943,7 @@ const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, tags }) 
 // =====================================================
 // TRIAL BANNER
 // =====================================================
-const TrialBanner = ({ subscriptionStatus }) => {
+const TrialBanner = ({ subscriptionStatus, proPrice }) => {
   if (!subscriptionStatus) return null;
   if (subscriptionStatus.isPremium) return null;
 
@@ -3953,7 +3954,7 @@ const TrialBanner = ({ subscriptionStatus }) => {
       <div className="bg-accent/10 border border-accent/30 rounded-lg px-4 py-3 mb-6">
         <p className="text-sm text-accent">
           <span className="font-semibold">Free Trial Active!</span> You have <span className="font-semibold">{trialDaysRemaining} day{trialDaysRemaining !== 1 ? 's' : ''}</span> remaining.
-          <span className="text-text-secondary ml-1">Upgrade now for just $19/month to keep full access!</span>
+          <span className="text-text-secondary ml-1">Upgrade now for just ${proPrice}/month to keep full access!</span>
         </p>
       </div>
     );
@@ -3963,7 +3964,7 @@ const TrialBanner = ({ subscriptionStatus }) => {
     <div className="bg-negative/10 border border-negative/30 rounded-lg px-4 py-3 mb-6">
       <p className="text-sm text-negative">
         <span className="font-semibold">Trial Expired!</span>
-        <span className="text-text-secondary ml-1">Upgrade now for just $19/month to continue adding trades and unlock all features!</span>
+        <span className="text-text-secondary ml-1">Upgrade now for just ${proPrice}/month to continue adding trades and unlock all features!</span>
       </p>
     </div>
   );
@@ -3986,6 +3987,7 @@ const App = () => {
     try { return JSON.parse(localStorage.getItem('customColors')) || {}; } catch { return {}; }
   });
   const [dailyNotes, setDailyNotes] = useState([]);
+  const [pricing, setPricing] = useState({ pro: '19', elite: '24', trialDays: '14' });
 
   const triggerReload = () => setReloadTrades(!reloadTrades);
 
@@ -4037,7 +4039,7 @@ const App = () => {
   useEffect(() => {
     const fetchAccountTheme = async () => {
       try {
-        const response = await fetch('/api/account');
+        const response = await authFetch('/api/account');
         const data = await response.json();
         if (data.account && data.account.theme) {
           setTheme(data.account.theme);
@@ -4053,7 +4055,7 @@ const App = () => {
   const handleThemeChange = (newTheme, newCustomColors) => {
     setTheme(newTheme);
     if (newCustomColors) setCustomColors(newCustomColors);
-    fetch('/api/preferences/theme', {
+    authFetch('/api/preferences/theme', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ theme: newTheme, customColors: newCustomColors || customColors }),
@@ -4062,7 +4064,7 @@ const App = () => {
 
   useEffect(() => {
     const loadTradesFromServer = async () => {
-      const response = await fetch('/api/getTrades');
+      const response = await authFetch('/api/getTrades');
       const data = await response.json();
       setTrades(data.trades);
     };
@@ -4072,7 +4074,7 @@ const App = () => {
   useEffect(() => {
     const loadTags = async () => {
       try {
-        const response = await fetch('/api/getTags');
+        const response = await authFetch('/api/getTags');
         const data = await response.json();
         setTags(data.tags || []);
       } catch (err) {
@@ -4085,7 +4087,7 @@ const App = () => {
   useEffect(() => {
     const fetchSubscriptionStatus = async () => {
       try {
-        const response = await fetch('/api/subscriptionStatus');
+        const response = await authFetch('/api/subscriptionStatus');
         const data = await response.json();
         setSubscriptionStatus(data);
       } catch (err) {
@@ -4093,12 +4095,13 @@ const App = () => {
       }
     };
     fetchSubscriptionStatus();
+    fetch('/api/pricing').then(r => r.json()).then(setPricing).catch(() => {});
   }, []);
 
   useEffect(() => {
     const loadDailyNotes = async () => {
       try {
-        const response = await fetch('/api/getDailyNotes');
+        const response = await authFetch('/api/getDailyNotes');
         const data = await response.json();
         setDailyNotes(data.notes || []);
       } catch (err) {
@@ -4110,7 +4113,7 @@ const App = () => {
 
   const handleSaveNote = async (date, content) => {
     try {
-      const response = await fetch('/api/saveDailyNote', {
+      const response = await authFetch('/api/saveDailyNote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ date, content }),
@@ -4129,7 +4132,7 @@ const App = () => {
 
   const handleDeleteNote = async (date) => {
     try {
-      await fetch('/api/removeDailyNote', {
+      await authFetch('/api/removeDailyNote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ date }),
@@ -4144,11 +4147,11 @@ const App = () => {
   useEffect(() => {
     const autoSync = async () => {
       try {
-        const statusRes = await fetch('/api/tradovate/status');
+        const statusRes = await authFetch('/api/tradovate/status');
         const status = await statusRes.json();
         if (status.configured) {
           setSyncNotification('Syncing trades from Tradovate...');
-          const syncRes = await fetch('/api/tradovate/sync', {
+          const syncRes = await authFetch('/api/tradovate/sync', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
           });
@@ -4201,7 +4204,7 @@ const App = () => {
       <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} subscriptionStatus={subscriptionStatus} />
       <main className="flex-1 lg:ml-60 min-h-screen">
         <div className="p-6 lg:p-8 max-w-7xl">
-          <TrialBanner subscriptionStatus={subscriptionStatus} />
+          <TrialBanner subscriptionStatus={subscriptionStatus} proPrice={pricing.pro} />
           {syncNotification && (
             <div className="flex items-center gap-2 bg-info/10 border border-info/30 rounded-lg px-4 py-3 mb-6 text-info text-sm">
               <Icons.RefreshCw className="w-4 h-4 animate-spin" />
@@ -4223,7 +4226,12 @@ const App = () => {
   );
 };
 
-const init = () => {
+const init = async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) {
+    window.location = '/login';
+    return;
+  }
   const root = createRoot(document.getElementById('app'));
   root.render(<App />);
 };

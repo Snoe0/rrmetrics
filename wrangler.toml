@@ -6,19 +6,15 @@ compatibility_flags = ["nodejs_compat"]
 # Static assets served by Cloudflare Workers
 assets = { directory = "public" }
 
-# D1 Database (accounts only)
-[[d1_databases]]
-binding = "DB"
-database_name = "rrmetrics"
-database_id = "e1bbb5a7-9bc5-4ddb-81a3-4491424541fe"
+# Environment variables (secrets set via wrangler secret put)
+[vars]
+APP_URL = "https://rrmetrics.com"
+PRICE_PRO = "15"
+PRICE_ELITE = "22"
+TRIAL_DAYS = "14"
+SUPABASE_URL = "https://pmvrsprcwolttzdvuuyp.supabase.co"
 
-# Durable Objects
-[durable_objects]
-bindings = [
-  { name = "SESSIONS", class_name = "SessionDO" },
-  { name = "USER_DATA", class_name = "UserDataDO" }
-]
-
+# Migrations to delete old Durable Object classes
 [[migrations]]
 tag = "v1"
 new_classes = ["SessionDO"]
@@ -27,6 +23,6 @@ new_classes = ["SessionDO"]
 tag = "v2"
 new_sqlite_classes = ["UserDataDO"]
 
-# Environment variables (secrets set via wrangler secret put)
-[vars]
-APP_URL = "https://rrmetrics.com"
+[[migrations]]
+tag = "v3"
+deleted_classes = ["SessionDO", "UserDataDO"]

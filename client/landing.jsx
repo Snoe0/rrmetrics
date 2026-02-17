@@ -1,6 +1,7 @@
 const React = require('react');
 const { useState, useEffect } = React;
 const { createRoot } = require('react-dom/client');
+const { supabase } = require('./supabase.js');
 require('./styles/globals.css');
 
 // =====================================================
@@ -136,7 +137,7 @@ const StatsBar = () => {
   const stats = [
     { value: '12K+', label: 'Trades Tracked' },
     { value: '99%', label: 'User Satisfaction' },
-    { value: '50+', label: 'Broker Integrations' },
+    { value: '100%', label: 'Customizable' },
   ];
 
   return (
@@ -207,28 +208,34 @@ const FeaturesSection = () => {
 // PRICING SECTION
 // =====================================================
 const PricingSection = () => {
+  const [pricing, setPricing] = useState({ pro: '19', elite: '24', trialDays: '14' });
+
+  useEffect(() => {
+    fetch('/api/pricing').then(r => r.json()).then(setPricing).catch(() => {});
+  }, []);
+
   const plans = [
     {
       name: 'Trial',
       price: '$0',
-      period: '14 days',
+      period: `${pricing.trialDays} days`,
       features: ['Up to 50 trades', 'Advanced analytics', 'Manual trade entry', 'Email support', 'Custom tags'],
       accent: false,
       popular: false,
     },
     {
       name: 'Pro',
-      price: '$13',
+      price: `$${pricing.pro}`,
       period: '/month',
-      features: ['Unlimited trades', 'Advanced analytics', '5 broker connections', 'Priority support', 'Export to CSV'],
+      features: ['Unlimited trades', 'Advanced analytics', '3 broker connections', 'Customizable Dashboard'],
       accent: true,
       popular: true,
     },
     {
       name: 'Elite',
-      price: '$20',
+      price: `$${pricing.elite}`,
       period: '/month',
-      features: ['All Pro features', 'Multiple screenshots per trade', 'Unlimited broker connections'],
+      features: ['All Pro features', 'Multiple screenshots per trade', 'Unlimited broker connections', 'Custom Analysis Formulas'],
       accent: false,
       popular: false,
     },
@@ -336,7 +343,12 @@ const App = () => (
   </div>
 );
 
-const init = () => {
+const init = async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) {
+    window.location = '/trades';
+    return;
+  }
   const root = createRoot(document.getElementById('content'));
   root.render(<App />);
 };

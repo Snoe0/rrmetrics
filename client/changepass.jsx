@@ -1,31 +1,76 @@
-const helper = require('./helper.js');
 const React = require('react');
+const { useState, useEffect } = React;
 const { createRoot } = require('react-dom/client');
+const { supabase } = require('./supabase.js');
 require('./styles/globals.css');
 
-const handleChangePass = (e) => {
-  e.preventDefault();
-  helper.hideError();
-
-  const currentPass = e.target.querySelector('#currentPass').value;
-  const pass = e.target.querySelector('#pass').value;
-  const pass2 = e.target.querySelector('#pass2').value;
-
-  if (!currentPass || !pass || !pass2) {
-    helper.handleError('Password is empty');
-    return false;
-  }
-
-  if (pass !== pass2) {
-    helper.handleError('Passwords do not match');
-    return false;
-  }
-
-  helper.sendPost(e.target.action, { currentPass, pass, pass2 });
-  return false;
-};
-
 const ChangePass = () => {
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [checking, setChecking] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) {
+        window.location = '/login';
+      } else {
+        setChecking(false);
+      }
+    });
+  }, []);
+
+  const handleChangePass = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    const pass = e.target.querySelector('#pass').value;
+    const pass2 = e.target.querySelector('#pass2').value;
+
+    if (!pass || !pass2) {
+      setError('All fields are required');
+      setLoading(false);
+      return;
+    }
+
+    if (pass !== pass2) {
+      setError('Passwords do not match');
+      setLoading(false);
+      return;
+    }
+
+    const { error: authError } = await supabase.auth.updateUser({ password: pass });
+
+    if (authError) {
+      setError(authError.message);
+    } else {
+      setSuccess(true);
+    }
+    setLoading(false);
+  };
+
+  if (checking) return null;
+
+  if (success) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-8">
+        <div className="w-full max-w-md text-center">
+          <div className="w-14 h-14 bg-positive/20 rounded-full flex items-center justify-center mx-auto mb-5">
+            <svg className="w-7 h-7 text-positive" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+          </div>
+          <h2 className="text-2xl font-bold text-text-primary mb-2">Password Updated</h2>
+          <p className="text-text-secondary text-sm mb-8">Your password has been changed successfully.</p>
+          <a href="/trades" className="bg-accent text-accent-text font-semibold px-8 py-3 rounded-lg hover:brightness-110 transition-all">
+            Back to Dashboard
+          </a>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center p-8">
       <div className="w-full max-w-md">
@@ -36,31 +81,16 @@ const ChangePass = () => {
         </div>
 
         <h2 className="text-2xl font-bold text-text-primary mb-1">Change Password</h2>
-        <p className="text-text-secondary text-sm mb-8">Enter your current password and choose a new one</p>
+        <p className="text-text-secondary text-sm mb-8">Choose a new password for your account</p>
 
-        <div id="errorDiv" className="hidden mb-4 p-3 bg-negative/20 border border-negative/40 rounded-lg">
-          <span id="errorMessage" className="text-negative text-sm"></span>
-        </div>
+        {error && (
+          <div className="mb-4 p-3 bg-negative/20 border border-negative/40 rounded-lg">
+            <span className="text-negative text-sm">{error}</span>
+          </div>
+        )}
 
-        <form
-          id="changePassForm"
-          name="changePassForm"
-          onSubmit={handleChangePass}
-          action="/api/changePass"
-          method="POST"
-        >
+        <form onSubmit={handleChangePass}>
           <div className="space-y-5">
-            <div>
-              <label htmlFor="currentPass" className="block text-sm font-medium text-text-secondary mb-2">Current Password</label>
-              <input
-                id="currentPass"
-                type="password"
-                name="currentpass"
-                placeholder="Enter current password"
-                className="w-full px-4 py-3 bg-bg-input border border-border rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
-              />
-            </div>
-
             <div>
               <label htmlFor="pass" className="block text-sm font-medium text-text-secondary mb-2">New Password</label>
               <input
@@ -68,6 +98,7 @@ const ChangePass = () => {
                 type="password"
                 name="pass"
                 placeholder="Enter new password"
+                autoComplete="new-password"
                 className="w-full px-4 py-3 bg-bg-input border border-border rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
               />
             </div>
@@ -79,6 +110,7 @@ const ChangePass = () => {
                 type="password"
                 name="pass2"
                 placeholder="Confirm new password"
+                autoComplete="new-password"
                 className="w-full px-4 py-3 bg-bg-input border border-border rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
               />
             </div>
@@ -86,9 +118,10 @@ const ChangePass = () => {
 
           <button
             type="submit"
-            className="w-full mt-8 py-3 bg-accent text-accent-text font-semibold rounded-lg hover:brightness-110 transition-all"
+            disabled={loading}
+            className="w-full mt-8 py-3 bg-accent text-accent-text font-semibold rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
           >
-            Change Password
+            {loading ? 'Updating...' : 'Change Password'}
           </button>
 
           <p className="text-center text-text-secondary text-sm mt-6">

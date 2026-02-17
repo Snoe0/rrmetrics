@@ -16,7 +16,7 @@ export const securityHeaders = createMiddleware<{ Bindings: Env }>(async (c, nex
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",
       "img-src 'self' data: blob:",
-      "connect-src 'self'",
+      "connect-src 'self' https://pmvrsprcwolttzdvuuyp.supabase.co",
     ].join('; '),
   );
   c.res.headers.set('X-Content-Type-Options', 'nosniff');
