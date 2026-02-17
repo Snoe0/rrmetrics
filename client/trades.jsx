@@ -816,7 +816,7 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus }) => {
                 <Icons.Zap className="w-4 h-4 text-accent" />
                 <span className="text-text-primary text-sm font-semibold">Upgrade to Pro</span>
               </div>
-              <p className="text-text-tertiary text-xs mb-3">Get advanced analytics, unlimited trades, and priority support.</p>
+              <p className="text-text-tertiary text-xs mb-3">Get auto syncing, unlimited trades, and more.</p>
               <button
                 className="w-full py-2 bg-accent text-accent-text text-xs font-semibold rounded-lg hover:brightness-110 transition-all"
                 onClick={() => { window.location.href = '/upgrade'; }}
@@ -3288,9 +3288,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
               className="w-full flex items-center justify-between p-5 hover:bg-bg-page/50 transition-colors"
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-info/20 rounded-lg flex items-center justify-center">
-                  <Icons.TrendingUp className="w-5 h-5 text-info" />
-                </div>
+                <img src="/assets/img/tradovate.png" alt="Tradovate" className="w-10 h-10 rounded-lg object-contain" />
                 <div className="text-left">
                   <h3 className="text-text-primary font-semibold text-sm">Tradovate</h3>
                   <p className="text-text-tertiary text-xs">Futures trading platform</p>
@@ -3416,9 +3414,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
               className="w-full flex items-center justify-between p-5 hover:bg-bg-page/50 transition-colors"
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-accent/20 rounded-lg flex items-center justify-center">
-                  <Icons.Briefcase className="w-5 h-5 text-accent" />
-                </div>
+                <img src="/assets/img/topstep.png" alt="ProjectX" className="w-10 h-10 rounded-lg object-contain" />
                 <div className="text-left">
                   <h3 className="text-text-primary font-semibold text-sm">ProjectX</h3>
                   <p className="text-text-tertiary text-xs">Futures trading platform</p>
@@ -3437,7 +3433,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                 <div className="bg-bg-page/50 rounded-lg p-3 mb-4">
                   <p className="text-xs text-text-secondary leading-relaxed">
                     <strong className="text-text-primary">Setup:</strong> In ProjectX, go to{' '}
-                    <span className="font-mono text-accent">Settings &gt; API Keys</span> and generate a new API key. Copy both the API Key and Secret and paste them below. Make sure your API key has read access to your trade history.
+                    <span className="font-mono text-accent">Settings &gt; API Keys</span> and generate a new API key. Copy both the API Key and Secret and paste them below. Make sure your API key has read access to your trade history. If you do not want to pay for ProjectX API, download the day's trades from the trades list and import as CSV.
                   </p>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -3469,9 +3465,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
               className="w-full flex items-center justify-between p-5 hover:bg-bg-page/50 transition-colors"
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-positive/20 rounded-lg flex items-center justify-center">
-                  <Icons.BarChart className="w-5 h-5 text-positive" />
-                </div>
+                <img src="/assets/img/ninjatrader.jpeg" alt="NinjaTrader" className="w-10 h-10 rounded-lg object-contain" />
                 <div className="text-left">
                   <h3 className="text-text-primary font-semibold text-sm">NinjaTrader</h3>
                   <p className="text-text-tertiary text-xs">Advanced charting &amp; trading platform</p>
@@ -4340,7 +4334,7 @@ const UpgradePage = ({ pricing }) => {
     <div className="space-y-8">
       <div className="text-center">
         <h1 className="text-3xl font-bold text-text-primary">Upgrade Your Plan</h1>
-        <p className="text-text-secondary mt-2 max-w-lg mx-auto">Choose the plan that fits your trading style. All plans include a 14-day money-back guarantee.</p>
+        <p className="text-text-secondary mt-2 max-w-lg mx-auto">Choose the plan that fits your trading style.</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
@@ -4385,7 +4379,7 @@ const UpgradePage = ({ pricing }) => {
         ))}
       </div>
 
-      <p className="text-center text-text-muted text-xs">14-day money-back guarantee on all paid plans. Cancel anytime.</p>
+      <p className="text-center text-text-muted text-xs">Cancel anytime. Remaining balance refunded.</p>
     </div>
   );
 };

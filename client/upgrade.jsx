@@ -164,7 +164,7 @@ const App = () => {
 
           <div className="text-center mb-10">
             <h1 className="text-3xl font-bold text-text-primary">Upgrade Your Plan</h1>
-            <p className="text-text-secondary mt-2 max-w-lg mx-auto">Choose the plan that fits your trading style. All plans include a 14-day money-back guarantee.</p>
+            <p className="text-text-secondary mt-2 max-w-lg mx-auto">Choose the plan that fits your trading style.</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -212,7 +212,7 @@ const App = () => {
             ))}
           </div>
 
-          <p className="text-center text-text-muted text-xs mt-8">14-day money-back guarantee on all paid plans. Cancel anytime.</p>
+          <p className="text-center text-text-muted text-xs mt-8">Cancel anytime. Remaining balance refunded.</p>
         </div>
       </main>
     </div>
