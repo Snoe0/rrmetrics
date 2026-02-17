@@ -198,3 +198,111 @@ CREATE POLICY "Users can update own daily_notes"
 CREATE POLICY "Users can delete own daily_notes"
   ON public.daily_notes FOR DELETE
   USING (auth.uid() = user_id);
+
+-- ============================================
+-- PRE-MARKET CHECKLIST ITEMS
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.premarket_checklist_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  label TEXT NOT NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_premarket_checklist_items_user_id ON public.premarket_checklist_items(user_id);
+
+-- ============================================
+-- PRE-MARKET CHECKLIST COMPLETIONS
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.premarket_checklist_completions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  item_id UUID NOT NULL REFERENCES public.premarket_checklist_items(id) ON DELETE CASCADE,
+  completed_date DATE NOT NULL,
+  completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(user_id, item_id, completed_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_premarket_completions_user_date ON public.premarket_checklist_completions(user_id, completed_date);
+
+-- ============================================
+-- PRE-MARKET SETTINGS
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.premarket_settings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE UNIQUE,
+  reset_time TEXT NOT NULL DEFAULT '06:00',
+  timezone TEXT NOT NULL DEFAULT 'America/New_York',
+  discord_webhook_url TEXT
+);
+
+-- Pre-Market Checklist Items RLS
+ALTER TABLE public.premarket_checklist_items ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own checklist items"
+  ON public.premarket_checklist_items FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own checklist items"
+  ON public.premarket_checklist_items FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own checklist items"
+  ON public.premarket_checklist_items FOR UPDATE
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own checklist items"
+  ON public.premarket_checklist_items FOR DELETE
+  USING (auth.uid() = user_id);
+
+-- Pre-Market Checklist Completions RLS
+ALTER TABLE public.premarket_checklist_completions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own completions"
+  ON public.premarket_checklist_completions FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own completions"
+  ON public.premarket_checklist_completions FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own completions"
+  ON public.premarket_checklist_completions FOR DELETE
+  USING (auth.uid() = user_id);
+
+-- Pre-Market Settings RLS
+ALTER TABLE public.premarket_settings ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own premarket settings"
+  ON public.premarket_settings FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own premarket settings"
+  ON public.premarket_settings FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own premarket settings"
+  ON public.premarket_settings FOR UPDATE
+  USING (auth.uid() = user_id);
+
+-- ============================================
+-- PRE-MARKET ECONOMIC EVENTS (shared, not user-scoped)
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.premarket_economic_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_name TEXT NOT NULL,
+  event_time TEXT,
+  event_date DATE NOT NULL,
+  release_id INT,
+  fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_premarket_events_date ON public.premarket_economic_events(event_date);
+
+-- Economic Events RLS — any authenticated user can read, only service role writes
+ALTER TABLE public.premarket_economic_events ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Authenticated users can view economic events"
+  ON public.premarket_economic_events FOR SELECT
+  USING (auth.role() = 'authenticated');

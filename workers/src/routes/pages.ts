@@ -19,5 +19,7 @@ pages.get('/login', (c) => servePage(c.env, '/login.html'));
 pages.get('/trades', (c) => servePage(c.env, '/trades.html'));
 pages.get('/changePass', (c) => servePage(c.env, '/changepass.html'));
 pages.get('/upgrade', (c) => servePage(c.env, '/upgrade.html'));
+pages.get('/privacy', (c) => servePage(c.env, '/privacy.html'));
+pages.get('/terms', (c) => servePage(c.env, '/terms.html'));
 
 export default pages;

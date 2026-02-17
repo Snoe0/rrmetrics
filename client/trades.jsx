@@ -202,6 +202,253 @@ const getTradePL = (trade) => {
     : (trade.exitPrice - trade.enterPrice) * trade.quantity;
 };
 
+// =====================================================
+// PERIOD FILTERING
+// =====================================================
+const getDateRange = (period) => {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  // Handle specific month: "month-2026-01"
+  const monthMatch = typeof period === 'string' && period.match(/^month-(\d{4})-(\d{2})$/);
+  if (monthMatch) {
+    const y = parseInt(monthMatch[1], 10);
+    const m = parseInt(monthMatch[2], 10) - 1;
+    return { start: new Date(y, m, 1), end: new Date(y, m + 1, 0, 23, 59, 59, 999) };
+  }
+
+  switch (period) {
+    case 'thisMonth': {
+      const start = new Date(today.getFullYear(), today.getMonth(), 1);
+      const end = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
+      return { start, end };
+    }
+    case 'lastMonth': {
+      const start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const end = new Date(today.getFullYear(), today.getMonth(), 0, 23, 59, 59, 999);
+      return { start, end };
+    }
+    case 'thisWeek': {
+      const dayOfWeek = today.getDay();
+      const start = new Date(today);
+      start.setDate(today.getDate() - dayOfWeek);
+      const end = new Date(start);
+      end.setDate(start.getDate() + 6);
+      end.setHours(23, 59, 59, 999);
+      return { start, end };
+    }
+    case 'lastWeek': {
+      const dayOfWeek = today.getDay();
+      const thisWeekStart = new Date(today);
+      thisWeekStart.setDate(today.getDate() - dayOfWeek);
+      const start = new Date(thisWeekStart);
+      start.setDate(thisWeekStart.getDate() - 7);
+      const end = new Date(thisWeekStart);
+      end.setDate(thisWeekStart.getDate() - 1);
+      end.setHours(23, 59, 59, 999);
+      return { start, end };
+    }
+    case 'last7': {
+      const start = new Date(today);
+      start.setDate(today.getDate() - 6);
+      return { start, end: new Date(now) };
+    }
+    case 'last30': {
+      const start = new Date(today);
+      start.setDate(today.getDate() - 29);
+      return { start, end: new Date(now) };
+    }
+    case 'last90': {
+      const start = new Date(today);
+      start.setDate(today.getDate() - 89);
+      return { start, end: new Date(now) };
+    }
+    default:
+      return null;
+  }
+};
+
+const getPreviousDateRange = (period) => {
+  // For specific months, previous period is the prior month
+  const monthMatch = typeof period === 'string' && period.match(/^month-(\d{4})-(\d{2})$/);
+  if (monthMatch) {
+    const y = parseInt(monthMatch[1], 10);
+    const m = parseInt(monthMatch[2], 10) - 1;
+    const prevMonth = m === 0 ? 11 : m - 1;
+    const prevYear = m === 0 ? y - 1 : y;
+    return { start: new Date(prevYear, prevMonth, 1), end: new Date(prevYear, prevMonth + 1, 0, 23, 59, 59, 999) };
+  }
+
+  const range = getDateRange(period);
+  if (!range) return null;
+  const duration = range.end - range.start;
+  const prevEnd = new Date(range.start.getTime() - 1);
+  const prevStart = new Date(prevEnd.getTime() - duration);
+  return { start: prevStart, end: prevEnd };
+};
+
+const filterTradesByDateRange = (trades, range) => {
+  if (!range) return trades;
+  return trades.filter(t => {
+    const exitDate = new Date(t.exitTime);
+    return exitDate >= range.start && exitDate <= range.end;
+  });
+};
+
+const calcPercentChange = (current, previous) => {
+  if (previous === 0 && current === 0) return 0;
+  if (previous === 0) return current > 0 ? 100 : -100;
+  return ((current - previous) / Math.abs(previous)) * 100;
+};
+
+// Build available month options from trades
+const getTradeMonths = (trades) => {
+  const months = new Set();
+  trades.forEach(t => {
+    const d = new Date(t.exitTime);
+    months.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  });
+  return Array.from(months).sort().reverse();
+};
+
+const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+const PeriodFilter = ({ value, onChange, trades }) => {
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
+  const pickerRef = useRef(null);
+  const isMonthSelected = typeof value === 'string' && value.startsWith('month-');
+
+  // Determine years that have trades for the month picker
+  const tradeYears = (() => {
+    const years = new Set();
+    (trades || []).forEach(t => years.add(new Date(t.exitTime).getFullYear()));
+    if (years.size === 0) years.add(new Date().getFullYear());
+    return Array.from(years).sort((a, b) => b - a);
+  })();
+  const [pickerYear, setPickerYear] = useState(tradeYears[0] || new Date().getFullYear());
+
+  useEffect(() => {
+    const handleClick = (e) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target)) setShowMonthPicker(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const presets = [
+    { value: 'all', label: 'All Time' },
+    { value: 'last7', label: 'Last 7 Days' },
+    { value: 'last30', label: 'Last 30 Days' },
+    { value: 'last90', label: 'Last 90 Days' },
+    { value: 'thisWeek', label: 'This Week' },
+    { value: 'lastWeek', label: 'Last Week' },
+    { value: 'thisMonth', label: 'This Month' },
+    { value: 'lastMonth', label: 'Last Month' },
+  ];
+
+  const getLabel = () => {
+    if (isMonthSelected) {
+      const m = value.match(/^month-(\d{4})-(\d{2})$/);
+      if (m) return `${MONTH_LABELS[parseInt(m[2], 10) - 1]} ${m[1]}`;
+    }
+    const preset = presets.find(p => p.value === value);
+    return preset ? preset.label : 'All Time';
+  };
+
+  // Check which months have trades for the picker year
+  const monthsWithTrades = new Set();
+  (trades || []).forEach(t => {
+    const d = new Date(t.exitTime);
+    if (d.getFullYear() === pickerYear) monthsWithTrades.add(d.getMonth());
+  });
+
+  return (
+    <div className="flex items-center gap-2">
+      {/* Preset dropdown */}
+      <div className="relative">
+        <select
+          value={isMonthSelected ? '__month__' : value}
+          onChange={(e) => {
+            if (e.target.value === '__month__') return;
+            onChange(e.target.value);
+          }}
+          className="appearance-none bg-bg-input border border-border rounded-lg pl-3 pr-8 py-1.5 text-sm text-text-primary font-medium cursor-pointer focus:outline-none focus:border-accent transition-colors"
+        >
+          {presets.map(p => (
+            <option key={p.value} value={p.value}>{p.label}</option>
+          ))}
+          {isMonthSelected && <option value="__month__">{getLabel()}</option>}
+        </select>
+        <Icons.ChevronDown className="w-3.5 h-3.5 text-text-muted absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+      </div>
+
+      {/* Month picker button + popover */}
+      <div className="relative" ref={pickerRef}>
+        <button
+          onClick={() => setShowMonthPicker(!showMonthPicker)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border transition-all ${
+            isMonthSelected
+              ? 'bg-accent text-accent-text border-accent'
+              : 'bg-bg-input text-text-secondary border-border hover:text-text-primary'
+          }`}
+        >
+          <Icons.Calendar className="w-3.5 h-3.5" />
+          {isMonthSelected ? getLabel() : 'Select Month'}
+        </button>
+
+        {showMonthPicker && (
+          <div className="absolute top-full left-0 mt-1 z-50 bg-bg-surface border border-border rounded-xl shadow-lg p-4 w-[260px]">
+            {/* Year nav */}
+            <div className="flex items-center justify-between mb-3">
+              <button onClick={() => setPickerYear(pickerYear - 1)} className="p-1 rounded hover:bg-bg-input text-text-secondary transition-colors">
+                <Icons.ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-sm font-semibold text-text-primary">{pickerYear}</span>
+              <button onClick={() => setPickerYear(pickerYear + 1)} className="p-1 rounded hover:bg-bg-input text-text-secondary transition-colors">
+                <Icons.ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+            {/* Month grid */}
+            <div className="grid grid-cols-4 gap-1.5">
+              {MONTH_LABELS.map((label, mi) => {
+                const monthVal = `month-${pickerYear}-${String(mi + 1).padStart(2, '0')}`;
+                const isActive = value === monthVal;
+                const hasTrades = monthsWithTrades.has(mi);
+                return (
+                  <button
+                    key={mi}
+                    onClick={() => { onChange(monthVal); setShowMonthPicker(false); }}
+                    className={`px-2 py-1.5 text-xs font-medium rounded-lg transition-all ${
+                      isActive
+                        ? 'bg-accent text-accent-text'
+                        : hasTrades
+                          ? 'bg-bg-input text-text-primary hover:bg-accent/20'
+                          : 'text-text-muted hover:bg-bg-input'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const ChangeIndicator = ({ value }) => {
+  if (value === null || value === undefined || !isFinite(value)) return null;
+  const isPositive = value > 0;
+  const isZero = value === 0;
+  return (
+    <span className={`inline-flex items-center text-xs font-medium ${isZero ? 'text-text-muted' : isPositive ? 'text-positive' : 'text-negative'}`}>
+      {isPositive ? '\u25B2' : isZero ? '' : '\u25BC'} {Math.abs(value).toFixed(1)}%
+    </span>
+  );
+};
+
 const handleTrade = (e, onTradeAdded, screenshotData, tags) => {
   e.preventDefault();
   helper.hideError();
@@ -471,6 +718,18 @@ const Icons = {
       <polyline points="2 12 12 17 22 12"></polyline>
     </svg>
   ),
+  Sunrise: (props) => (
+    <svg className={props.className || "w-5 h-5"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 18a5 5 0 0 0-10 0"></path>
+      <line x1="12" y1="2" x2="12" y2="9"></line>
+      <line x1="4.22" y1="10.22" x2="5.64" y2="11.64"></line>
+      <line x1="1" y1="18" x2="3" y2="18"></line>
+      <line x1="21" y1="18" x2="23" y2="18"></line>
+      <line x1="18.36" y1="11.64" x2="19.78" y2="10.22"></line>
+      <line x1="23" y1="22" x2="1" y2="22"></line>
+      <polyline points="8 6 12 2 16 6"></polyline>
+    </svg>
+  ),
 };
 
 // =====================================================
@@ -484,6 +743,7 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus }) => {
     { id: 'dashboard', label: 'Dashboard', icon: Icons.Home },
     { id: 'trades', label: 'Trades', icon: Icons.List },
     { id: 'analytics', label: 'Analytics', icon: Icons.BarChart },
+    { id: 'premarket', label: 'Pre-Market', icon: Icons.Sunrise },
     { id: 'settings', label: 'Settings', icon: Icons.Settings },
   ];
 
@@ -559,7 +819,7 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus }) => {
               <p className="text-text-tertiary text-xs mb-3">Get advanced analytics, unlimited trades, and priority support.</p>
               <button
                 className="w-full py-2 bg-accent text-accent-text text-xs font-semibold rounded-lg hover:brightness-110 transition-all"
-                onClick={() => handleNav('upgrade')}
+                onClick={() => { window.location.href = '/upgrade'; }}
               >
                 Upgrade Now
               </button>
@@ -602,10 +862,13 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus }) => {
 // =====================================================
 // STAT CARD
 // =====================================================
-const StatCard = ({ label, value, subValue, color }) => (
+const StatCard = ({ label, value, subValue, color, change }) => (
   <div className="bg-bg-surface border border-border rounded-xl p-5">
     <div className="text-text-secondary text-xs font-medium uppercase tracking-wider mb-2">{label}</div>
-    <div className={`font-mono text-2xl font-bold ${color || 'text-text-primary'}`}>{value}</div>
+    <div className="flex items-baseline gap-2">
+      <div className={`font-mono text-2xl font-bold ${color || 'text-text-primary'}`}>{value}</div>
+      {change !== undefined && change !== null && <ChangeIndicator value={change} />}
+    </div>
     {subValue && <div className="text-text-tertiary text-xs mt-1">{subValue}</div>}
   </div>
 );
@@ -613,8 +876,17 @@ const StatCard = ({ label, value, subValue, color }) => (
 // =====================================================
 // DASHBOARD PAGE
 // =====================================================
-const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, dailyNotes, onSaveNote, onDeleteNote }) => {
-  const stats = calculateAnalytics(trades);
+const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, dailyNotes, onSaveNote, onDeleteNote, tags }) => {
+  const [period, setPeriod] = useState('all');
+
+  const dateRange = getDateRange(period);
+  const filteredTrades = filterTradesByDateRange(trades, dateRange);
+  const stats = calculateAnalytics(filteredTrades);
+
+  const prevRange = getPreviousDateRange(period);
+  const prevTrades = prevRange ? filterTradesByDateRange(trades, prevRange) : null;
+  const prevStats = prevTrades ? calculateAnalytics(prevTrades) : null;
+  const showChange = period !== 'all' && prevStats;
 
   return (
     <div className="space-y-6">
@@ -632,28 +904,37 @@ const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, dailyNotes, onS
         )}
       </div>
 
+      {/* Period Filter */}
+      <PeriodFilter value={period} onChange={setPeriod} trades={trades} />
+
       {/* Stats grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
           label="Total P/L"
           value={`$${stats.totalPL.toFixed(2)}`}
           color={stats.totalPL >= 0 ? 'text-positive' : 'text-negative'}
+          change={showChange ? calcPercentChange(stats.totalPL, prevStats.totalPL) : null}
         />
-        <StatCard label="Win Rate" value={`${stats.winRate.toFixed(1)}%`} color="text-text-primary" />
-        <StatCard label="Total Trades" value={stats.totalTrades} color="text-text-primary" />
+        <StatCard label="Win Rate" value={`${stats.winRate.toFixed(1)}%`} color="text-text-primary"
+          change={showChange ? calcPercentChange(stats.winRate, prevStats.winRate) : null} />
+        <StatCard label="Total Trades" value={stats.totalTrades} color="text-text-primary"
+          change={showChange ? calcPercentChange(stats.totalTrades, prevStats.totalTrades) : null} />
         <StatCard label="Avg Duration" value={formatDuration(stats.avgDuration)} color="text-text-primary" />
       </div>
 
       {/* Secondary stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="Avg Win" value={`$${stats.avgWin.toFixed(2)}`} color="text-positive" />
-        <StatCard label="Avg Loss" value={`$${stats.avgLoss.toFixed(2)}`} color="text-negative" />
-        <StatCard label="Best Trade" value={`$${stats.bestTrade.toFixed(2)}`} color="text-positive" />
+        <StatCard label="Avg Win" value={`$${stats.avgWin.toFixed(2)}`} color="text-positive"
+          change={showChange ? calcPercentChange(stats.avgWin, prevStats.avgWin) : null} />
+        <StatCard label="Avg Loss" value={`$${stats.avgLoss.toFixed(2)}`} color="text-negative"
+          change={showChange ? calcPercentChange(Math.abs(stats.avgLoss), Math.abs(prevStats.avgLoss)) : null} />
+        <StatCard label="Best Trade" value={`$${stats.bestTrade.toFixed(2)}`} color="text-positive"
+          change={showChange ? calcPercentChange(stats.bestTrade, prevStats.bestTrade) : null} />
         <StatCard label="Worst Trade" value={`$${stats.worstTrade.toFixed(2)}`} color="text-negative" />
       </div>
 
       {/* Calendar */}
-      <CalendarView trades={trades} dailyNotes={dailyNotes} onSaveNote={onSaveNote} onDeleteNote={onDeleteNote} />
+      <CalendarView trades={trades} dailyNotes={dailyNotes} onSaveNote={onSaveNote} onDeleteNote={onDeleteNote} tags={tags} />
     </div>
   );
 };
@@ -661,7 +942,8 @@ const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, dailyNotes, onS
 // =====================================================
 // DAY DETAIL PANEL
 // =====================================================
-const DayDetailPanel = ({ dateKey, dayData, onClose, dailyNotes, onSaveNote, onDeleteNote }) => {
+const DayDetailPanel = ({ dateKey, dayData, onClose, dailyNotes, onSaveNote, onDeleteNote, tags }) => {
+  const [expandedTrade, setExpandedTrade] = useState(null);
   const date = new Date(dateKey + 'T00:00:00');
   const formatted = formatFullDateEST(date);
 
@@ -748,16 +1030,71 @@ const DayDetailPanel = ({ dateKey, dayData, onClose, dailyNotes, onSaveNote, onD
                 const duration = new Date(trade.exitTime) - new Date(trade.enterTime);
                 const entryTime = formatTimeEST(trade.enterTime);
                 const exitTime = formatTimeEST(trade.exitTime);
+                const isLong = trade.quantity > 0;
+                const isExpanded = expandedTrade === trade._id;
+                const tradeTags = tags && trade.tags ? tags.filter(tag => trade.tags.includes(tag._id)) : [];
                 return (
-                  <div key={trade._id} className="flex items-center justify-between py-2.5 px-3 rounded-lg bg-bg-input border border-border">
-                    <div className="flex items-center gap-3">
-                      <span className="font-mono text-sm font-semibold text-text-primary">{trade.ticker}</span>
-                      <span className="text-text-tertiary text-xs">{entryTime} - {exitTime}</span>
-                      <span className="text-text-muted text-xs">{formatDuration(duration)}</span>
-                    </div>
-                    <span className={`font-mono text-sm font-semibold ${pl >= 0 ? 'text-positive' : 'text-negative'}`}>
-                      {pl >= 0 ? '+' : ''}${pl.toFixed(2)}
-                    </span>
+                  <div key={trade._id} className="rounded-lg bg-bg-input border border-border overflow-hidden">
+                    <button
+                      className="flex items-center justify-between w-full py-2.5 px-3 text-left hover:bg-bg-input/80 transition-colors"
+                      onClick={() => setExpandedTrade(isExpanded ? null : trade._id)}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${isLong ? 'bg-positive/15 text-positive' : 'bg-negative/15 text-negative'}`}>
+                          {isLong ? 'L' : 'S'}
+                        </span>
+                        <span className="font-mono text-sm font-semibold text-text-primary">{trade.ticker}</span>
+                        <span className="text-text-tertiary text-xs">{entryTime} - {exitTime}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`font-mono text-sm font-semibold ${pl >= 0 ? 'text-positive' : 'text-negative'}`}>
+                          {pl >= 0 ? '+' : ''}${pl.toFixed(2)}
+                        </span>
+                        <Icons.ChevronDown className={`w-3.5 h-3.5 text-text-muted transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                      </div>
+                    </button>
+                    {isExpanded && (
+                      <div className="px-3 pb-3 border-t border-border/50 pt-2.5 space-y-2">
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                          <div className="flex justify-between">
+                            <span className="text-text-secondary">Entry Price</span>
+                            <span className="font-mono text-text-primary">${trade.enterPrice.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-text-secondary">Exit Price</span>
+                            <span className="font-mono text-text-primary">${trade.exitPrice.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-text-secondary">Quantity</span>
+                            <span className="font-mono text-text-primary">{Math.abs(trade.quantity)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-text-secondary">Duration</span>
+                            <span className="font-mono text-text-primary">{formatDuration(duration)}</span>
+                          </div>
+                        </div>
+                        {tradeTags.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 pt-1">
+                            {tradeTags.map(tag => (
+                              <span key={tag._id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium" style={{ backgroundColor: tag.color + '22', color: tag.color }}>
+                                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: tag.color }}></span>
+                                {tag.name}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {trade.comments && (
+                          <div className="text-xs text-text-secondary bg-bg-surface rounded px-2.5 py-2 mt-1">
+                            {trade.comments}
+                          </div>
+                        )}
+                        {trade.screenshot && (
+                          <div className="mt-1">
+                            <img src={trade.screenshot} alt="Trade screenshot" className="rounded-lg border border-border max-h-40 w-full object-contain bg-bg-surface" />
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -806,7 +1143,7 @@ const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'Ju
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-const CalendarView = ({ trades, dailyNotes, onSaveNote, onDeleteNote }) => {
+const CalendarView = ({ trades, dailyNotes, onSaveNote, onDeleteNote, tags }) => {
   const [viewMode, setViewMode] = useState('daily'); // 'daily' | 'heatmap' | 'monthly'
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState(null);
@@ -824,6 +1161,8 @@ const CalendarView = ({ trades, dailyNotes, onSaveNote, onDeleteNote }) => {
   // Compute month P&L for the header badge (daily view only)
   let monthPL = 0;
   let monthTrades = 0;
+  let prevMonthPL = 0;
+  let prevMonthTrades = 0;
   if (viewMode === 'daily') {
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     for (let d = 1; d <= daysInMonth; d++) {
@@ -831,6 +1170,17 @@ const CalendarView = ({ trades, dailyNotes, onSaveNote, onDeleteNote }) => {
       if (dailyData[dk]) {
         monthPL += dailyData[dk].totalPL;
         monthTrades += dailyData[dk].tradeCount;
+      }
+    }
+    // Previous month for % change
+    const prevM = month === 0 ? 11 : month - 1;
+    const prevY = month === 0 ? year - 1 : year;
+    const daysInPrevMonth = new Date(prevY, prevM + 1, 0).getDate();
+    for (let d = 1; d <= daysInPrevMonth; d++) {
+      const dk = `${prevY}-${String(prevM + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      if (dailyData[dk]) {
+        prevMonthPL += dailyData[dk].totalPL;
+        prevMonthTrades += dailyData[dk].tradeCount;
       }
     }
   }
@@ -862,12 +1212,15 @@ const CalendarView = ({ trades, dailyNotes, onSaveNote, onDeleteNote }) => {
 
           {/* Month P&L badge (daily view only) */}
           {viewMode === 'daily' && (
-            <span className={`ml-2 font-mono text-sm font-bold px-2.5 py-1 rounded-md ${
+            <span className={`ml-2 inline-flex items-center gap-1.5 font-mono text-sm font-bold px-2.5 py-1 rounded-md ${
               monthTrades > 0
                 ? monthPL >= 0 ? 'text-positive bg-positive/10' : 'text-negative bg-negative/10'
                 : 'text-text-muted bg-bg-input'
             }`}>
               {monthTrades > 0 ? `$${monthPL.toFixed(2)}` : '--'}
+              {monthTrades > 0 && prevMonthTrades > 0 && (
+                <ChangeIndicator value={calcPercentChange(monthPL, prevMonthPL)} />
+              )}
             </span>
           )}
         </div>
@@ -937,6 +1290,7 @@ const CalendarView = ({ trades, dailyNotes, onSaveNote, onDeleteNote }) => {
           dailyNotes={dailyNotes}
           onSaveNote={onSaveNote}
           onDeleteNote={onDeleteNote}
+          tags={tags}
         />
       )}
     </div>
@@ -1244,15 +1598,15 @@ const YearHeatmap = ({ year, dailyData, onSelectDay }) => {
 
 // --- Monthly Grid (P/L per month for the year) ---
 const MonthlyGrid = ({ year, dailyData }) => {
-  // Aggregate P/L and trades per month
-  const monthlyData = MONTH_NAMES.map((name, mi) => {
+  // Helper to aggregate a specific month
+  const aggregateMonth = (y, mi) => {
     let totalPL = 0;
     let tradeCount = 0;
     let winDays = 0;
     let lossDays = 0;
-    const daysInMonth = new Date(year, mi + 1, 0).getDate();
+    const daysInMonth = new Date(y, mi + 1, 0).getDate();
     for (let d = 1; d <= daysInMonth; d++) {
-      const dk = `${year}-${String(mi + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const dk = `${y}-${String(mi + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       if (dailyData[dk]) {
         totalPL += dailyData[dk].totalPL;
         tradeCount += dailyData[dk].tradeCount;
@@ -1260,7 +1614,16 @@ const MonthlyGrid = ({ year, dailyData }) => {
         else if (dailyData[dk].totalPL < 0) lossDays++;
       }
     }
-    return { name, shortName: MONTH_SHORT[mi], totalPL, tradeCount, winDays, lossDays };
+    return { totalPL, tradeCount, winDays, lossDays };
+  };
+
+  // Aggregate P/L and trades per month
+  const monthlyData = MONTH_NAMES.map((name, mi) => {
+    const current = aggregateMonth(year, mi);
+    const prevMi = mi === 0 ? 11 : mi - 1;
+    const prevY = mi === 0 ? year - 1 : year;
+    const prev = aggregateMonth(prevY, prevMi);
+    return { name, shortName: MONTH_SHORT[mi], ...current, prevTotalPL: prev.totalPL, prevTradeCount: prev.tradeCount };
   });
 
   const yearTotal = monthlyData.reduce((s, m) => s + m.totalPL, 0);
@@ -1281,8 +1644,13 @@ const MonthlyGrid = ({ year, dailyData }) => {
               <div className="text-sm font-medium text-text-secondary mb-2">{m.name}</div>
               {hasActivity ? (
                 <>
-                  <div className={`font-mono text-xl font-bold ${m.totalPL >= 0 ? 'text-positive' : 'text-negative'}`}>
-                    ${m.totalPL.toFixed(2)}
+                  <div className="flex items-baseline gap-1.5">
+                    <div className={`font-mono text-xl font-bold ${m.totalPL >= 0 ? 'text-positive' : 'text-negative'}`}>
+                      ${m.totalPL.toFixed(2)}
+                    </div>
+                    {m.prevTradeCount > 0 && (
+                      <ChangeIndicator value={calcPercentChange(m.totalPL, m.prevTotalPL)} />
+                    )}
                   </div>
                   <div className="text-text-tertiary text-xs mt-1">
                     {m.tradeCount} trade{m.tradeCount !== 1 ? 's' : ''}
@@ -1988,7 +2356,7 @@ const TradeListPage = ({ trades, triggerReload, onEdit, subscriptionStatus, onOp
 // =====================================================
 // ANALYTICS PAGE
 // =====================================================
-const AnalyticsPage = ({ trades }) => {
+const AnalyticsPage = ({ trades: allTrades }) => {
   const canvasRef = useRef(null);
   const barCanvasRef = useRef(null);
   const timeCanvasRef = useRef(null);
@@ -1996,7 +2364,16 @@ const AnalyticsPage = ({ trades }) => {
   const timeBarRects = useRef([]);
   const [hoveredDayIndex, setHoveredDayIndex] = useState(null);
   const [hoveredTimeIndex, setHoveredTimeIndex] = useState(null);
+  const [period, setPeriod] = useState('all');
+
+  const dateRange = getDateRange(period);
+  const trades = filterTradesByDateRange(allTrades, dateRange);
   const stats = calculateAnalytics(trades);
+
+  const prevRange = getPreviousDateRange(period);
+  const prevTrades = prevRange ? filterTradesByDateRange(allTrades, prevRange) : null;
+  const prevStats = prevTrades ? calculateAnalytics(prevTrades) : null;
+  const showChange = period !== 'all' && prevStats;
 
   // Cumulative P/L chart
   useEffect(() => {
@@ -2257,6 +2634,22 @@ const AnalyticsPage = ({ trades }) => {
     ? (stats.winRate / 100) * stats.avgWin + (1 - stats.winRate / 100) * stats.avgLoss
     : 0;
 
+  // Previous period profit factor & expectancy for % change
+  const prevProfitFactor = (() => {
+    if (!prevTrades || prevTrades.length === 0) return 0;
+    let grossWins = 0, grossLosses = 0;
+    prevTrades.forEach(t => {
+      const pl = getTradePL(t);
+      if (pl > 0) grossWins += pl;
+      else grossLosses += Math.abs(pl);
+    });
+    return grossLosses === 0 ? grossWins : (grossWins / grossLosses);
+  })();
+
+  const prevExpectancy = prevStats && prevStats.totalTrades > 0
+    ? (prevStats.winRate / 100) * prevStats.avgWin + (1 - prevStats.winRate / 100) * prevStats.avgLoss
+    : 0;
+
   // Max drawdown
   const maxDrawdown = (() => {
     if (trades.length === 0) return 0;
@@ -2455,7 +2848,7 @@ const AnalyticsPage = ({ trades }) => {
     return () => { cleanupDay(); cleanupTime(); };
   }, [trades]);
 
-  if (trades.length === 0) {
+  if (trades.length === 0 && period === 'all') {
     return (
       <div className="space-y-6">
         <div>
@@ -2474,12 +2867,25 @@ const AnalyticsPage = ({ trades }) => {
         <p className="text-text-secondary text-sm mt-1">Detailed performance analysis</p>
       </div>
 
+      {/* Period Filter */}
+      <PeriodFilter value={period} onChange={setPeriod} trades={allTrades} />
+
+      {trades.length === 0 ? (
+        <div className="bg-bg-surface border border-border rounded-xl p-8 text-center">
+          <p className="text-text-secondary text-sm">No trades found for this period</p>
+        </div>
+      ) : (<>
+
       {/* Stat cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <StatCard label="Total P/L" value={`$${stats.totalPL.toFixed(2)}`} color={stats.totalPL >= 0 ? 'text-positive' : 'text-negative'} />
-        <StatCard label="Win Rate" value={`${stats.winRate.toFixed(1)}%`} color="text-text-primary" />
-        <StatCard label="Profit Factor" value={profitFactor.toFixed(2)} color="text-text-primary" />
-        <StatCard label="Expectancy" value={`$${expectancy.toFixed(2)}`} color={expectancy >= 0 ? 'text-positive' : 'text-negative'} />
+        <StatCard label="Total P/L" value={`$${stats.totalPL.toFixed(2)}`} color={stats.totalPL >= 0 ? 'text-positive' : 'text-negative'}
+          change={showChange ? calcPercentChange(stats.totalPL, prevStats.totalPL) : null} />
+        <StatCard label="Win Rate" value={`${stats.winRate.toFixed(1)}%`} color="text-text-primary"
+          change={showChange ? calcPercentChange(stats.winRate, prevStats.winRate) : null} />
+        <StatCard label="Profit Factor" value={profitFactor.toFixed(2)} color="text-text-primary"
+          change={showChange ? calcPercentChange(profitFactor, prevProfitFactor) : null} />
+        <StatCard label="Expectancy" value={`$${expectancy.toFixed(2)}`} color={expectancy >= 0 ? 'text-positive' : 'text-negative'}
+          change={showChange ? calcPercentChange(expectancy, prevExpectancy) : null} />
         <StatCard label="Max Drawdown" value={`$${maxDrawdown.toFixed(2)}`} color="text-negative" />
       </div>
 
@@ -2657,6 +3063,8 @@ const AnalyticsPage = ({ trades }) => {
           </div>
         </div>
       )}
+
+      </>)}
     </div>
   );
 };
@@ -2831,12 +3239,9 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
     { id: 'preferences', label: 'Preferences' },
   ];
 
-  const placeholderBrokers = [
-    { name: 'Interactive Brokers', status: 'Coming Soon' },
-    { name: 'TD Ameritrade', status: 'Coming Soon' },
-    { name: 'Webull', status: 'Coming Soon' },
-    { name: 'NinjaTrader', status: 'Coming Soon' },
-  ];
+  const [expandedBroker, setExpandedBroker] = useState(null);
+
+  const toggleBroker = (id) => setExpandedBroker(expandedBroker === id ? null : id);
 
   return (
     <div className="space-y-6">
@@ -2876,136 +3281,243 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
             </div>
           )}
 
-          {/* Tradovate card */}
-          <div className="bg-bg-surface border border-border rounded-xl p-6">
-            <div className="flex items-center justify-between mb-4">
+          {/* Tradovate */}
+          <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
+            <button
+              onClick={() => toggleBroker('tradovate')}
+              className="w-full flex items-center justify-between p-5 hover:bg-bg-page/50 transition-colors"
+            >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-info/20 rounded-lg flex items-center justify-center">
                   <Icons.TrendingUp className="w-5 h-5 text-info" />
                 </div>
-                <div>
-                  <h3 className="text-text-primary font-semibold">Tradovate</h3>
+                <div className="text-left">
+                  <h3 className="text-text-primary font-semibold text-sm">Tradovate</h3>
                   <p className="text-text-tertiary text-xs">Futures trading platform</p>
                 </div>
               </div>
-              {tvStatus && (
-                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium ${
-                  tvStatus.configured
-                    ? 'bg-positive/10 text-positive'
-                    : 'bg-text-muted/10 text-text-secondary'
-                }`}>
-                  <div className={`w-2 h-2 rounded-full ${tvStatus.configured ? 'bg-positive' : 'bg-text-muted'}`}></div>
-                  {tvStatus.configured ? 'Connected' : 'Not Connected'}
-                </div>
-              )}
-            </div>
+              <div className="flex items-center gap-3">
+                {tvStatus && (
+                  <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium ${
+                    tvStatus.configured ? 'bg-positive/10 text-positive' : 'bg-text-muted/10 text-text-secondary'
+                  }`}>
+                    <div className={`w-2 h-2 rounded-full ${tvStatus.configured ? 'bg-positive' : 'bg-text-muted'}`}></div>
+                    {tvStatus.configured ? 'Connected' : 'Not Connected'}
+                  </div>
+                )}
+                {expandedBroker === 'tradovate' ? <Icons.ChevronUp className="w-4 h-4 text-text-secondary" /> : <Icons.ChevronDown className="w-4 h-4 text-text-secondary" />}
+              </div>
+            </button>
 
-            {tvStatus && tvStatus.configured ? (
-              <div className="space-y-4">
-                <div className="flex items-center gap-4 text-sm">
-                  {tvStatus.environment && (
-                    <span className="px-2 py-1 bg-bg-input rounded text-text-secondary text-xs font-mono">{tvStatus.environment.toUpperCase()}</span>
-                  )}
-                  {tvStatus.lastSyncTime && (
-                    <span className="text-text-tertiary text-xs">Last sync: {new Date(tvStatus.lastSyncTime).toLocaleString()}</span>
-                  )}
+            {expandedBroker === 'tradovate' && (
+              <div className="px-5 pb-5 border-t border-border pt-4">
+                <div className="bg-bg-page/50 rounded-lg p-3 mb-4">
+                  <p className="text-xs text-text-secondary leading-relaxed">
+                    <strong className="text-text-primary">Setup:</strong> Log in to your Tradovate account and navigate to{' '}
+                    <span className="font-mono text-accent">Settings &gt; API Access</span>. Create a new API application to get your Client ID and Secret. Use your Tradovate account username and password along with the API credentials below.
+                  </p>
                 </div>
-                <div className="flex gap-3">
-                  <button
-                    className="px-4 py-2 bg-accent text-accent-text text-sm font-semibold rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
-                    onClick={handleSync}
-                    disabled={syncing}
-                  >
-                    {syncing ? 'Syncing...' : 'Sync Trades'}
-                  </button>
-                  <button
-                    className="px-4 py-2 bg-bg-input border border-border text-text-secondary text-sm rounded-lg hover:text-negative hover:border-negative/50 transition-colors"
-                    onClick={handleDeleteCredentials}
-                  >
-                    Disconnect
-                  </button>
+
+                {tvStatus && tvStatus.configured ? (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-4 text-sm">
+                      {tvStatus.environment && (
+                        <span className="px-2 py-1 bg-bg-input rounded text-text-secondary text-xs font-mono">{tvStatus.environment.toUpperCase()}</span>
+                      )}
+                      {tvStatus.lastSyncTime && (
+                        <span className="text-text-tertiary text-xs">Last sync: {new Date(tvStatus.lastSyncTime).toLocaleString()}</span>
+                      )}
+                    </div>
+                    <div className="flex gap-3">
+                      <button
+                        className="px-4 py-2 bg-accent text-accent-text text-sm font-semibold rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
+                        onClick={handleSync}
+                        disabled={syncing}
+                      >
+                        {syncing ? 'Syncing...' : 'Sync Trades'}
+                      </button>
+                      <button
+                        className="px-4 py-2 bg-bg-input border border-border text-text-secondary text-sm rounded-lg hover:text-negative hover:border-negative/50 transition-colors"
+                        onClick={handleDeleteCredentials}
+                      >
+                        Disconnect
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <form onSubmit={handleSaveCredentials} className="space-y-4">
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        className={`flex-1 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                          tvEnvironment === 'demo'
+                            ? 'bg-accent/10 border-accent text-accent'
+                            : 'bg-bg-input border-border text-text-secondary hover:text-text-primary'
+                        }`}
+                        onClick={() => setTvEnvironment('demo')}
+                      >
+                        Demo
+                      </button>
+                      <button
+                        type="button"
+                        className={`flex-1 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                          tvEnvironment === 'live'
+                            ? 'bg-accent/10 border-accent text-accent'
+                            : 'bg-bg-input border-border text-text-secondary hover:text-text-primary'
+                        }`}
+                        onClick={() => setTvEnvironment('live')}
+                      >
+                        Live
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs text-text-secondary mb-1.5">Username</label>
+                        <input type="text" value={tvUsername} onChange={(e) => setTvUsername(e.target.value)}
+                          placeholder="Tradovate username" required
+                          className="w-full px-3 py-2.5 bg-bg-input border border-border rounded-lg text-text-primary text-sm placeholder-text-muted focus:outline-none focus:border-accent transition-colors" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-text-secondary mb-1.5">Password</label>
+                        <input type="password" value={tvPassword} onChange={(e) => setTvPassword(e.target.value)}
+                          placeholder="Tradovate password" required
+                          className="w-full px-3 py-2.5 bg-bg-input border border-border rounded-lg text-text-primary text-sm placeholder-text-muted focus:outline-none focus:border-accent transition-colors" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-text-secondary mb-1.5">Client ID (CID)</label>
+                        <input type="text" value={tvCid} onChange={(e) => setTvCid(e.target.value)}
+                          placeholder="API Client ID" required
+                          className="w-full px-3 py-2.5 bg-bg-input border border-border rounded-lg text-text-primary text-sm placeholder-text-muted focus:outline-none focus:border-accent transition-colors" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-text-secondary mb-1.5">API Secret</label>
+                        <input type="password" value={tvSecret} onChange={(e) => setTvSecret(e.target.value)}
+                          placeholder="API Secret" required
+                          className="w-full px-3 py-2.5 bg-bg-input border border-border rounded-lg text-text-primary text-sm placeholder-text-muted focus:outline-none focus:border-accent transition-colors" />
+                      </div>
+                    </div>
+                    <button
+                      type="submit"
+                      className="px-6 py-2.5 bg-accent text-accent-text text-sm font-semibold rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
+                      disabled={saving}
+                    >
+                      {saving ? 'Validating & Saving...' : 'Connect Tradovate'}
+                    </button>
+                  </form>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* ProjectX */}
+          <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
+            <button
+              onClick={() => toggleBroker('projectx')}
+              className="w-full flex items-center justify-between p-5 hover:bg-bg-page/50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-accent/20 rounded-lg flex items-center justify-center">
+                  <Icons.Briefcase className="w-5 h-5 text-accent" />
+                </div>
+                <div className="text-left">
+                  <h3 className="text-text-primary font-semibold text-sm">ProjectX</h3>
+                  <p className="text-text-tertiary text-xs">Futures trading platform</p>
                 </div>
               </div>
-            ) : (
-              <form onSubmit={handleSaveCredentials} className="space-y-4">
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    className={`flex-1 py-2 text-sm font-medium rounded-lg border transition-colors ${
-                      tvEnvironment === 'demo'
-                        ? 'bg-accent/10 border-accent text-accent'
-                        : 'bg-bg-input border-border text-text-secondary hover:text-text-primary'
-                    }`}
-                    onClick={() => setTvEnvironment('demo')}
-                  >
-                    Demo
-                  </button>
-                  <button
-                    type="button"
-                    className={`flex-1 py-2 text-sm font-medium rounded-lg border transition-colors ${
-                      tvEnvironment === 'live'
-                        ? 'bg-accent/10 border-accent text-accent'
-                        : 'bg-bg-input border-border text-text-secondary hover:text-text-primary'
-                    }`}
-                    onClick={() => setTvEnvironment('live')}
-                  >
-                    Live
-                  </button>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-warning/10 text-warning">
+                  Coming Soon
+                </div>
+                {expandedBroker === 'projectx' ? <Icons.ChevronUp className="w-4 h-4 text-text-secondary" /> : <Icons.ChevronDown className="w-4 h-4 text-text-secondary" />}
+              </div>
+            </button>
+
+            {expandedBroker === 'projectx' && (
+              <div className="px-5 pb-5 border-t border-border pt-4">
+                <div className="bg-bg-page/50 rounded-lg p-3 mb-4">
+                  <p className="text-xs text-text-secondary leading-relaxed">
+                    <strong className="text-text-primary">Setup:</strong> In ProjectX, go to{' '}
+                    <span className="font-mono text-accent">Settings &gt; API Keys</span> and generate a new API key. Copy both the API Key and Secret and paste them below. Make sure your API key has read access to your trade history.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs text-text-secondary mb-1.5">API Key</label>
+                    <input type="text" disabled placeholder="API Key"
+                      className="w-full px-3 py-2.5 bg-bg-input border border-border rounded-lg text-text-primary text-sm placeholder-text-muted opacity-50 cursor-not-allowed" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-text-secondary mb-1.5">API Secret</label>
+                    <input type="password" disabled placeholder="API Secret"
+                      className="w-full px-3 py-2.5 bg-bg-input border border-border rounded-lg text-text-primary text-sm placeholder-text-muted opacity-50 cursor-not-allowed" />
+                  </div>
+                </div>
+                <button
+                  disabled
+                  className="mt-4 px-6 py-2.5 bg-accent text-accent-text text-sm font-semibold rounded-lg opacity-50 cursor-not-allowed"
+                >
+                  Connect ProjectX (Coming Soon)
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* NinjaTrader */}
+          <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
+            <button
+              onClick={() => toggleBroker('ninjatrader')}
+              className="w-full flex items-center justify-between p-5 hover:bg-bg-page/50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-positive/20 rounded-lg flex items-center justify-center">
+                  <Icons.BarChart className="w-5 h-5 text-positive" />
+                </div>
+                <div className="text-left">
+                  <h3 className="text-text-primary font-semibold text-sm">NinjaTrader</h3>
+                  <p className="text-text-tertiary text-xs">Advanced charting &amp; trading platform</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-warning/10 text-warning">
+                  Coming Soon
+                </div>
+                {expandedBroker === 'ninjatrader' ? <Icons.ChevronUp className="w-4 h-4 text-text-secondary" /> : <Icons.ChevronDown className="w-4 h-4 text-text-secondary" />}
+              </div>
+            </button>
+
+            {expandedBroker === 'ninjatrader' && (
+              <div className="px-5 pb-5 border-t border-border pt-4">
+                <div className="bg-bg-page/50 rounded-lg p-3 mb-4">
+                  <p className="text-xs text-text-secondary leading-relaxed">
+                    <strong className="text-text-primary">Setup:</strong> In NinjaTrader, navigate to{' '}
+                    <span className="font-mono text-accent">Tools &gt; Options &gt; Sharing Services</span> and configure an API connection. You will need your NinjaTrader account credentials and your license key. Ensure the "Allow remote access" option is enabled.
+                  </p>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs text-text-secondary mb-1.5">Username</label>
-                    <input type="text" value={tvUsername} onChange={(e) => setTvUsername(e.target.value)}
-                      placeholder="Tradovate username" required
-                      className="w-full px-3 py-2.5 bg-bg-input border border-border rounded-lg text-text-primary text-sm placeholder-text-muted focus:outline-none focus:border-accent transition-colors" />
+                    <input type="text" disabled placeholder="NinjaTrader username"
+                      className="w-full px-3 py-2.5 bg-bg-input border border-border rounded-lg text-text-primary text-sm placeholder-text-muted opacity-50 cursor-not-allowed" />
                   </div>
                   <div>
                     <label className="block text-xs text-text-secondary mb-1.5">Password</label>
-                    <input type="password" value={tvPassword} onChange={(e) => setTvPassword(e.target.value)}
-                      placeholder="Tradovate password" required
-                      className="w-full px-3 py-2.5 bg-bg-input border border-border rounded-lg text-text-primary text-sm placeholder-text-muted focus:outline-none focus:border-accent transition-colors" />
+                    <input type="password" disabled placeholder="NinjaTrader password"
+                      className="w-full px-3 py-2.5 bg-bg-input border border-border rounded-lg text-text-primary text-sm placeholder-text-muted opacity-50 cursor-not-allowed" />
                   </div>
                   <div>
-                    <label className="block text-xs text-text-secondary mb-1.5">Client ID (CID)</label>
-                    <input type="text" value={tvCid} onChange={(e) => setTvCid(e.target.value)}
-                      placeholder="API Client ID" required
-                      className="w-full px-3 py-2.5 bg-bg-input border border-border rounded-lg text-text-primary text-sm placeholder-text-muted focus:outline-none focus:border-accent transition-colors" />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-text-secondary mb-1.5">API Secret</label>
-                    <input type="password" value={tvSecret} onChange={(e) => setTvSecret(e.target.value)}
-                      placeholder="API Secret" required
-                      className="w-full px-3 py-2.5 bg-bg-input border border-border rounded-lg text-text-primary text-sm placeholder-text-muted focus:outline-none focus:border-accent transition-colors" />
+                    <label className="block text-xs text-text-secondary mb-1.5">License Key</label>
+                    <input type="text" disabled placeholder="License key"
+                      className="w-full px-3 py-2.5 bg-bg-input border border-border rounded-lg text-text-primary text-sm placeholder-text-muted opacity-50 cursor-not-allowed" />
                   </div>
                 </div>
                 <button
-                  type="submit"
-                  className="px-6 py-2.5 bg-accent text-accent-text text-sm font-semibold rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
-                  disabled={saving}
+                  disabled
+                  className="mt-4 px-6 py-2.5 bg-accent text-accent-text text-sm font-semibold rounded-lg opacity-50 cursor-not-allowed"
                 >
-                  {saving ? 'Validating & Saving...' : 'Connect Tradovate'}
+                  Connect NinjaTrader (Coming Soon)
                 </button>
-              </form>
-            )}
-          </div>
-
-          {/* Placeholder broker cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {placeholderBrokers.map(broker => (
-              <div key={broker.name} className="bg-bg-surface border border-border rounded-xl p-5 opacity-60">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-bg-input rounded-lg flex items-center justify-center">
-                      <Icons.Briefcase className="w-5 h-5 text-text-tertiary" />
-                    </div>
-                    <div>
-                      <h3 className="text-text-primary font-semibold text-sm">{broker.name}</h3>
-                      <p className="text-text-muted text-xs">{broker.status}</p>
-                    </div>
-                  </div>
-                </div>
               </div>
-            ))}
+            )}
           </div>
         </div>
       )}
@@ -3212,7 +3724,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
               ) : (
                 <button
                   className="flex items-center gap-2 px-4 py-2.5 bg-accent text-accent-text text-sm font-semibold rounded-lg hover:brightness-110 transition-all"
-                  onClick={() => onNavigate('upgrade')}
+                  onClick={() => { window.location.href = '/upgrade'; }}
                 >
                   <Icons.Zap className="w-4 h-4" />
                   Upgrade Now
@@ -3333,31 +3845,492 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
 };
 
 // =====================================================
+// PRE-MARKET PAGE
+// =====================================================
+const PreMarketPage = ({ subscriptionStatus }) => {
+  const [items, setItems] = useState([]);
+  const [completions, setCompletions] = useState([]);
+  const [newsReleases, setNewsReleases] = useState([]);
+  const [settings, setSettings] = useState({ resetTime: '06:00', timezone: 'America/New_York', hasDiscordWebhook: false, discordWebhookMasked: null });
+  const [loading, setLoading] = useState(true);
+  const [newsLoading, setNewsLoading] = useState(true);
+  const [newItemLabel, setNewItemLabel] = useState('');
+  const [editingId, setEditingId] = useState(null);
+  const [editingLabel, setEditingLabel] = useState('');
+  const [showSettings, setShowSettings] = useState(false);
+  const [webhookInput, setWebhookInput] = useState('');
+  const [webhookSaving, setWebhookSaving] = useState(false);
+  const [webhookMsg, setWebhookMsg] = useState(null);
+
+  const getTodayDate = () => {
+    const now = new Date();
+    // Format as YYYY-MM-DD in user's local timezone
+    return now.toLocaleDateString('en-CA'); // en-CA gives YYYY-MM-DD
+  };
+
+  const todayDate = getTodayDate();
+
+  const fetchChecklist = async () => {
+    try {
+      const resp = await authFetch(`/api/premarket/checklist?date=${todayDate}`);
+      const data = await resp.json();
+      if (!data.error) {
+        setItems(data.items || []);
+        setCompletions(data.completions || []);
+        if (data.settings) {
+          setSettings({
+            resetTime: data.settings.resetTime,
+            timezone: data.settings.timezone,
+            hasDiscordWebhook: data.settings.hasDiscordWebhook || false,
+            discordWebhookMasked: data.settings.discordWebhookMasked || null,
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch checklist:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchNews = async () => {
+    try {
+      const resp = await authFetch(`/api/premarket/news?date=${todayDate}`);
+      const data = await resp.json();
+      setNewsReleases(data.events || []);
+    } catch (err) {
+      console.error('Failed to fetch news:', err);
+    } finally {
+      setNewsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchChecklist();
+    fetchNews();
+  }, []);
+
+  const addItem = async () => {
+    const label = newItemLabel.trim();
+    if (!label) return;
+    try {
+      const resp = await authFetch('/api/premarket/checklist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label, sortOrder: items.length }),
+      });
+      const item = await resp.json();
+      if (!item.error) {
+        setItems([...items, item]);
+        setNewItemLabel('');
+      }
+    } catch (err) {
+      console.error('Failed to add item:', err);
+    }
+  };
+
+  const updateItem = async (id) => {
+    const label = editingLabel.trim();
+    if (!label) return;
+    try {
+      const resp = await authFetch(`/api/premarket/checklist/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label }),
+      });
+      const updated = await resp.json();
+      if (!updated.error) {
+        setItems(items.map(i => i._id === id ? updated : i));
+        setEditingId(null);
+        setEditingLabel('');
+      }
+    } catch (err) {
+      console.error('Failed to update item:', err);
+    }
+  };
+
+  const deleteItem = async (id) => {
+    try {
+      await authFetch(`/api/premarket/checklist/${id}`, { method: 'DELETE' });
+      setItems(items.filter(i => i._id !== id));
+      setCompletions(completions.filter(c => c.itemId !== id));
+    } catch (err) {
+      console.error('Failed to delete item:', err);
+    }
+  };
+
+  const toggleItem = async (itemId) => {
+    try {
+      const resp = await authFetch('/api/premarket/checklist/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemId, date: todayDate }),
+      });
+      const result = await resp.json();
+      if (!result.error) {
+        if (result.completed) {
+          setCompletions([...completions, { itemId, completedDate: todayDate }]);
+        } else {
+          setCompletions(completions.filter(c => c.itemId !== itemId));
+        }
+      }
+    } catch (err) {
+      console.error('Failed to toggle item:', err);
+    }
+  };
+
+  const saveSettings = async (resetTime, timezone) => {
+    try {
+      const resp = await authFetch('/api/premarket/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resetTime, timezone }),
+      });
+      const result = await resp.json();
+      if (!result.error) {
+        setSettings(prev => ({ ...prev, resetTime: result.resetTime, timezone: result.timezone }));
+      }
+    } catch (err) {
+      console.error('Failed to save settings:', err);
+    }
+  };
+
+  const saveWebhook = async () => {
+    const url = webhookInput.trim();
+    if (!url) return;
+    if (!url.startsWith('https://discord.com/api/webhooks/')) {
+      setWebhookMsg('Must be a Discord webhook URL');
+      return;
+    }
+    setWebhookSaving(true);
+    setWebhookMsg(null);
+    try {
+      const resp = await authFetch('/api/premarket/webhook', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ webhookUrl: url }),
+      });
+      const result = await resp.json();
+      if (result.error) {
+        setWebhookMsg(result.error);
+      } else {
+        setSettings(prev => ({ ...prev, hasDiscordWebhook: result.hasDiscordWebhook, discordWebhookMasked: result.discordWebhookMasked }));
+        setWebhookInput('');
+        setWebhookMsg('Webhook saved');
+      }
+    } catch (err) {
+      setWebhookMsg('Failed to save webhook');
+    } finally {
+      setWebhookSaving(false);
+    }
+  };
+
+  const removeWebhook = async () => {
+    setWebhookSaving(true);
+    setWebhookMsg(null);
+    try {
+      const resp = await authFetch('/api/premarket/webhook', { method: 'DELETE' });
+      const result = await resp.json();
+      if (!result.error) {
+        setSettings(prev => ({ ...prev, hasDiscordWebhook: false, discordWebhookMasked: null }));
+        setWebhookMsg('Webhook removed');
+      }
+    } catch (err) {
+      setWebhookMsg('Failed to remove webhook');
+    } finally {
+      setWebhookSaving(false);
+    }
+  };
+
+  const isCompleted = (itemId) => completions.some(c => c.itemId === itemId);
+  const completedCount = items.filter(i => isCompleted(i._id)).length;
+  const progress = items.length > 0 ? Math.round((completedCount / items.length) * 100) : 0;
+
+  const timezoneLabels = {
+    'America/New_York': 'ET',
+    'America/Chicago': 'CT',
+    'America/Denver': 'MT',
+    'America/Los_Angeles': 'PT',
+    'UTC': 'UTC',
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-text-primary">Pre-Market Prep</h1>
+          <p className="text-text-secondary text-sm mt-1">
+            {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+          </p>
+        </div>
+        <button
+          onClick={() => setShowSettings(!showSettings)}
+          className="flex items-center gap-2 px-3 py-1.5 text-xs rounded-lg bg-bg-surface border border-border text-text-secondary hover:text-text-primary transition-colors"
+        >
+          <Icons.Settings className="w-3.5 h-3.5" />
+          {settings.resetTime} {timezoneLabels[settings.timezone] || settings.timezone}
+        </button>
+      </div>
+
+      {/* Settings Panel */}
+      {showSettings && (
+        <div className="bg-bg-surface border border-border rounded-xl p-4 space-y-3">
+          <h3 className="text-sm font-medium text-text-primary">Reset Settings</h3>
+          <p className="text-xs text-text-secondary">Checklist resets daily at this time. Items completed before this time count for the previous day.</p>
+          <div className="flex gap-3">
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">Reset Time</label>
+              <select
+                value={settings.resetTime}
+                onChange={(e) => {
+                  const newTime = e.target.value;
+                  setSettings({ ...settings, resetTime: newTime });
+                  saveSettings(newTime, settings.timezone);
+                }}
+                className="bg-bg-page border border-border rounded-lg px-3 py-1.5 text-sm text-text-primary"
+              >
+                {Array.from({ length: 24 }, (_, i) => {
+                  const h = String(i).padStart(2, '0');
+                  return <option key={h} value={`${h}:00`}>{`${h}:00`}</option>;
+                })}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-text-secondary mb-1">Timezone</label>
+              <select
+                value={settings.timezone}
+                onChange={(e) => {
+                  const newTz = e.target.value;
+                  setSettings({ ...settings, timezone: newTz });
+                  saveSettings(settings.resetTime, newTz);
+                }}
+                className="bg-bg-page border border-border rounded-lg px-3 py-1.5 text-sm text-text-primary"
+              >
+                <option value="America/New_York">Eastern (ET)</option>
+                <option value="America/Chicago">Central (CT)</option>
+                <option value="America/Denver">Mountain (MT)</option>
+                <option value="America/Los_Angeles">Pacific (PT)</option>
+                <option value="UTC">UTC</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Discord Webhook — paid users only */}
+          {subscriptionStatus && subscriptionStatus.isPremium && (
+            <div className="border-t border-border pt-3 mt-3">
+              <h3 className="text-sm font-medium text-text-primary mb-1">Discord Notifications</h3>
+              <p className="text-xs text-text-secondary mb-2">Get a daily economic calendar summary sent to your Discord channel at your configured reset time.</p>
+              {settings.hasDiscordWebhook ? (
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 bg-bg-page border border-border rounded-lg px-3 py-2 text-sm text-text-secondary font-mono">
+                    {settings.discordWebhookMasked}
+                  </div>
+                  <button
+                    onClick={removeWebhook}
+                    disabled={webhookSaving}
+                    className="px-3 py-2 text-xs font-medium text-negative border border-negative/30 rounded-lg hover:bg-negative/10 transition-colors disabled:opacity-50"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    value={webhookInput}
+                    onChange={(e) => setWebhookInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') saveWebhook(); }}
+                    placeholder="https://discord.com/api/webhooks/..."
+                    className="flex-1 bg-bg-page border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder-text-secondary"
+                  />
+                  <button
+                    onClick={saveWebhook}
+                    disabled={webhookSaving || !webhookInput.trim()}
+                    className="px-3 py-2 bg-accent text-white rounded-lg text-xs font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+                  >
+                    {webhookSaving ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+              )}
+              {webhookMsg && (
+                <p className={`text-xs mt-1.5 ${webhookMsg.includes('Failed') || webhookMsg.includes('Must') ? 'text-negative' : 'text-positive'}`}>
+                  {webhookMsg}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Checklist Section */}
+      <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
+        <div className="px-5 py-4 border-b border-border">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-sm font-semibold text-text-primary uppercase tracking-wider">My Checklist</h2>
+            <span className="text-xs text-text-secondary">{completedCount}/{items.length} complete</span>
+          </div>
+          {items.length > 0 && (
+            <div className="w-full bg-bg-page rounded-full h-2">
+              <div
+                className="h-2 rounded-full transition-all duration-300"
+                style={{
+                  width: `${progress}%`,
+                  backgroundColor: progress === 100 ? 'var(--positive)' : 'var(--accent)',
+                }}
+              ></div>
+            </div>
+          )}
+        </div>
+
+        <div className="divide-y divide-border">
+          {items.map((item) => (
+            <div key={item._id} className="flex items-center gap-3 px-5 py-3 group hover:bg-bg-page/50 transition-colors">
+              <button
+                onClick={() => toggleItem(item._id)}
+                className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                  isCompleted(item._id)
+                    ? 'bg-accent border-accent text-white'
+                    : 'border-border hover:border-accent'
+                }`}
+              >
+                {isCompleted(item._id) && (
+                  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                )}
+              </button>
+
+              {editingId === item._id ? (
+                <div className="flex-1 flex gap-2">
+                  <input
+                    type="text"
+                    value={editingLabel}
+                    onChange={(e) => setEditingLabel(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') updateItem(item._id);
+                      if (e.key === 'Escape') { setEditingId(null); setEditingLabel(''); }
+                    }}
+                    className="flex-1 bg-bg-page border border-border rounded px-2 py-1 text-sm text-text-primary"
+                    autoFocus
+                  />
+                  <button onClick={() => updateItem(item._id)} className="text-accent text-xs font-medium">Save</button>
+                  <button onClick={() => { setEditingId(null); setEditingLabel(''); }} className="text-text-secondary text-xs">Cancel</button>
+                </div>
+              ) : (
+                <>
+                  <span className={`flex-1 text-sm ${isCompleted(item._id) ? 'line-through text-text-secondary' : 'text-text-primary'}`}>
+                    {item.label}
+                  </span>
+                  <div className="hidden group-hover:flex items-center gap-1">
+                    <button
+                      onClick={() => { setEditingId(item._id); setEditingLabel(item.label); }}
+                      className="p-1 text-text-secondary hover:text-text-primary transition-colors"
+                    >
+                      <Icons.Edit className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => deleteItem(item._id)}
+                      className="p-1 text-text-secondary hover:text-negative transition-colors"
+                    >
+                      <Icons.X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Add item */}
+        <div className="px-5 py-3 border-t border-border">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newItemLabel}
+              onChange={(e) => setNewItemLabel(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') addItem(); }}
+              placeholder="Add a checklist item..."
+              className="flex-1 bg-bg-page border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder-text-secondary"
+            />
+            <button
+              onClick={addItem}
+              disabled={!newItemLabel.trim()}
+              className="px-3 py-2 bg-accent text-white rounded-lg text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+            >
+              <Icons.Plus className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Economic Releases Section */}
+      <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
+        <div className="px-5 py-4 border-b border-border">
+          <h2 className="text-sm font-semibold text-text-primary uppercase tracking-wider">Today's Economic Releases</h2>
+        </div>
+
+        <div className="divide-y divide-border">
+          {newsLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+            </div>
+          ) : newsReleases.length > 0 ? (
+            newsReleases.map((event, idx) => (
+              <div key={idx} className="flex items-center gap-3 px-5 py-3">
+                <Icons.BarChart className="w-4 h-4 text-accent flex-shrink-0" />
+                <span className="flex-1 text-sm text-text-primary">{event.eventName}</span>
+                {event.eventTime && (
+                  <span className="text-xs text-text-secondary">{event.eventTime}</span>
+                )}
+              </div>
+            ))
+          ) : (
+            <div className="px-5 py-8 text-center text-sm text-text-secondary">
+              No economic releases scheduled for today
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// =====================================================
 // UPGRADE PAGE
 // =====================================================
-const UpgradePage = () => {
+const UpgradePage = ({ pricing }) => {
+  const planDefs = (pricing && pricing.plans) || {};
   const plans = [
     {
-      name: 'Trial',
+      name: (planDefs.trial && planDefs.trial.name) || 'Trial',
       price: '$0',
-      period: '14 days',
-      features: ['Up to 50 trades', 'Basic analytics', 'Single broker connection', 'Email support'],
+      period: `${(pricing && pricing.trialDays) || '14'} days`,
+      features: (planDefs.trial && planDefs.trial.features) || ['Up to 50 trades', 'Basic analytics'],
       accent: false,
       popular: false,
     },
     {
-      name: 'Pro',
-      price: '$19',
+      name: (planDefs.pro && planDefs.pro.name) || 'Pro',
+      price: `$${(pricing && pricing.pro) || '19'}`,
       period: '/month',
-      features: ['Unlimited trades', 'Advanced analytics', 'All broker connections', 'Priority support', 'Export to CSV', 'Custom tags'],
+      features: (planDefs.pro && planDefs.pro.features) || ['Unlimited trades', 'Advanced analytics'],
       accent: true,
       popular: true,
     },
     {
-      name: 'Elite',
-      price: '$24',
+      name: (planDefs.elite && planDefs.elite.name) || 'Elite',
+      price: `$${(pricing && pricing.elite) || '24'}`,
       period: '/month',
-      features: ['Everything in Pro', 'AI trade insights', 'Team collaboration', 'API access', 'Custom dashboards', 'Dedicated account manager'],
+      features: (planDefs.elite && planDefs.elite.features) || ['Everything in Pro'],
       accent: false,
       popular: false,
     },
@@ -4176,7 +5149,7 @@ const App = () => {
   const renderPage = () => {
     switch (currentPage) {
       case 'dashboard':
-        return <DashboardPage trades={trades} subscriptionStatus={subscriptionStatus} onOpenForm={openForm} dailyNotes={dailyNotes} onSaveNote={handleSaveNote} onDeleteNote={handleDeleteNote} />;
+        return <DashboardPage trades={trades} subscriptionStatus={subscriptionStatus} onOpenForm={openForm} dailyNotes={dailyNotes} onSaveNote={handleSaveNote} onDeleteNote={handleDeleteNote} tags={tags} />;
       case 'trades':
         return (
           <TradeListPage
@@ -4190,12 +5163,14 @@ const App = () => {
         );
       case 'analytics':
         return <AnalyticsPage trades={trades} />;
+      case 'premarket':
+        return <PreMarketPage subscriptionStatus={subscriptionStatus} />;
       case 'settings':
         return <SettingsPage onSyncComplete={triggerReload} onNavigate={setCurrentPage} theme={theme} onThemeChange={handleThemeChange} customColors={customColors} tags={tags} triggerReload={triggerReload} subscriptionStatus={subscriptionStatus} />;
       case 'upgrade':
-        return <UpgradePage />;
+        return <UpgradePage pricing={pricing} />;
       default:
-        return <DashboardPage trades={trades} subscriptionStatus={subscriptionStatus} onOpenForm={openForm} dailyNotes={dailyNotes} onSaveNote={handleSaveNote} onDeleteNote={handleDeleteNote} />;
+        return <DashboardPage trades={trades} subscriptionStatus={subscriptionStatus} onOpenForm={openForm} dailyNotes={dailyNotes} onSaveNote={handleSaveNote} onDeleteNote={handleDeleteNote} tags={tags} />;
     }
   };
 

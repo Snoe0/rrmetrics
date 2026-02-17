@@ -96,6 +96,48 @@ account.get('/api/pricing', async (c) => {
     pro: c.env.PRICE_PRO || '19',
     elite: c.env.PRICE_ELITE || '24',
     trialDays: c.env.TRIAL_DAYS || '14',
+    plans: {
+      trial: {
+        name: 'Trial',
+        features: [
+          'Up to 50 trades',
+          'Advanced analytics',
+          'Manual trade entry',
+          'Custom tags',
+          'Premarket prep'
+        ],
+      },
+      pro: {
+        name: 'Pro',
+        features: [
+          'Everything in trial',
+          'Unlimited trades',
+          '3 Broker connections',
+          'Custom themes',
+          'CSV Import/Export'
+        ],
+      },
+      elite: {
+        name: 'Elite',
+        features: [
+          'Everything in Pro',
+          'Multiple screenshots per trade',
+          'Unlimited broker connections',
+          'Custom analysis formulas',
+          'Discord news alerts',
+        ],
+      },
+    },
+    featureGates: {
+      customThemes: ['pro', 'elite'],
+      discordWebhook: ['elite'],
+      unlimitedTrades: ['pro', 'elite'],
+      brokerConnections: ['pro', 'elite'],
+      exportCsv: ['pro', 'elite'],
+      // aiInsights: ['elite'],
+      multipleScreenshots: ['elite'],
+      unlimitedBrokers: ['elite'],
+    },
   });
 });
 

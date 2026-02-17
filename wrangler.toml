@@ -26,3 +26,6 @@ new_sqlite_classes = ["UserDataDO"]
 [[migrations]]
 tag = "v3"
 deleted_classes = ["SessionDO", "UserDataDO"]
+
+[triggers]
+crons = ["0 * * * *", "0 5 * * *"]

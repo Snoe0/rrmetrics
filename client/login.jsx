@@ -192,6 +192,13 @@ const SignupWindow = ({ onSwitchToLogin }) => {
         {loading ? 'Creating account...' : 'Create Account'}
       </button>
 
+      <p className="text-center text-text-muted text-xs mt-4">
+        By signing up, you agree to our{' '}
+        <a href="/terms" className="text-accent hover:underline">Terms of Service</a>
+        {' '}and{' '}
+        <a href="/privacy" className="text-accent hover:underline">Privacy Policy</a>.
+      </p>
+
       <p className="text-center text-text-secondary text-sm mt-6">
         Already have an account?{' '}
         <button type="button" className="text-accent hover:underline font-medium" onClick={onSwitchToLogin}>

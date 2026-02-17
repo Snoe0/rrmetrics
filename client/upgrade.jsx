@@ -83,31 +83,32 @@ const App = () => {
     fetch('/api/pricing').then(r => r.json()).then(setPricing).catch(() => {});
   }, []);
 
+  const planDefs = pricing.plans || {};
   const plans = [
     {
       id: 'trial',
-      name: 'Trial',
+      name: (planDefs.trial && planDefs.trial.name) || 'Trial',
       price: '$0',
       period: `${pricing.trialDays} days`,
-      features: ['Up to 50 trades', 'Basic analytics', 'Single broker connection', 'Email support'],
+      features: (planDefs.trial && planDefs.trial.features) || ['Up to 50 trades', 'Basic analytics'],
       accent: false,
       popular: false,
     },
     {
       id: 'pro',
-      name: 'Pro',
+      name: (planDefs.pro && planDefs.pro.name) || 'Pro',
       price: `$${pricing.pro}`,
       period: '/month',
-      features: ['Unlimited trades', 'Advanced analytics', 'All broker connections', 'Priority support', 'Export to CSV', 'Custom tags'],
+      features: (planDefs.pro && planDefs.pro.features) || ['Unlimited trades', 'Advanced analytics'],
       accent: true,
       popular: true,
     },
     {
       id: 'elite',
-      name: 'Elite',
+      name: (planDefs.elite && planDefs.elite.name) || 'Elite',
       price: `$${pricing.elite}`,
       period: '/month',
-      features: ['Everything in Pro', 'AI trade insights', 'Team collaboration', 'API access', 'Custom dashboards', 'Dedicated account manager'],
+      features: (planDefs.elite && planDefs.elite.features) || ['Everything in Pro'],
       accent: false,
       popular: false,
     },

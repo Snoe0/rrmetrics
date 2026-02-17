@@ -17,6 +17,7 @@ export interface Env {
   PRICE_ELITE: string;
   TRIAL_DAYS: string;
   GOOGLE_CLIENT_ID?: string;
+  FRED_API_KEY?: string;
 }
 
 export interface ProfileRow {

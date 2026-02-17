@@ -214,28 +214,29 @@ const PricingSection = () => {
     fetch('/api/pricing').then(r => r.json()).then(setPricing).catch(() => {});
   }, []);
 
+  const planDefs = pricing.plans || {};
   const plans = [
     {
-      name: 'Trial',
+      name: (planDefs.trial && planDefs.trial.name) || 'Trial',
       price: '$0',
       period: `${pricing.trialDays} days`,
-      features: ['Up to 50 trades', 'Advanced analytics', 'Manual trade entry', 'Email support', 'Custom tags'],
+      features: (planDefs.trial && planDefs.trial.features) || ['Up to 50 trades', 'Basic analytics'],
       accent: false,
       popular: false,
     },
     {
-      name: 'Pro',
+      name: (planDefs.pro && planDefs.pro.name) || 'Pro',
       price: `$${pricing.pro}`,
       period: '/month',
-      features: ['Unlimited trades', 'Advanced analytics', '3 broker connections', 'Customizable Dashboard'],
+      features: (planDefs.pro && planDefs.pro.features) || ['Unlimited trades', 'Advanced analytics'],
       accent: true,
       popular: true,
     },
     {
-      name: 'Elite',
+      name: (planDefs.elite && planDefs.elite.name) || 'Elite',
       price: `$${pricing.elite}`,
       period: '/month',
-      features: ['All Pro features', 'Multiple screenshots per trade', 'Unlimited broker connections', 'Custom Analysis Formulas'],
+      features: (planDefs.elite && planDefs.elite.features) || ['Everything in Pro'],
       accent: false,
       popular: false,
     },
@@ -323,7 +324,13 @@ const Footer = () => (
         <a href="#pricing" className="text-text-tertiary hover:text-text-secondary text-sm transition-colors">Pricing</a>
         <a href="/login" className="text-text-tertiary hover:text-text-secondary text-sm transition-colors">Sign In</a>
       </div>
-      <p className="text-text-muted text-xs">&copy; 2026 RR Metrics. All rights reserved.</p>
+      <div className="flex flex-col items-center md:items-end gap-2">
+        <div className="flex items-center gap-4">
+          <a href="/privacy" className="text-text-tertiary hover:text-text-secondary text-xs transition-colors">Privacy Policy</a>
+          <a href="/terms" className="text-text-tertiary hover:text-text-secondary text-xs transition-colors">Terms of Service</a>
+        </div>
+        <p className="text-text-muted text-xs">&copy; 2026 RR Metrics. All rights reserved.</p>
+      </div>
     </div>
   </footer>
 );
