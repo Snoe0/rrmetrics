@@ -15,8 +15,8 @@ type HonoEnv = {
 
 const account = new Hono<HonoEnv>();
 
-// POST /login
-account.post('/login', requiresLogout, async (c) => {
+// POST /api/login
+account.post('/api/login', requiresLogout, async (c) => {
   const body = await c.req.json();
   const email = `${body.email || ''}`.trim().toLowerCase();
   const password = `${body.pass || ''}`;
@@ -43,8 +43,8 @@ account.post('/login', requiresLogout, async (c) => {
   return c.json({ redirect: '/trades' });
 });
 
-// POST /signup
-account.post('/signup', requiresLogout, async (c) => {
+// POST /api/signup
+account.post('/api/signup', requiresLogout, async (c) => {
   const body = await c.req.json();
   const email = `${body.email || ''}`.trim().toLowerCase();
   const pass = `${body.pass || ''}`;
@@ -80,8 +80,8 @@ account.post('/signup', requiresLogout, async (c) => {
   }
 });
 
-// GET /logout
-account.get('/logout', requiresLogin, async (c) => {
+// GET /api/logout
+account.get('/api/logout', requiresLogin, async (c) => {
   const sessionId = c.get('sessionId');
   if (sessionId) {
     const cookie = await destroySession(c.env, sessionId);
@@ -90,8 +90,8 @@ account.get('/logout', requiresLogin, async (c) => {
   return c.redirect('/');
 });
 
-// POST /changePass
-account.post('/changePass', requiresLogin, async (c) => {
+// POST /api/changePass
+account.post('/api/changePass', requiresLogin, async (c) => {
   const session = c.get('session')!;
   const body = await c.req.json();
   const oldPass = `${body.currentPass || ''}`;
@@ -121,8 +121,8 @@ account.post('/changePass', requiresLogin, async (c) => {
   return c.json({ redirect: '/trades' });
 });
 
-// POST /forgot-password
-account.post('/forgot-password', requiresLogout, async (c) => {
+// POST /api/forgot-password
+account.post('/api/forgot-password', requiresLogout, async (c) => {
   const body = await c.req.json();
   const email = `${body.email || ''}`.trim().toLowerCase();
 
@@ -180,8 +180,8 @@ account.post('/forgot-password', requiresLogout, async (c) => {
   }
 });
 
-// POST /reset-password
-account.post('/reset-password', requiresLogout, async (c) => {
+// POST /api/reset-password
+account.post('/api/reset-password', requiresLogout, async (c) => {
   const body = await c.req.json();
   const { token, pass, pass2 } = body;
 
@@ -288,9 +288,9 @@ account.post('/api/preferences/theme', requiresLogin, async (c) => {
   }
 });
 
-// GET /subscriptionStatus
+// GET /api/subscriptionStatus
 account.get(
-  '/subscriptionStatus',
+  '/api/subscriptionStatus',
   requiresLogin,
   checkSubscriptionStatus,
   async (c) => {

@@ -46,7 +46,7 @@ const ChangePass = () => {
           id="changePassForm"
           name="changePassForm"
           onSubmit={handleChangePass}
-          action="/changePass"
+          action="/api/changePass"
           method="POST"
         >
           <div className="space-y-5">

@@ -11,8 +11,8 @@ type HonoEnv = {
 
 const dailyNote = new Hono<HonoEnv>();
 
-// GET /getDailyNotes
-dailyNote.get('/getDailyNotes', requiresLogin, async (c) => {
+// GET /api/getDailyNotes
+dailyNote.get('/api/getDailyNotes', requiresLogin, async (c) => {
   const session = c.get('session')!;
   try {
     const stub = getUserDataStub(c.env, session.account._id);
@@ -25,8 +25,8 @@ dailyNote.get('/getDailyNotes', requiresLogin, async (c) => {
   }
 });
 
-// POST /saveDailyNote
-dailyNote.post('/saveDailyNote', requiresLogin, async (c) => {
+// POST /api/saveDailyNote
+dailyNote.post('/api/saveDailyNote', requiresLogin, async (c) => {
   const session = c.get('session')!;
   const body = await c.req.json();
   const { date, content } = body;
@@ -58,8 +58,8 @@ dailyNote.post('/saveDailyNote', requiresLogin, async (c) => {
   }
 });
 
-// POST /removeDailyNote
-dailyNote.post('/removeDailyNote', requiresLogin, async (c) => {
+// POST /api/removeDailyNote
+dailyNote.post('/api/removeDailyNote', requiresLogin, async (c) => {
   const session = c.get('session')!;
   const body = await c.req.json();
   const { date } = body;

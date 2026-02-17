@@ -11,8 +11,8 @@ type HonoEnv = {
 
 const trade = new Hono<HonoEnv>();
 
-// GET /getTrades
-trade.get('/getTrades', requiresLogin, async (c) => {
+// GET /api/getTrades
+trade.get('/api/getTrades', requiresLogin, async (c) => {
   const session = c.get('session')!;
   try {
     const stub = getUserDataStub(c.env, session.account._id);
@@ -78,11 +78,11 @@ const makeTradeHandler = async (c: any) => {
     return c.json({ error: 'An error occurred' }, 500);
   }
 };
-trade.post('/makeTrade', requiresLogin, makeTradeHandler);
-trade.post('/trades', requiresLogin, makeTradeHandler);
+trade.post('/api/makeTrade', requiresLogin, makeTradeHandler);
+trade.post('/api/trades', requiresLogin, makeTradeHandler);
 
-// POST /removeTrade
-trade.post('/removeTrade', requiresLogin, async (c) => {
+// POST /api/removeTrade
+trade.post('/api/removeTrade', requiresLogin, async (c) => {
   const session = c.get('session')!;
   const body = await c.req.json();
 
@@ -112,8 +112,8 @@ trade.post('/removeTrade', requiresLogin, async (c) => {
   }
 });
 
-// POST /updateTrade
-trade.post('/updateTrade', requiresLogin, async (c) => {
+// POST /api/updateTrade
+trade.post('/api/updateTrade', requiresLogin, async (c) => {
   const session = c.get('session')!;
   const body = await c.req.json();
 
@@ -170,8 +170,8 @@ trade.post('/updateTrade', requiresLogin, async (c) => {
   }
 });
 
-// POST /importTrades
-trade.post('/importTrades', requiresLogin, async (c) => {
+// POST /api/importTrades
+trade.post('/api/importTrades', requiresLogin, async (c) => {
   const session = c.get('session')!;
   const body = await c.req.json();
 

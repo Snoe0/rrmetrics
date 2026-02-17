@@ -245,7 +245,7 @@ const handleRemoveTrade = (id, onTradeRemoved) => {
     helper.handleError('Trade ID is required to delete!');
     return false;
   }
-  helper.sendPost('/removeTrade', { _id: id }, onTradeRemoved);
+  helper.sendPost('/api/removeTrade', { _id: id }, onTradeRemoved);
   return false;
 };
 
@@ -282,7 +282,7 @@ const handleUpdateTrade = (e, tradeId, onTradeUpdated, screenshotData, tags) => 
   if (screenshotData) tradeData.screenshot = screenshotData;
   if (tags) tradeData.tags = tags;
 
-  helper.sendPost('/updateTrade', tradeData, onTradeUpdated);
+  helper.sendPost('/api/updateTrade', tradeData, onTradeUpdated);
   return false;
 };
 
@@ -585,7 +585,7 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus }) => {
                   <Icons.Lock className="w-4 h-4" />
                   Change Password
                 </a>
-                <a href="/logout" className="flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:bg-bg-input hover:text-text-primary transition-colors no-underline">
+                <a href="/api/logout" className="flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:bg-bg-input hover:text-text-primary transition-colors no-underline">
                   <Icons.LogOut className="w-4 h-4" />
                   Log Out
                 </a>
@@ -1406,7 +1406,7 @@ const CSVImportModal = ({ isOpen, onClose, triggerReload }) => {
     setImporting(true);
     setError(null);
     try {
-      const response = await fetch('/importTrades', {
+      const response = await fetch('/api/importTrades', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ trades: mappedTrades }),
@@ -1595,7 +1595,7 @@ const TradeListPage = ({ trades, triggerReload, onEdit, subscriptionStatus, onOp
     if (!inlineTagName.trim() || inlineTagCreating) return;
     setInlineTagCreating(true);
     try {
-      const response = await fetch('/makeTag', {
+      const response = await fetch('/api/makeTag', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: inlineTagName.trim(), color: inlineTagColor }),
@@ -2766,7 +2766,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
   const handleCreateTag = async () => {
     if (!newTagName.trim()) return;
     try {
-      const response = await fetch('/makeTag', {
+      const response = await fetch('/api/makeTag', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newTagName.trim(), color: newTagColor }),
@@ -2787,7 +2787,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
   const handleEditTag = async (tagId) => {
     if (!editTagName.trim()) return;
     try {
-      const response = await fetch('/updateTag', {
+      const response = await fetch('/api/updateTag', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ _id: tagId, name: editTagName.trim(), color: editTagColor }),
@@ -2807,7 +2807,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
   const handleDeleteTag = async (tagId) => {
     if (!confirm('Delete this tag? It will be removed from all trades.')) return;
     try {
-      const response = await fetch('/removeTag', {
+      const response = await fetch('/api/removeTag', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ _id: tagId }),
@@ -3228,7 +3228,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                 <Icons.Lock className="w-5 h-5" />
                 <span className="text-sm">Change Password</span>
               </a>
-              <a href="/logout" className="flex items-center gap-3 px-4 py-3 bg-bg-input border border-border rounded-lg text-text-secondary hover:text-negative transition-colors no-underline">
+              <a href="/api/logout" className="flex items-center gap-3 px-4 py-3 bg-bg-input border border-border rounded-lg text-text-secondary hover:text-negative transition-colors no-underline">
                 <Icons.LogOut className="w-5 h-5" />
                 <span className="text-sm">Log Out</span>
               </a>
@@ -3633,7 +3633,7 @@ const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, tags }) 
     if (!quickTagName.trim() || creatingTag) return;
     setCreatingTag(true);
     try {
-      const response = await fetch('/makeTag', {
+      const response = await fetch('/api/makeTag', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: quickTagName.trim(), color: quickTagColor }),
@@ -3725,7 +3725,7 @@ const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, tags }) 
             id="tradeForm"
             onSubmit={handleSubmit}
             name="tradeForm"
-            action={isEditing ? "/updateTrade" : "/trades"}
+            action={isEditing ? "/api/updateTrade" : "/api/trades"}
             method="POST"
             className="p-6 space-y-4"
           >
@@ -4062,7 +4062,7 @@ const App = () => {
 
   useEffect(() => {
     const loadTradesFromServer = async () => {
-      const response = await fetch('/getTrades');
+      const response = await fetch('/api/getTrades');
       const data = await response.json();
       setTrades(data.trades);
     };
@@ -4072,7 +4072,7 @@ const App = () => {
   useEffect(() => {
     const loadTags = async () => {
       try {
-        const response = await fetch('/getTags');
+        const response = await fetch('/api/getTags');
         const data = await response.json();
         setTags(data.tags || []);
       } catch (err) {
@@ -4085,7 +4085,7 @@ const App = () => {
   useEffect(() => {
     const fetchSubscriptionStatus = async () => {
       try {
-        const response = await fetch('/subscriptionStatus');
+        const response = await fetch('/api/subscriptionStatus');
         const data = await response.json();
         setSubscriptionStatus(data);
       } catch (err) {
@@ -4098,7 +4098,7 @@ const App = () => {
   useEffect(() => {
     const loadDailyNotes = async () => {
       try {
-        const response = await fetch('/getDailyNotes');
+        const response = await fetch('/api/getDailyNotes');
         const data = await response.json();
         setDailyNotes(data.notes || []);
       } catch (err) {
@@ -4110,7 +4110,7 @@ const App = () => {
 
   const handleSaveNote = async (date, content) => {
     try {
-      const response = await fetch('/saveDailyNote', {
+      const response = await fetch('/api/saveDailyNote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ date, content }),
@@ -4129,7 +4129,7 @@ const App = () => {
 
   const handleDeleteNote = async (date) => {
     try {
-      await fetch('/removeDailyNote', {
+      await fetch('/api/removeDailyNote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ date }),

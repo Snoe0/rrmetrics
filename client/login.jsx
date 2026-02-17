@@ -48,7 +48,7 @@ const LoginWindow = ({ onSwitchToSignup, onSwitchToForgot }) => {
       id="loginForm"
       name="loginForm"
       onSubmit={handleLogin}
-      action="/login"
+      action="/api/login"
       method="POST"
       className="w-full"
     >
@@ -109,7 +109,7 @@ const SignupWindow = ({ onSwitchToLogin }) => {
       id="signupForm"
       name="signupForm"
       onSubmit={handleSignup}
-      action="/signup"
+      action="/api/signup"
       method="POST"
       className="w-full"
     >
@@ -189,7 +189,7 @@ const ForgotPasswordWindow = ({ onSwitchToLogin }) => {
     }
 
     try {
-      const res = await fetch('/forgot-password', {
+      const res = await fetch('/api/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
@@ -377,7 +377,7 @@ const ResetPasswordWindow = ({ onSwitchToLogin }) => {
     const token = params.get('reset');
 
     try {
-      const res = await fetch('/reset-password', {
+      const res = await fetch('/api/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, pass, pass2 }),

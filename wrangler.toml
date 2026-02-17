@@ -3,7 +3,7 @@ main = "workers/src/index.ts"
 compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]
 
-# Static assets served by Cloudflare Pages
+# Static assets served by Cloudflare Workers
 assets = { directory = "public" }
 
 # D1 Database (accounts only)

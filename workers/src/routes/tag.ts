@@ -11,8 +11,8 @@ type HonoEnv = {
 
 const tag = new Hono<HonoEnv>();
 
-// GET /getTags
-tag.get('/getTags', requiresLogin, async (c) => {
+// GET /api/getTags
+tag.get('/api/getTags', requiresLogin, async (c) => {
   const session = c.get('session')!;
   try {
     const stub = getUserDataStub(c.env, session.account._id);
@@ -25,8 +25,8 @@ tag.get('/getTags', requiresLogin, async (c) => {
   }
 });
 
-// POST /makeTag
-tag.post('/makeTag', requiresLogin, async (c) => {
+// POST /api/makeTag
+tag.post('/api/makeTag', requiresLogin, async (c) => {
   const session = c.get('session')!;
   const body = await c.req.json();
 
@@ -60,8 +60,8 @@ tag.post('/makeTag', requiresLogin, async (c) => {
   }
 });
 
-// POST /updateTag
-tag.post('/updateTag', requiresLogin, async (c) => {
+// POST /api/updateTag
+tag.post('/api/updateTag', requiresLogin, async (c) => {
   const session = c.get('session')!;
   const body = await c.req.json();
 
@@ -99,8 +99,8 @@ tag.post('/updateTag', requiresLogin, async (c) => {
   }
 });
 
-// POST /removeTag
-tag.post('/removeTag', requiresLogin, async (c) => {
+// POST /api/removeTag
+tag.post('/api/removeTag', requiresLogin, async (c) => {
   const session = c.get('session')!;
   const body = await c.req.json();
 
