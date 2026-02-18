@@ -730,6 +730,13 @@ const Icons = {
       <polyline points="8 6 12 2 16 6"></polyline>
     </svg>
   ),
+  Target: (props) => (
+    <svg className={props.className || "w-5 h-5"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10"></circle>
+      <circle cx="12" cy="12" r="6"></circle>
+      <circle cx="12" cy="12" r="2"></circle>
+    </svg>
+  ),
 };
 
 // =====================================================
@@ -743,6 +750,7 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus }) => {
     { id: 'dashboard', label: 'Dashboard', icon: Icons.Home },
     { id: 'trades', label: 'Trades', icon: Icons.List },
     { id: 'analytics', label: 'Analytics', icon: Icons.BarChart },
+    { id: 'strategy', label: 'Strategy', icon: Icons.Target },
     { id: 'premarket', label: 'Pre-Market', icon: Icons.Sunrise },
     { id: 'settings', label: 'Settings', icon: Icons.Settings },
   ];
@@ -876,7 +884,7 @@ const StatCard = ({ label, value, subValue, color, change }) => (
 // =====================================================
 // DASHBOARD PAGE
 // =====================================================
-const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, dailyNotes, onSaveNote, onDeleteNote, tags }) => {
+const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, dailyNotes, onSaveNote, onDeleteNote, tags, strategyRules }) => {
   const [period, setPeriod] = useState('all');
 
   const dateRange = getDateRange(period);
@@ -934,7 +942,7 @@ const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, dailyNotes, onS
       </div>
 
       {/* Calendar */}
-      <CalendarView trades={trades} dailyNotes={dailyNotes} onSaveNote={onSaveNote} onDeleteNote={onDeleteNote} tags={tags} />
+      <CalendarView trades={trades} dailyNotes={dailyNotes} onSaveNote={onSaveNote} onDeleteNote={onDeleteNote} tags={tags} subscriptionStatus={subscriptionStatus} strategyRules={strategyRules} />
     </div>
   );
 };
@@ -942,10 +950,88 @@ const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, dailyNotes, onS
 // =====================================================
 // DAY DETAIL PANEL
 // =====================================================
-const DayDetailPanel = ({ dateKey, dayData, onClose, dailyNotes, onSaveNote, onDeleteNote, tags }) => {
+const DayDetailPanel = ({ dateKey, dayData, onClose, dailyNotes, onSaveNote, onDeleteNote, tags, subscriptionStatus, strategyRules }) => {
   const [expandedTrade, setExpandedTrade] = useState(null);
+  const [dailyChecks, setDailyChecks] = useState([]);
+  const [tradeChecksMap, setTradeChecksMap] = useState({});
+  const [checksLoading, setChecksLoading] = useState(false);
   const date = new Date(dateKey + 'T00:00:00');
   const formatted = formatFullDateEST(date);
+  const isElite = subscriptionStatus && subscriptionStatus.plan === 'elite';
+  const dayRules = strategyRules ? strategyRules.filter(r => r.type === 'day') : [];
+  const tradeRules = strategyRules ? strategyRules.filter(r => r.type === 'trade') : [];
+
+  useEffect(() => {
+    if (!isElite || !strategyRules || strategyRules.length === 0) return;
+    const fetchDailyChecks = async () => {
+      try {
+        const resp = await authFetch(`/api/strategy/checks/daily/${dateKey}`);
+        const data = await resp.json();
+        if (!data.error) setDailyChecks(data.checks || []);
+      } catch (err) {
+        console.error('Failed to fetch daily checks:', err);
+      }
+    };
+    fetchDailyChecks();
+  }, [dateKey, isElite, strategyRules]);
+
+  const handleDailyToggle = async (ruleId, followed) => {
+    setChecksLoading(true);
+    try {
+      const resp = await authFetch('/api/strategy/checks/daily', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ruleId, date: dateKey, followed }),
+      });
+      const check = await resp.json();
+      if (!check.error) {
+        setDailyChecks(prev => {
+          const filtered = prev.filter(ch => ch.ruleId !== ruleId);
+          return [...filtered, check];
+        });
+      }
+    } catch (err) {
+      console.error('Failed to toggle daily check:', err);
+    } finally {
+      setChecksLoading(false);
+    }
+  };
+
+  const fetchTradeChecks = async (tradeId) => {
+    if (tradeChecksMap[tradeId]) return;
+    try {
+      const resp = await authFetch(`/api/strategy/checks/trade/${tradeId}`);
+      const data = await resp.json();
+      if (!data.error) {
+        setTradeChecksMap(prev => ({ ...prev, [tradeId]: data.checks || [] }));
+      }
+    } catch (err) {
+      console.error('Failed to fetch trade checks:', err);
+    }
+  };
+
+  const handleTradeToggle = async (tradeId, ruleId, followed) => {
+    setChecksLoading(true);
+    try {
+      const resp = await authFetch('/api/strategy/checks/trade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tradeId, ruleId, followed }),
+      });
+      const check = await resp.json();
+      if (!check.error) {
+        setTradeChecksMap(prev => {
+          const existing = prev[tradeId] || [];
+          const filtered = existing.filter(ch => ch.ruleId !== ruleId);
+          return { ...prev, [tradeId]: [...filtered, check] };
+        });
+      }
+    } catch (err) {
+      console.error('Failed to toggle trade check:', err);
+    } finally {
+      setChecksLoading(false);
+    }
+  };
 
   const trades = dayData.trades;
   const wins = trades.filter(t => getTradePL(t) > 0).length;
@@ -1037,7 +1123,11 @@ const DayDetailPanel = ({ dateKey, dayData, onClose, dailyNotes, onSaveNote, onD
                   <div key={trade._id} className="rounded-lg bg-bg-input border border-border overflow-hidden">
                     <button
                       className="flex items-center justify-between w-full py-2.5 px-3 text-left hover:bg-bg-input/80 transition-colors"
-                      onClick={() => setExpandedTrade(isExpanded ? null : trade._id)}
+                      onClick={() => {
+                        const nextId = isExpanded ? null : trade._id;
+                        setExpandedTrade(nextId);
+                        if (nextId && isElite && tradeRules.length > 0) fetchTradeChecks(nextId);
+                      }}
                     >
                       <div className="flex items-center gap-2">
                         <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${isLong ? 'bg-positive/15 text-positive' : 'bg-negative/15 text-negative'}`}>
@@ -1093,6 +1183,17 @@ const DayDetailPanel = ({ dateKey, dayData, onClose, dailyNotes, onSaveNote, onD
                             <img src={trade.screenshot} alt="Trade screenshot" className="rounded-lg border border-border max-h-40 w-full object-contain bg-bg-surface" />
                           </div>
                         )}
+                        {isElite && tradeRules.length > 0 && (
+                          <div className="mt-2 pt-2 border-t border-border/50">
+                            <label className="text-text-secondary text-[10px] font-semibold uppercase tracking-wider mb-1.5 block">Trade Rules</label>
+                            <RuleChecklist
+                              rules={tradeRules}
+                              checks={tradeChecksMap[trade._id] || []}
+                              onToggle={(ruleId, followed) => handleTradeToggle(trade._id, ruleId, followed)}
+                              loading={checksLoading}
+                            />
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1130,6 +1231,19 @@ const DayDetailPanel = ({ dateKey, dayData, onClose, dailyNotes, onSaveNote, onD
               )}
             </div>
           </div>
+
+          {/* Daily Rule Checks */}
+          {isElite && dayRules.length > 0 && (
+            <div className="border-t border-border pt-3">
+              <label className="text-text-secondary text-xs font-medium mb-1.5 block">Daily Rules</label>
+              <RuleChecklist
+                rules={dayRules}
+                checks={dailyChecks}
+                onToggle={handleDailyToggle}
+                loading={checksLoading}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1143,7 +1257,7 @@ const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'Ju
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-const CalendarView = ({ trades, dailyNotes, onSaveNote, onDeleteNote, tags }) => {
+const CalendarView = ({ trades, dailyNotes, onSaveNote, onDeleteNote, tags, subscriptionStatus, strategyRules }) => {
   const [viewMode, setViewMode] = useState('daily'); // 'daily' | 'heatmap' | 'monthly'
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState(null);
@@ -1291,6 +1405,8 @@ const CalendarView = ({ trades, dailyNotes, onSaveNote, onDeleteNote, tags }) =>
           onSaveNote={onSaveNote}
           onDeleteNote={onDeleteNote}
           tags={tags}
+          subscriptionStatus={subscriptionStatus}
+          strategyRules={strategyRules}
         />
       )}
     </div>
@@ -4908,6 +5024,435 @@ const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, tags }) 
 };
 
 // =====================================================
+// RULE CHECKLIST (shared by DayDetailPanel & trade detail)
+// =====================================================
+const RuleChecklist = ({ rules, checks, onToggle, loading }) => {
+  if (!rules || rules.length === 0) return null;
+
+  return (
+    <div className="space-y-1.5">
+      {rules.map(rule => {
+        const check = checks.find(ch => ch.ruleId === rule._id);
+        const followed = check ? check.followed : false;
+        return (
+          <button
+            key={rule._id}
+            className={`flex items-center gap-2 w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
+              followed
+                ? 'bg-positive/10 text-positive'
+                : 'bg-bg-input text-text-secondary hover:text-text-primary'
+            }`}
+            onClick={() => onToggle(rule._id, !followed)}
+            disabled={loading}
+          >
+            <span className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${
+              followed ? 'bg-positive border-positive' : 'border-border'
+            }`}>
+              {followed && <Icons.Check className="w-3 h-3 text-white" />}
+            </span>
+            {rule.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+};
+
+// =====================================================
+// STRATEGY PAGE
+// =====================================================
+const StrategyPage = ({ subscriptionStatus, trades }) => {
+  const [rules, setRules] = useState([]);
+  const [analytics, setAnalytics] = useState([]);
+  const [disciplineScore, setDisciplineScore] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [newRuleLabel, setNewRuleLabel] = useState('');
+  const [newRuleType, setNewRuleType] = useState('trade');
+  const [editingId, setEditingId] = useState(null);
+  const [editingLabel, setEditingLabel] = useState('');
+  const [activeTab, setActiveTab] = useState('rules');
+
+  const isElite = subscriptionStatus && subscriptionStatus.plan === 'elite';
+
+  const fetchRules = async () => {
+    try {
+      const resp = await authFetch('/api/strategy/rules');
+      const data = await resp.json();
+      if (!data.error) setRules(data.rules || []);
+    } catch (err) {
+      console.error('Failed to fetch rules:', err);
+    }
+  };
+
+  const fetchAnalytics = async () => {
+    try {
+      const resp = await authFetch('/api/strategy/analytics');
+      const data = await resp.json();
+      if (!data.error) {
+        setAnalytics(data.analytics || []);
+        setDisciplineScore(data.disciplineScore || 0);
+      }
+    } catch (err) {
+      console.error('Failed to fetch analytics:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (!isElite) { setLoading(false); return; }
+    Promise.all([fetchRules(), fetchAnalytics()]).finally(() => setLoading(false));
+  }, [isElite]);
+
+  const handleAddRule = async () => {
+    if (!newRuleLabel.trim()) return;
+    try {
+      const resp = await authFetch('/api/strategy/rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: newRuleLabel.trim(), type: newRuleType }),
+      });
+      const rule = await resp.json();
+      if (!rule.error) {
+        setRules(prev => [...prev, rule]);
+        setNewRuleLabel('');
+        fetchAnalytics();
+      }
+    } catch (err) {
+      console.error('Failed to add rule:', err);
+    }
+  };
+
+  const handleUpdateRule = async (ruleId) => {
+    if (!editingLabel.trim()) return;
+    try {
+      const resp = await authFetch(`/api/strategy/rules/${ruleId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: editingLabel.trim() }),
+      });
+      const updated = await resp.json();
+      if (!updated.error) {
+        setRules(prev => prev.map(r => r._id === ruleId ? updated : r));
+        setEditingId(null);
+      }
+    } catch (err) {
+      console.error('Failed to update rule:', err);
+    }
+  };
+
+  const handleDeleteRule = async (ruleId) => {
+    try {
+      await authFetch(`/api/strategy/rules/${ruleId}`, { method: 'DELETE' });
+      setRules(prev => prev.filter(r => r._id !== ruleId));
+      fetchAnalytics();
+    } catch (err) {
+      console.error('Failed to delete rule:', err);
+    }
+  };
+
+  if (!isElite) {
+    return (
+      <div className="text-center py-16">
+        <Icons.Target className="w-12 h-12 text-text-muted mx-auto mb-4" />
+        <h2 className="text-text-primary text-xl font-semibold mb-2">Strategy & Rule Tracking</h2>
+        <p className="text-text-secondary text-sm mb-6 max-w-md mx-auto">
+          Define trading rules, track adherence per trade and per day, and see how rule-following correlates with profitability.
+        </p>
+        <a href="/upgrade" className="inline-flex items-center gap-2 px-6 py-3 bg-accent text-accent-text text-sm font-semibold rounded-xl hover:brightness-110 transition-all">
+          <Icons.Zap className="w-4 h-4" /> Upgrade to Elite
+        </a>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Icons.RefreshCw className="w-5 h-5 animate-spin text-text-muted" />
+      </div>
+    );
+  }
+
+  const tradeRules = rules.filter(r => r.type === 'trade');
+  const dayRules = rules.filter(r => r.type === 'day');
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-text-primary text-2xl font-bold">Strategy</h1>
+          <p className="text-text-secondary text-sm mt-1">Define and track your trading rules</p>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 mb-6 bg-bg-surface rounded-lg p-1 w-fit">
+        {['rules', 'analytics'].map(tab => (
+          <button
+            key={tab}
+            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+              activeTab === tab
+                ? 'bg-bg-page text-text-primary'
+                : 'text-text-secondary hover:text-text-primary'
+            }`}
+            onClick={() => setActiveTab(tab)}
+          >
+            {tab === 'rules' ? 'Rules' : 'Analytics'}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'rules' && (
+        <div className="space-y-6">
+          {/* Add new rule */}
+          <div className="bg-bg-surface border border-border rounded-xl p-5">
+            <h3 className="text-text-primary font-semibold text-sm mb-3">Add New Rule</h3>
+            <div className="flex gap-3">
+              <select
+                className="px-3 py-2 bg-bg-input border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent"
+                value={newRuleType}
+                onChange={(e) => setNewRuleType(e.target.value)}
+              >
+                <option value="trade">Trade Rule</option>
+                <option value="day">Daily Rule</option>
+              </select>
+              <input
+                type="text"
+                className="flex-1 px-3 py-2 bg-bg-input border border-border rounded-lg text-text-primary text-sm placeholder-text-muted focus:outline-none focus:border-accent"
+                placeholder="e.g., Wait for confirmation before entry"
+                value={newRuleLabel}
+                onChange={(e) => setNewRuleLabel(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAddRule()}
+              />
+              <button
+                className="px-4 py-2 bg-accent text-accent-text text-sm font-semibold rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
+                onClick={handleAddRule}
+                disabled={!newRuleLabel.trim()}
+              >
+                Add
+              </button>
+            </div>
+          </div>
+
+          {/* Trade Rules */}
+          <div className="bg-bg-surface border border-border rounded-xl p-5">
+            <h3 className="text-text-primary font-semibold text-sm mb-3">Trade Rules</h3>
+            <p className="text-text-tertiary text-xs mb-3">Check these off for each trade in the day detail panel</p>
+            {tradeRules.length === 0 ? (
+              <p className="text-text-muted text-sm">No trade rules defined yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {tradeRules.map(rule => (
+                  <div key={rule._id} className="flex items-center gap-3 bg-bg-input rounded-lg px-3 py-2.5">
+                    {editingId === rule._id ? (
+                      <>
+                        <input
+                          type="text"
+                          className="flex-1 px-2 py-1 bg-bg-surface border border-border rounded text-text-primary text-sm focus:outline-none focus:border-accent"
+                          value={editingLabel}
+                          onChange={(e) => setEditingLabel(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && handleUpdateRule(rule._id)}
+                          autoFocus
+                        />
+                        <button className="text-positive text-xs font-medium" onClick={() => handleUpdateRule(rule._id)}>Save</button>
+                        <button className="text-text-muted text-xs" onClick={() => setEditingId(null)}>Cancel</button>
+                      </>
+                    ) : (
+                      <>
+                        <Icons.Target className="w-4 h-4 text-accent flex-shrink-0" />
+                        <span className="flex-1 text-text-primary text-sm">{rule.label}</span>
+                        <button
+                          className="text-text-muted hover:text-text-secondary text-xs"
+                          onClick={() => { setEditingId(rule._id); setEditingLabel(rule.label); }}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="text-text-muted hover:text-negative text-xs"
+                          onClick={() => handleDeleteRule(rule._id)}
+                        >
+                          Delete
+                        </button>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Daily Rules */}
+          <div className="bg-bg-surface border border-border rounded-xl p-5">
+            <h3 className="text-text-primary font-semibold text-sm mb-3">Daily Rules</h3>
+            <p className="text-text-tertiary text-xs mb-3">Check these off each trading day in the day detail panel</p>
+            {dayRules.length === 0 ? (
+              <p className="text-text-muted text-sm">No daily rules defined yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {dayRules.map(rule => (
+                  <div key={rule._id} className="flex items-center gap-3 bg-bg-input rounded-lg px-3 py-2.5">
+                    {editingId === rule._id ? (
+                      <>
+                        <input
+                          type="text"
+                          className="flex-1 px-2 py-1 bg-bg-surface border border-border rounded text-text-primary text-sm focus:outline-none focus:border-accent"
+                          value={editingLabel}
+                          onChange={(e) => setEditingLabel(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && handleUpdateRule(rule._id)}
+                          autoFocus
+                        />
+                        <button className="text-positive text-xs font-medium" onClick={() => handleUpdateRule(rule._id)}>Save</button>
+                        <button className="text-text-muted text-xs" onClick={() => setEditingId(null)}>Cancel</button>
+                      </>
+                    ) : (
+                      <>
+                        <Icons.Target className="w-4 h-4 text-info flex-shrink-0" />
+                        <span className="flex-1 text-text-primary text-sm">{rule.label}</span>
+                        <button
+                          className="text-text-muted hover:text-text-secondary text-xs"
+                          onClick={() => { setEditingId(rule._id); setEditingLabel(rule.label); }}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="text-text-muted hover:text-negative text-xs"
+                          onClick={() => handleDeleteRule(rule._id)}
+                        >
+                          Delete
+                        </button>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'analytics' && (
+        <div className="space-y-6">
+          {/* Discipline Score */}
+          <div className="bg-bg-surface border border-border rounded-xl p-5">
+            <h3 className="text-text-primary font-semibold text-sm mb-3">Overall Discipline Score</h3>
+            <div className="flex items-center gap-4">
+              <div className="text-3xl font-bold font-mono text-accent">{disciplineScore.toFixed(0)}%</div>
+              <div className="flex-1">
+                <div className="w-full bg-bg-input rounded-full h-3">
+                  <div
+                    className="bg-accent h-3 rounded-full transition-all"
+                    style={{ width: `${Math.min(100, disciplineScore)}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Per-rule analytics */}
+          {analytics.length === 0 ? (
+            <div className="bg-bg-surface border border-border rounded-xl p-8 text-center">
+              <p className="text-text-muted text-sm">No rule check data yet. Start checking off rules in your day detail panels.</p>
+            </div>
+          ) : (
+            <>
+              {/* Trade Rule Analytics */}
+              {analytics.filter(a => a.type === 'trade').length > 0 && (
+                <div className="bg-bg-surface border border-border rounded-xl p-5">
+                  <h3 className="text-text-primary font-semibold text-sm mb-4">Trade Rule Analytics</h3>
+                  <div className="space-y-4">
+                    {analytics.filter(a => a.type === 'trade').map(a => (
+                      <div key={a.ruleId} className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-text-primary text-sm">{a.label}</span>
+                          <span className="text-text-secondary text-xs font-mono">{a.adherenceRate.toFixed(0)}% adherence</span>
+                        </div>
+                        <div className="w-full bg-bg-input rounded-full h-2">
+                          <div
+                            className={`h-2 rounded-full transition-all ${a.adherenceRate >= 70 ? 'bg-positive' : a.adherenceRate >= 40 ? 'bg-warning' : 'bg-negative'}`}
+                            style={{ width: `${Math.min(100, a.adherenceRate)}%` }}
+                          />
+                        </div>
+                        <div className="flex gap-4 text-xs">
+                          <span className="text-text-tertiary">
+                            Followed: <span className="text-positive font-mono">{a.followedCount}</span>
+                          </span>
+                          <span className="text-text-tertiary">
+                            Broken: <span className="text-negative font-mono">{a.brokenCount}</span>
+                          </span>
+                          {a.total > 0 && (
+                            <>
+                              <span className="text-text-tertiary">
+                                Avg P&L followed: <span className={`font-mono ${a.avgPLFollowed >= 0 ? 'text-positive' : 'text-negative'}`}>${a.avgPLFollowed.toFixed(2)}</span>
+                              </span>
+                              <span className="text-text-tertiary">
+                                Avg P&L broken: <span className={`font-mono ${a.avgPLBroken >= 0 ? 'text-positive' : 'text-negative'}`}>${a.avgPLBroken.toFixed(2)}</span>
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Daily Rule Analytics */}
+              {analytics.filter(a => a.type === 'day').length > 0 && (
+                <div className="bg-bg-surface border border-border rounded-xl p-5">
+                  <h3 className="text-text-primary font-semibold text-sm mb-4">Daily Rule Analytics</h3>
+                  <div className="space-y-4">
+                    {analytics.filter(a => a.type === 'day').map(a => (
+                      <div key={a.ruleId} className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-text-primary text-sm">{a.label}</span>
+                          <span className="text-text-secondary text-xs font-mono">{a.adherenceRate.toFixed(0)}% adherence</span>
+                        </div>
+                        <div className="w-full bg-bg-input rounded-full h-2">
+                          <div
+                            className={`h-2 rounded-full transition-all ${a.adherenceRate >= 70 ? 'bg-positive' : a.adherenceRate >= 40 ? 'bg-warning' : 'bg-negative'}`}
+                            style={{ width: `${Math.min(100, a.adherenceRate)}%` }}
+                          />
+                        </div>
+                        <div className="flex gap-4 text-xs">
+                          <span className="text-text-tertiary">
+                            Followed: <span className="text-positive font-mono">{a.followedCount}</span>
+                          </span>
+                          <span className="text-text-tertiary">
+                            Broken: <span className="text-negative font-mono">{a.brokenCount}</span>
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Most Broken Rules */}
+              {analytics.filter(a => a.brokenCount > 0).length > 0 && (
+                <div className="bg-bg-surface border border-border rounded-xl p-5">
+                  <h3 className="text-text-primary font-semibold text-sm mb-3">Most Broken Rules</h3>
+                  <div className="space-y-2">
+                    {analytics
+                      .filter(a => a.brokenCount > 0)
+                      .sort((a, b) => b.brokenCount - a.brokenCount)
+                      .slice(0, 5)
+                      .map(a => (
+                        <div key={a.ruleId} className="flex items-center justify-between bg-bg-input rounded-lg px-3 py-2">
+                          <span className="text-text-primary text-sm">{a.label}</span>
+                          <span className="text-negative text-xs font-mono">{a.brokenCount} time{a.brokenCount !== 1 ? 's' : ''}</span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// =====================================================
 // TRIAL BANNER
 // =====================================================
 const TrialBanner = ({ subscriptionStatus, proPrice }) => {
@@ -4955,6 +5500,7 @@ const App = () => {
   });
   const [dailyNotes, setDailyNotes] = useState([]);
   const [pricing, setPricing] = useState({ pro: '19', elite: '24', trialDays: '14' });
+  const [strategyRules, setStrategyRules] = useState([]);
 
   const triggerReload = () => setReloadTrades(!reloadTrades);
 
@@ -5063,6 +5609,10 @@ const App = () => {
     };
     fetchSubscriptionStatus();
     fetch('/api/pricing').then(r => r.json()).then(setPricing).catch(() => {});
+    authFetch('/api/strategy/rules')
+      .then(r => r.json())
+      .then(data => { if (data.rules) setStrategyRules(data.rules); })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -5143,7 +5693,7 @@ const App = () => {
   const renderPage = () => {
     switch (currentPage) {
       case 'dashboard':
-        return <DashboardPage trades={trades} subscriptionStatus={subscriptionStatus} onOpenForm={openForm} dailyNotes={dailyNotes} onSaveNote={handleSaveNote} onDeleteNote={handleDeleteNote} tags={tags} />;
+        return <DashboardPage trades={trades} subscriptionStatus={subscriptionStatus} onOpenForm={openForm} dailyNotes={dailyNotes} onSaveNote={handleSaveNote} onDeleteNote={handleDeleteNote} tags={tags} strategyRules={strategyRules} />;
       case 'trades':
         return (
           <TradeListPage
@@ -5157,6 +5707,8 @@ const App = () => {
         );
       case 'analytics':
         return <AnalyticsPage trades={trades} />;
+      case 'strategy':
+        return <StrategyPage subscriptionStatus={subscriptionStatus} trades={trades} />;
       case 'premarket':
         return <PreMarketPage subscriptionStatus={subscriptionStatus} />;
       case 'settings':
@@ -5164,7 +5716,7 @@ const App = () => {
       case 'upgrade':
         return <UpgradePage pricing={pricing} />;
       default:
-        return <DashboardPage trades={trades} subscriptionStatus={subscriptionStatus} onOpenForm={openForm} dailyNotes={dailyNotes} onSaveNote={handleSaveNote} onDeleteNote={handleDeleteNote} tags={tags} />;
+        return <DashboardPage trades={trades} subscriptionStatus={subscriptionStatus} onOpenForm={openForm} dailyNotes={dailyNotes} onSaveNote={handleSaveNote} onDeleteNote={handleDeleteNote} tags={tags} strategyRules={strategyRules} />;
     }
   };
 

@@ -79,6 +79,7 @@ account.get(
   checkSubscriptionStatus,
   async (c) => {
     const status = c.get('subscriptionStatus' as any);
+    const profile = c.get('profile');
     if (!status) {
       return c.json({ error: 'Subscription status not available' }, 500);
     }
@@ -86,6 +87,7 @@ account.get(
       isPremium: status.isPremium,
       isTrialActive: status.isTrialActive,
       trialDaysRemaining: status.trialDaysRemaining,
+      plan: profile.subscription_plan || 'trial',
     });
   },
 );
@@ -125,6 +127,7 @@ account.get('/api/pricing', async (c) => {
           'Unlimited broker connections',
           'Custom analysis formulas',
           'Discord news alerts',
+          'Strategy & rule tracking',
         ],
       },
     },
@@ -137,6 +140,7 @@ account.get('/api/pricing', async (c) => {
       // aiInsights: ['elite'],
       multipleScreenshots: ['elite'],
       unlimitedBrokers: ['elite'],
+      strategyRules: ['elite'],
     },
   });
 });

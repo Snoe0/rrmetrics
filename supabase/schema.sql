@@ -306,3 +306,101 @@ ALTER TABLE public.premarket_economic_events ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Authenticated users can view economic events"
   ON public.premarket_economic_events FOR SELECT
   USING (auth.role() = 'authenticated');
+
+-- ============================================
+-- STRATEGY RULES
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.strategy_rules (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  label TEXT NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('trade', 'day')),
+  sort_order INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_strategy_rules_user_id ON public.strategy_rules(user_id);
+
+ALTER TABLE public.strategy_rules ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own strategy rules"
+  ON public.strategy_rules FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own strategy rules"
+  ON public.strategy_rules FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own strategy rules"
+  ON public.strategy_rules FOR UPDATE
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own strategy rules"
+  ON public.strategy_rules FOR DELETE
+  USING (auth.uid() = user_id);
+
+-- ============================================
+-- TRADE RULE CHECKS (per-trade rule check-offs)
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.trade_rule_checks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  trade_id UUID NOT NULL REFERENCES public.trades(id) ON DELETE CASCADE,
+  rule_id UUID NOT NULL REFERENCES public.strategy_rules(id) ON DELETE CASCADE,
+  followed BOOLEAN NOT NULL DEFAULT false,
+  UNIQUE(user_id, trade_id, rule_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_trade_rule_checks_user_id ON public.trade_rule_checks(user_id);
+CREATE INDEX IF NOT EXISTS idx_trade_rule_checks_trade_id ON public.trade_rule_checks(trade_id);
+
+ALTER TABLE public.trade_rule_checks ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own trade rule checks"
+  ON public.trade_rule_checks FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own trade rule checks"
+  ON public.trade_rule_checks FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own trade rule checks"
+  ON public.trade_rule_checks FOR UPDATE
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own trade rule checks"
+  ON public.trade_rule_checks FOR DELETE
+  USING (auth.uid() = user_id);
+
+-- ============================================
+-- DAILY RULE CHECKS (per-day rule check-offs)
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.daily_rule_checks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  rule_id UUID NOT NULL REFERENCES public.strategy_rules(id) ON DELETE CASCADE,
+  check_date DATE NOT NULL,
+  followed BOOLEAN NOT NULL DEFAULT false,
+  UNIQUE(user_id, rule_id, check_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_daily_rule_checks_user_id ON public.daily_rule_checks(user_id);
+CREATE INDEX IF NOT EXISTS idx_daily_rule_checks_date ON public.daily_rule_checks(user_id, check_date);
+
+ALTER TABLE public.daily_rule_checks ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own daily rule checks"
+  ON public.daily_rule_checks FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own daily rule checks"
+  ON public.daily_rule_checks FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own daily rule checks"
+  ON public.daily_rule_checks FOR UPDATE
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete own daily rule checks"
+  ON public.daily_rule_checks FOR DELETE
+  USING (auth.uid() = user_id);

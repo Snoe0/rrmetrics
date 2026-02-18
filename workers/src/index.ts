@@ -12,6 +12,7 @@ import dailyNoteRoutes from './routes/daily-note';
 import tradovateRoutes from './routes/tradovate';
 import stripeRoutes from './routes/stripe';
 import premarketRoutes from './routes/premarket';
+import strategyRoutes from './routes/strategy';
 import pageRoutes from './routes/pages';
 
 type HonoEnv = {
@@ -36,6 +37,7 @@ app.route('/', dailyNoteRoutes);
 app.route('/', tradovateRoutes);
 app.route('/', stripeRoutes);
 app.route('/', premarketRoutes);
+app.route('/', strategyRoutes);
 
 // Page routes (HTML serving)
 app.route('/', pageRoutes);
