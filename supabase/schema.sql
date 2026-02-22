@@ -515,39 +515,3 @@ CREATE POLICY "Users can manage own backtesting sessions"
 CREATE POLICY "Users can manage own backtesting trades"
   ON public.backtesting_trades FOR ALL
   USING (auth.uid() = user_id);
-
--- ============================================
--- BACKTESTING TABLES
--- ============================================
-CREATE TABLE IF NOT EXISTS public.backtesting_sessions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  name TEXT,
-  ticker TEXT NOT NULL,
-  start_date DATE NOT NULL,
-  end_date DATE,
-  is_active BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS public.backtesting_trades (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  session_id UUID NOT NULL REFERENCES public.backtesting_sessions(id) ON DELETE CASCADE,
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  result TEXT NOT NULL CHECK (result IN ('win', 'loss')),
-  profit_factor DOUBLE PRECISION NOT NULL,
-  time_of_day TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- RLS
-ALTER TABLE public.backtesting_sessions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.backtesting_trades ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can manage own backtesting sessions"
-  ON public.backtesting_sessions FOR ALL
-  USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can manage own backtesting trades"
-  ON public.backtesting_trades FOR ALL
-  USING (auth.uid() = user_id);

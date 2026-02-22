@@ -6798,10 +6798,8 @@ const StrategyPage = ({ subscriptionStatus, trades, evalFilter, setEvalFilter })
 // =====================================================
 // Wrapper — handles subscription gate without conditionally calling hooks.
 const BacktestingPage = ({ subscriptionStatus }) => {
-  const plan = subscriptionStatus?.plan;
-
   // Elite-only feature — show locked peek for everyone else
-  if (plan !== 'elite') {
+  if (subscriptionStatus && !subscriptionStatus.isPremium) {
     return (
       <div className="max-w-4xl">
         <h1 className="text-text-primary text-2xl font-bold mb-1">Backtesting</h1>
@@ -6894,7 +6892,7 @@ const BacktestingContent = () => {
   const [newStartDate, setNewStartDate] = useState(() => new Date().toISOString().slice(0, 10));
 
   // End session form state
-  const [endDate, setEndDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [endDate, setEndDate] = useState('');
 
   // Add trade form state
   const [tradeResult, setTradeResult] = useState('win');
@@ -6961,7 +6959,7 @@ const BacktestingContent = () => {
         body: JSON.stringify({ endDate }),
       });
       setShowEndForm(false);
-      setEndDate(new Date().toISOString().slice(0, 10));
+      setEndDate('');
       await load();
     } catch (err) {
       console.error('Failed to end session', err);
@@ -6985,6 +6983,13 @@ const BacktestingContent = () => {
     } catch (err) {
       console.error('Failed to delete session', err);
     }
+  };
+
+  const openEndForm = () => {
+    if (!showEndForm && activeSession) {
+      setEndDate(activeSession.endDate || activeSession.startDate);
+    }
+    setShowEndForm(!showEndForm);
   };
 
   const handleAddTrade = async (e) => {
@@ -7106,140 +7111,137 @@ const BacktestingContent = () => {
 
       {/* Active Session Panel */}
       {activeSession && (
-        <div className="bg-bg-surface border border-accent/30 rounded-xl p-5 space-y-4">
-          <div className="flex items-start justify-between flex-wrap gap-3">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <span className="w-2 h-2 rounded-full bg-positive animate-pulse"></span>
-                <span className="text-xs font-semibold uppercase tracking-wider text-positive">Active Session</span>
-              </div>
-              <h2 className="text-text-primary font-semibold text-lg">
-                {activeSession.name || activeSession.ticker}
-                {activeSession.name && <span className="text-text-muted font-normal ml-2 text-sm">({activeSession.ticker})</span>}
-              </h2>
-              <p className="text-text-muted text-xs mt-0.5">Started {activeSession.startDate}</p>
-            </div>
-            <div className="flex gap-2">
-              {!showStartForm && (
-                <button className={btnPrimary} onClick={() => setShowStartForm(true)}>+ New Session</button>
-              )}
-              <button
-                className="px-4 py-2 bg-negative/10 border border-negative/30 text-negative text-sm font-medium rounded-lg hover:bg-negative/20 transition-colors"
-                onClick={() => setShowEndForm(!showEndForm)}
-              >
-                End Session
-              </button>
-            </div>
-          </div>
-
-          {/* End session inline form */}
-          {showEndForm && (
-            <form onSubmit={handleEndSession} className="flex items-end gap-3 pt-2 border-t border-border">
-              <div>
-                <label className={labelClass}>End Date</label>
-                <input type="date" className={`${inputClass} w-auto`} value={endDate} onChange={e => setEndDate(e.target.value)} required />
-              </div>
-              <button type="submit" className="px-4 py-2 bg-negative/10 border border-negative/30 text-negative text-sm font-medium rounded-lg hover:bg-negative/20 transition-colors">
-                Confirm End
-              </button>
-              <button type="button" className={btnSecondary} onClick={() => setShowEndForm(false)}>Cancel</button>
-            </form>
-          )}
-
-          {/* Add Trade Form */}
-          <form onSubmit={handleAddTrade} className="border-t border-border pt-4">
-            <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider mb-3">Log Trade</p>
-            <div className="flex flex-wrap items-end gap-3">
-              {/* Win / Loss toggle */}
-              <div>
-                <label className={labelClass}>Result</label>
-                <div className="flex rounded-lg overflow-hidden border border-border">
+        <div className="bg-bg-surface border border-accent/30 rounded-xl p-5">
+          <div className="flex gap-6">
+            {/* Left column: header + controls + add trade form */}
+            <div className="flex-1 min-w-0 space-y-4">
+              <div className="flex items-start justify-between flex-wrap gap-3">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="w-2 h-2 rounded-full bg-positive animate-pulse"></span>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-positive">Active Session</span>
+                  </div>
+                  <h2 className="text-text-primary font-semibold text-lg">
+                    {activeSession.name || activeSession.ticker}
+                    {activeSession.name && <span className="text-text-muted font-normal ml-2 text-sm">({activeSession.ticker})</span>}
+                  </h2>
+                  <p className="text-text-muted text-xs mt-0.5">Started {activeSession.startDate}</p>
+                </div>
+                <div className="flex gap-2">
+                  {!showStartForm && (
+                    <button className={btnPrimary} onClick={() => setShowStartForm(true)}>+ New Session</button>
+                  )}
                   <button
-                    type="button"
-                    onClick={() => setTradeResult('win')}
-                    className={`px-4 py-2 text-sm font-semibold transition-colors ${tradeResult === 'win' ? 'bg-positive text-white' : 'bg-bg-input text-text-muted hover:text-text-primary'}`}
+                    className="px-4 py-2 bg-negative/10 border border-negative/30 text-negative text-sm font-medium rounded-lg hover:bg-negative/20 transition-colors"
+                    onClick={openEndForm}
                   >
-                    Win
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTradeResult('loss')}
-                    className={`px-4 py-2 text-sm font-semibold transition-colors ${tradeResult === 'loss' ? 'bg-negative text-white' : 'bg-bg-input text-text-muted hover:text-text-primary'}`}
-                  >
-                    Loss
+                    End Session
                   </button>
                 </div>
               </div>
-              <div className="flex-1 min-w-[100px]">
-                <label className={labelClass}>Profit Factor</label>
-                <input
-                  type="number" step="0.01" min="0"
-                  className={inputClass}
-                  placeholder="e.g. 2.5"
-                  value={tradePF}
-                  onChange={e => setTradePF(e.target.value)}
-                  required
-                />
-              </div>
-              <div>
-                <label className={labelClass}>Time of Trade</label>
-                <input
-                  type="time"
-                  className={inputClass}
-                  value={tradeTime}
-                  onChange={e => setTradeTime(e.target.value)}
-                  required
-                />
-              </div>
-              <button type="submit" className={btnPrimary} disabled={tradeSubmitting}>
-                {tradeSubmitting ? 'Adding...' : 'Add Trade'}
-              </button>
-            </div>
-          </form>
 
-          {/* Trades list for active session */}
-          {activeTrades.length > 0 && (
-            <div className="border-t border-border pt-4">
-              <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider mb-2">
-                Trades ({activeTrades.length})
-              </p>
-              <div className="rounded-lg border border-border overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-bg-input border-b border-border">
-                      <th className="text-left px-3 py-2 text-text-tertiary font-medium text-xs">#</th>
-                      <th className="text-left px-3 py-2 text-text-tertiary font-medium text-xs">Result</th>
-                      <th className="text-right px-3 py-2 text-text-tertiary font-medium text-xs">Profit Factor</th>
-                      <th className="text-right px-3 py-2 text-text-tertiary font-medium text-xs">Time</th>
-                      <th className="text-right px-3 py-2 text-text-tertiary font-medium text-xs"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {activeTrades.map((t, i) => (
-                      <tr key={t._id} className="border-b border-border/50 last:border-0 hover:bg-bg-input/50">
-                        <td className="px-3 py-2 text-text-muted font-mono">{i + 1}</td>
-                        <td className="px-3 py-2">
-                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${t.result === 'win' ? 'bg-positive/10 text-positive' : 'bg-negative/10 text-negative'}`}>
-                            {t.result === 'win' ? 'Win' : 'Loss'}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-right font-mono text-text-primary">{t.profitFactor.toFixed(2)}x</td>
-                        <td className="px-3 py-2 text-right font-mono text-text-secondary">{t.timeOfDay}</td>
-                        <td className="px-3 py-2 text-right">
-                          <button
-                            onClick={() => handleDeleteTrade(t._id)}
-                            className="text-text-muted hover:text-negative transition-colors p-1"
-                          >
-                            <Icons.Trash className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              {/* End session inline form */}
+              {showEndForm && (
+                <form onSubmit={handleEndSession} className="flex items-end gap-3 pt-2 border-t border-border">
+                  <div>
+                    <label className={labelClass}>End Date</label>
+                    <input type="date" className={`${inputClass} w-auto`} value={endDate} onChange={e => setEndDate(e.target.value)} required />
+                  </div>
+                  <button type="submit" className="px-4 py-2 bg-negative/10 border border-negative/30 text-negative text-sm font-medium rounded-lg hover:bg-negative/20 transition-colors">
+                    Confirm End
+                  </button>
+                  <button type="button" className={btnSecondary} onClick={() => setShowEndForm(false)}>Cancel</button>
+                </form>
+              )}
+
+              {/* Add Trade Form */}
+              <form onSubmit={handleAddTrade} className="border-t border-border pt-4">
+                <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider mb-3">Log Trade</p>
+                <div className="flex flex-wrap items-end gap-3">
+                  <div>
+                    <label className={labelClass}>Result</label>
+                    <div className="flex rounded-lg overflow-hidden border border-border">
+                      <button
+                        type="button"
+                        onClick={() => setTradeResult('win')}
+                        className={`px-4 py-2 text-sm font-semibold transition-colors ${tradeResult === 'win' ? 'bg-positive text-white' : 'bg-bg-input text-text-muted hover:text-text-primary'}`}
+                      >
+                        Win
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTradeResult('loss')}
+                        className={`px-4 py-2 text-sm font-semibold transition-colors ${tradeResult === 'loss' ? 'bg-negative text-white' : 'bg-bg-input text-text-muted hover:text-text-primary'}`}
+                      >
+                        Loss
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex-1 min-w-[100px]">
+                    <label className={labelClass}>Profit Factor</label>
+                    <input
+                      type="number" step="0.01" min="0"
+                      className={inputClass}
+                      placeholder="e.g. 2.5"
+                      value={tradePF}
+                      onChange={e => setTradePF(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Time of Trade</label>
+                    <input
+                      type="time"
+                      className={inputClass}
+                      value={tradeTime}
+                      onChange={e => setTradeTime(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <button type="submit" className={btnPrimary} disabled={tradeSubmitting}>
+                    {tradeSubmitting ? 'Adding...' : 'Add Trade'}
+                  </button>
+                </div>
+              </form>
             </div>
-          )}
+
+            {/* Right column: order book — most recent trade at top */}
+            <div className="w-48 flex-shrink-0 border-l border-border pl-5">
+              <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider mb-2">
+                Trade Log {activeTrades.length > 0 && <span className="text-text-muted font-normal normal-case">({activeTrades.length})</span>}
+              </p>
+              {activeTrades.length === 0 ? (
+                <p className="text-text-muted text-xs mt-4">No trades yet</p>
+              ) : (
+                <div className="space-y-1 max-h-64 overflow-y-auto pr-1">
+                  {[...activeTrades].reverse().map((t) => (
+                    <div
+                      key={t._id}
+                      className={`flex items-center justify-between gap-2 px-2 py-1.5 rounded border-l-2 text-xs ${
+                        t.result === 'win'
+                          ? 'border-positive bg-positive/5'
+                          : 'border-negative bg-negative/5'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className={`font-semibold w-3 ${t.result === 'win' ? 'text-positive' : 'text-negative'}`}>
+                          {t.result === 'win' ? 'W' : 'L'}
+                        </span>
+                        <span className="font-mono text-text-primary">{t.profitFactor.toFixed(2)}x</span>
+                        <span className="text-text-muted">{t.timeOfDay}</span>
+                      </div>
+                      <button
+                        onClick={() => handleDeleteTrade(t._id)}
+                        className="text-text-muted hover:text-negative transition-colors flex-shrink-0"
+                      >
+                        <Icons.X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
