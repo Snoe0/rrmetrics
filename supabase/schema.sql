@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   email TEXT NOT NULL,
   stripe_customer_id TEXT,
   stripe_subscription_id TEXT,
-  subscription_plan TEXT NOT NULL DEFAULT 'trial',
+  subscription_plan TEXT NOT NULL DEFAULT 'free',
   subscription_status TEXT,
   theme TEXT NOT NULL DEFAULT 'dark',
   custom_colors_bg_page TEXT,
@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS public.trades (
   image_attachments JSONB NOT NULL DEFAULT '[]'::jsonb,
   screenshot TEXT,
   comments TEXT NOT NULL DEFAULT '',
+  is_eval BOOLEAN NOT NULL DEFAULT FALSE,
   tradovate_order_id TEXT,
   tradovate_source TEXT NOT NULL DEFAULT 'manual',
   created_date TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -234,7 +235,7 @@ CREATE TABLE IF NOT EXISTS public.premarket_settings (
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE UNIQUE,
   reset_time TEXT NOT NULL DEFAULT '06:00',
   timezone TEXT NOT NULL DEFAULT 'America/New_York',
-  discord_webhook_url TEXT
+  discord_webhook_url TEXT -- DEPRECATED: Discord webhook feature removed; column can be dropped
 );
 
 -- Pre-Market Checklist Items RLS
@@ -287,7 +288,9 @@ CREATE POLICY "Users can update own premarket settings"
   USING (auth.uid() = user_id);
 
 -- ============================================
--- PRE-MARKET ECONOMIC EVENTS (shared, not user-scoped)
+-- PRE-MARKET ECONOMIC EVENTS (DEPRECATED — no longer used by application code)
+-- The FRED API integration and Discord webhook notifications have been removed.
+-- This table can be dropped once confirmed no longer needed.
 -- ============================================
 CREATE TABLE IF NOT EXISTS public.premarket_economic_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -306,6 +309,21 @@ ALTER TABLE public.premarket_economic_events ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Authenticated users can view economic events"
   ON public.premarket_economic_events FOR SELECT
   USING (auth.role() = 'authenticated');
+
+-- ============================================
+-- TRADOVATE OAUTH MIGRATION
+-- Run after initial schema setup to switch from
+-- username/password to OAuth token storage.
+-- ============================================
+ALTER TABLE public.profiles
+  DROP COLUMN IF EXISTS tradovate_username,
+  DROP COLUMN IF EXISTS tradovate_password,
+  DROP COLUMN IF EXISTS tradovate_cid,
+  DROP COLUMN IF EXISTS tradovate_secret;
+
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS tradovate_access_token TEXT,
+  ADD COLUMN IF NOT EXISTS tradovate_token_expires_at TIMESTAMPTZ;
 
 -- ============================================
 -- STRATEGY RULES
@@ -373,6 +391,63 @@ CREATE POLICY "Users can delete own trade rule checks"
   USING (auth.uid() = user_id);
 
 -- ============================================
+-- REFERRAL CODES
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.referral_codes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE UNIQUE,
+  code TEXT NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_referral_codes_code ON public.referral_codes(code);
+
+ALTER TABLE public.referral_codes ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own referral code"
+  ON public.referral_codes FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own referral code"
+  ON public.referral_codes FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+-- ============================================
+-- REFERRAL USES
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.referral_uses (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  referrer_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  referred_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE UNIQUE,
+  subscription_started_at TIMESTAMPTZ,
+  first_month_completed_at TIMESTAMPTZ,
+  referrer_rewarded_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_referral_uses_referrer ON public.referral_uses(referrer_id);
+CREATE INDEX IF NOT EXISTS idx_referral_uses_referred ON public.referral_uses(referred_id);
+
+ALTER TABLE public.referral_uses ENABLE ROW LEVEL SECURITY;
+
+-- Referred user can see their own row; referrer can see rows where they referred someone
+CREATE POLICY "Users can view own referral use"
+  ON public.referral_uses FOR SELECT
+  USING (auth.uid() = referred_id OR auth.uid() = referrer_id);
+
+-- Only the backend (service role) inserts/updates referral_uses rows
+-- (client calls /api/referral/apply which runs as service role)
+
+-- ============================================
+-- REFERRAL MONTHS EARNED (on profiles)
+-- ============================================
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS referral_months_earned INT NOT NULL DEFAULT 0;
+
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS registration_ip TEXT;
+
+-- ============================================
 -- DAILY RULE CHECKS (per-day rule check-offs)
 -- ============================================
 CREATE TABLE IF NOT EXISTS public.daily_rule_checks (
@@ -403,4 +478,76 @@ CREATE POLICY "Users can update own daily rule checks"
 
 CREATE POLICY "Users can delete own daily rule checks"
   ON public.daily_rule_checks FOR DELETE
+  USING (auth.uid() = user_id);
+
+-- ============================================
+-- BACKTESTING TABLES
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.backtesting_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  name TEXT,
+  ticker TEXT NOT NULL,
+  start_date DATE NOT NULL,
+  end_date DATE,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.backtesting_trades (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id UUID NOT NULL REFERENCES public.backtesting_sessions(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  result TEXT NOT NULL CHECK (result IN ('win', 'loss')),
+  profit_factor DOUBLE PRECISION NOT NULL,
+  time_of_day TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- RLS
+ALTER TABLE public.backtesting_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.backtesting_trades ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can manage own backtesting sessions"
+  ON public.backtesting_sessions FOR ALL
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can manage own backtesting trades"
+  ON public.backtesting_trades FOR ALL
+  USING (auth.uid() = user_id);
+
+-- ============================================
+-- BACKTESTING TABLES
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.backtesting_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  name TEXT,
+  ticker TEXT NOT NULL,
+  start_date DATE NOT NULL,
+  end_date DATE,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.backtesting_trades (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id UUID NOT NULL REFERENCES public.backtesting_sessions(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  result TEXT NOT NULL CHECK (result IN ('win', 'loss')),
+  profit_factor DOUBLE PRECISION NOT NULL,
+  time_of_day TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- RLS
+ALTER TABLE public.backtesting_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.backtesting_trades ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can manage own backtesting sessions"
+  ON public.backtesting_sessions FOR ALL
+  USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can manage own backtesting trades"
+  ON public.backtesting_trades FOR ALL
   USING (auth.uid() = user_id);
