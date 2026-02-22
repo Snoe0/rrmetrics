@@ -1,7 +1,7 @@
 const helper = require('./helper.js');
 const { authFetch, supabase } = helper;
 const React = require('react');
-const { useState, useEffect, useRef } = React;
+const { useState, useEffect, useRef, useMemo } = React;
 const { createRoot } = require('react-dom/client');
 const Papa = require('papaparse');
 require('./styles/globals.css');
@@ -9,7 +9,7 @@ require('./styles/globals.css');
 // =====================================================
 // UTILITY FUNCTIONS
 // =====================================================
-const resizeImage = (dataUrl, maxWidth = 854, maxHeight = 480) => {
+const resizeImage = (dataUrl, maxWidth = 1280, maxHeight = 720) => {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
@@ -30,6 +30,37 @@ const resizeImage = (dataUrl, maxWidth = 854, maxHeight = 480) => {
   });
 };
 
+// Dollar value per 1 point of price movement for common futures contracts.
+// Used when manualPL is not set. Add more tickers here as needed.
+const TICK_VALUES = {
+  // Equity index futures
+  NQ: 20, MNQ: 2,
+  ES: 50, MES: 5,
+  YM: 5,  MYM: 0.5,
+  RTY: 50, M2K: 5,
+  // Metals
+  GC: 100, MGC: 10,
+  SI: 5000, SIL: 1000,
+  // Energy
+  CL: 1000, MCL: 100,
+  NG: 10000,
+  // Rates
+  ZB: 1000, ZN: 1000, ZF: 1000,
+};
+
+const COMMON_TICKERS = [
+  // Futures (from TICK_VALUES)
+  'ES', 'MES', 'NQ', 'MNQ', 'YM', 'MYM', 'RTY', 'M2K',
+  'GC', 'MGC', 'SI', 'SIL', 'CL', 'MCL', 'NG',
+  'ZB', 'ZN', 'ZF',
+  // Popular stocks & ETFs
+  'SPY', 'QQQ', 'AAPL', 'MSFT', 'TSLA', 'AMZN', 'NVDA', 'GOOGL',
+  'META', 'AMD', 'INTC', 'JPM', 'BAC', 'DIS', 'NFLX',
+  'COIN', 'SOFI', 'PLTR', 'IWM', 'DIA', 'GLD', 'TLT',
+];
+
+const getPointValue = (ticker) => TICK_VALUES[(ticker || '').toUpperCase()] ?? 1;
+
 const calculateAnalytics = (trades) => {
   if (!trades || trades.length === 0) {
     return {
@@ -41,9 +72,7 @@ const calculateAnalytics = (trades) => {
 
   const tradesWithPL = trades.map(trade => ({
     ...trade,
-    pl: trade.manualPL !== null && trade.manualPL !== undefined
-      ? trade.manualPL
-      : (trade.exitPrice - trade.enterPrice) * trade.quantity,
+    pl: getTradePL(trade),
     duration: new Date(trade.exitTime) - new Date(trade.enterTime)
   }));
 
@@ -85,9 +114,7 @@ const formatDuration = (milliseconds) => {
 const groupTradesByDate = (trades) => {
   const grouped = {};
   trades.forEach(trade => {
-    const pl = trade.manualPL !== null && trade.manualPL !== undefined
-      ? trade.manualPL
-      : (trade.exitPrice - trade.enterPrice) * trade.quantity;
+    const pl = getTradePL(trade);
     const e = toEST(trade.exitTime);
     const dateKey = `${e.year}-${String(e.month).padStart(2, '0')}-${String(e.day).padStart(2, '0')}`;
     if (!grouped[dateKey]) grouped[dateKey] = { totalPL: 0, tradeCount: 0, trades: [] };
@@ -197,9 +224,8 @@ const drawTooltip = (ctx, x, y, title, lines, canvasWidth, canvasHeight) => {
 };
 
 const getTradePL = (trade) => {
-  return trade.manualPL !== null && trade.manualPL !== undefined
-    ? trade.manualPL
-    : (trade.exitPrice - trade.enterPrice) * trade.quantity;
+  if (trade.manualPL !== null && trade.manualPL !== undefined) return trade.manualPL;
+  return (trade.exitPrice - trade.enterPrice) * trade.quantity * getPointValue(trade.ticker);
 };
 
 // =====================================================
@@ -462,8 +488,14 @@ const handleTrade = (e, onTradeAdded, screenshotData, tags) => {
   const manualPL = e.target.querySelector('#manualPL').value;
   const comments = e.target.querySelector('#comments').value;
 
-  if (!ticker || !enterTimeRaw || !exitTimeRaw || !enterPrice || !exitPrice || !quantity) {
-    helper.handleError('Ticker, enter time, exit time, enter price, exit price, and quantity are required');
+  const hasPrices = enterPrice && exitPrice;
+  const hasPL = !!manualPL;
+  if (!ticker || !enterTimeRaw || !exitTimeRaw || !quantity) {
+    helper.handleError('Ticker, enter time, exit time, and quantity are required');
+    return false;
+  }
+  if (!hasPrices && !hasPL) {
+    helper.handleError('Either enter/exit prices or a manual P/L is required');
     return false;
   }
 
@@ -473,13 +505,13 @@ const handleTrade = (e, onTradeAdded, screenshotData, tags) => {
 
   const tradeData = {
     ticker, enterTime, exitTime,
-    enterPrice: parseFloat(enterPrice),
-    exitPrice: parseFloat(exitPrice),
+    enterPrice: hasPrices ? parseFloat(enterPrice) : 0,
+    exitPrice: hasPrices ? parseFloat(exitPrice) : 0,
     quantity: parseFloat(quantity),
     comments
   };
 
-  if (manualPL) tradeData.manualPL = parseFloat(manualPL);
+  if (hasPL) tradeData.manualPL = parseFloat(manualPL);
   if (screenshotData) tradeData.screenshot = screenshotData;
   if (tags) tradeData.tags = tags;
 
@@ -510,8 +542,14 @@ const handleUpdateTrade = (e, tradeId, onTradeUpdated, screenshotData, tags) => 
   const manualPL = e.target.querySelector('#manualPL').value;
   const comments = e.target.querySelector('#comments').value;
 
-  if (!ticker || !enterTimeRaw || !exitTimeRaw || !enterPrice || !exitPrice || !quantity) {
-    helper.handleError('Ticker, enter time, exit time, enter price, exit price, and quantity are required');
+  const hasPrices = enterPrice && exitPrice;
+  const hasPL = !!manualPL;
+  if (!ticker || !enterTimeRaw || !exitTimeRaw || !quantity) {
+    helper.handleError('Ticker, enter time, exit time, and quantity are required');
+    return false;
+  }
+  if (!hasPrices && !hasPL) {
+    helper.handleError('Either enter/exit prices or a manual P/L is required');
     return false;
   }
 
@@ -520,19 +558,35 @@ const handleUpdateTrade = (e, tradeId, onTradeUpdated, screenshotData, tags) => 
 
   const tradeData = {
     _id: tradeId, ticker, enterTime, exitTime,
-    enterPrice: parseFloat(enterPrice),
-    exitPrice: parseFloat(exitPrice),
+    enterPrice: hasPrices ? parseFloat(enterPrice) : 0,
+    exitPrice: hasPrices ? parseFloat(exitPrice) : 0,
     quantity: parseFloat(quantity),
     comments
   };
 
-  if (manualPL) tradeData.manualPL = parseFloat(manualPL);
+  if (hasPL) tradeData.manualPL = parseFloat(manualPL);
   if (screenshotData) tradeData.screenshot = screenshotData;
   if (tags) tradeData.tags = tags;
 
   helper.sendPost('/api/updateTrade', tradeData, onTradeUpdated);
   return false;
 };
+
+// =====================================================
+// WINDOW SIZE HOOK + SIDE PANEL CONTEXT
+// =====================================================
+const useWindowWidth = () => {
+  const [width, setWidth] = useState(() => window.innerWidth);
+  useEffect(() => {
+    const handler = () => setWidth(window.innerWidth);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
+  return width;
+};
+
+// Context for side panels to register their width offset with the App layout
+const SidePanelContext = React.createContext(() => {});
 
 // =====================================================
 // ICON COMPONENTS
@@ -737,6 +791,190 @@ const Icons = {
       <circle cx="12" cy="12" r="2"></circle>
     </svg>
   ),
+  BookOpen: (props) => (
+    <svg className={props.className || "w-5 h-5"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+      <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+    </svg>
+  ),
+  Gift: (props) => (
+    <svg className={props.className || "w-5 h-5"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="20 12 20 22 4 22 4 12"></polyline>
+      <rect x="2" y="7" width="20" height="5"></rect>
+      <line x1="12" y1="22" x2="12" y2="7"></line>
+      <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"></path>
+      <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"></path>
+    </svg>
+  ),
+  Copy: (props) => (
+    <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+    </svg>
+  ),
+  FlaskConical: (props) => (
+    <svg className={props.className || "w-5 h-5"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"></path>
+      <path d="M8.5 2h7"></path>
+      <path d="M7 16h10"></path>
+    </svg>
+  ),
+};
+
+// =====================================================
+// REFERRAL PAGE
+// =====================================================
+const ReferralPage = () => {
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [code, setCode] = useState(null);
+  const [link, setLink] = useState(null);
+  const [stats, setStats] = useState({ total: 0, subscribed: 0, completed: 0 });
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    authFetch('/api/referral')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.code) setCode(data.code);
+        if (data.link) setLink(data.link);
+        if (data.stats) setStats(data.stats);
+      })
+      .catch(() => setError('Failed to load referral data.'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleGenerate = async () => {
+    setGenerating(true);
+    setError(null);
+    try {
+      const res = await authFetch('/api/referral/generate', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Failed to generate code.');
+      } else {
+        setCode(data.code);
+        setLink(data.link);
+      }
+    } catch {
+      setError('Failed to generate code.');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleCopy = () => {
+    if (!link) return;
+    navigator.clipboard.writeText(link).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-24 text-text-muted text-sm">
+        Loading...
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto py-6">
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-text-primary mb-1">Refer &amp; Earn</h1>
+        <p className="text-text-secondary text-sm">Share RR Metrics and earn free months.</p>
+      </div>
+
+      {error && (
+        <div className="mb-6 p-3 bg-negative/10 border border-negative/20 rounded-lg text-negative text-sm">
+          {error}
+        </div>
+      )}
+
+      {/* How it works */}
+      <div className="bg-bg-surface border border-border rounded-xl p-6 mb-6">
+        <h2 className="text-text-primary font-semibold text-sm mb-4">How it works</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {[
+            { step: '1', text: 'Generate your unique referral link below' },
+            { step: '2', text: 'A friend signs up with your link — they get 15% off their first month' },
+            { step: '3', text: 'After 3 friends complete their first billing cycle, you earn a free month' },
+          ].map(({ step, text }) => (
+            <div key={step} className="flex gap-3">
+              <div className="w-6 h-6 rounded-full bg-accent/20 text-accent text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+                {step}
+              </div>
+              <p className="text-text-secondary text-sm">{text}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Referral link / generate */}
+      <div className="bg-bg-surface border border-border rounded-xl p-6 mb-6">
+        {code ? (
+          <>
+            <h2 className="text-text-primary font-semibold text-sm mb-1">Your referral link</h2>
+            <p className="text-text-muted text-xs mb-4">
+              Anyone who signs up with this link gets <span className="text-positive font-medium">15% off their first month</span>.
+            </p>
+            <div className="flex gap-2">
+              <div className="flex-1 bg-bg-input border border-border rounded-lg px-3 py-2.5 font-mono text-sm text-text-secondary overflow-x-auto whitespace-nowrap">
+                {link}
+              </div>
+              <button
+                onClick={handleCopy}
+                className="flex items-center gap-2 px-4 py-2.5 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all whitespace-nowrap"
+              >
+                {copied ? <Icons.Check className="w-4 h-4" /> : <Icons.Copy className="w-4 h-4" />}
+                {copied ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+            <p className="text-text-muted text-xs mt-3">Your code: <span className="font-mono text-text-secondary">{code}</span></p>
+          </>
+        ) : (
+          <>
+            <h2 className="text-text-primary font-semibold text-sm mb-1">Get your referral link</h2>
+            <p className="text-text-secondary text-sm mb-4">
+              Generate a unique link to share with friends. A link is only created when you ask for one.
+            </p>
+            <button
+              onClick={handleGenerate}
+              disabled={generating}
+              className="flex items-center gap-2 px-4 py-2.5 bg-accent text-accent-text text-sm font-semibold rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
+            >
+              <Icons.Gift className="w-4 h-4" />
+              {generating ? 'Generating...' : 'Generate My Referral Link'}
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Stats — only show once a code exists */}
+      {code && (
+        <div className="bg-bg-surface border border-border rounded-xl p-6">
+          <h2 className="text-text-primary font-semibold text-sm mb-4">Your stats</h2>
+          <div className="grid grid-cols-3 gap-4">
+            {[
+              { label: 'Referred', value: stats.total },
+              { label: 'Subscribed', value: stats.subscribed },
+              { label: 'First month done', value: stats.completed },
+            ].map(({ label, value }) => (
+              <div key={label} className="text-center p-3 bg-bg-input rounded-lg border border-border">
+                <div className="text-2xl font-bold font-mono text-text-primary">{value}</div>
+                <div className="text-text-muted text-xs mt-1">{label}</div>
+              </div>
+            ))}
+          </div>
+          <p className="text-text-muted text-xs mt-4">
+            Every 3 friends who complete their first billing cycle earns you 1 free month, applied automatically at your next renewal.
+          </p>
+        </div>
+      )}
+    </div>
+  );
 };
 
 // =====================================================
@@ -752,6 +990,7 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus }) => {
     { id: 'analytics', label: 'Analytics', icon: Icons.BarChart },
     { id: 'strategy', label: 'Strategy', icon: Icons.Target },
     { id: 'premarket', label: 'Pre-Market', icon: Icons.Sunrise },
+    { id: 'backtesting', label: 'Backtesting', icon: Icons.FlaskConical },
     { id: 'settings', label: 'Settings', icon: Icons.Settings },
   ];
 
@@ -816,8 +1055,8 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus }) => {
           })}
         </div>
 
-        {/* Upgrade box */}
-        {(!subscriptionStatus || !subscriptionStatus.isPremium) && (
+        {/* Upgrade box — show for trial and free users, not for paid */}
+        {(!subscriptionStatus || (subscriptionStatus.plan !== 'pro' && subscriptionStatus.plan !== 'elite')) && (
           <div className="px-4 pb-3">
             <div className="bg-bg-surface border border-border rounded-xl p-4">
               <div className="flex items-center gap-2 mb-2">
@@ -834,6 +1073,33 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus }) => {
             </div>
           </div>
         )}
+
+        {/* Refer & Earn link */}
+        <div className="px-3 pb-0">
+          <a
+            href="#"
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors no-underline ${
+              currentPage === 'referral'
+                ? 'bg-bg-surface text-accent border-l-2 border-accent'
+                : 'text-text-secondary hover:text-text-primary hover:bg-bg-surface'
+            }`}
+            onClick={(e) => { e.preventDefault(); handleNav('referral'); }}
+          >
+            <Icons.Gift className="w-5 h-5" />
+            Refer &amp; Earn
+          </a>
+        </div>
+
+        {/* Guides link */}
+        <div className="px-3 pb-2">
+          <a
+            href="/guides"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors no-underline"
+          >
+            <Icons.BookOpen className="w-5 h-5" />
+            Guides
+          </a>
+        </div>
 
         {/* Account section */}
         <div className="px-3 pb-4 border-t border-border pt-3">
@@ -881,18 +1147,137 @@ const StatCard = ({ label, value, subValue, color, change }) => (
   </div>
 );
 
+const WinRateCard = ({ wins, losses, total, change }) => {
+  const neutral = Math.max(0, total - wins - losses);
+  const winRate = total > 0 ? (wins / total * 100) : 0;
+  // Stroke-dasharray gauge: circle starts at 3-o'clock and goes CW.
+  // rotate(180) moves start to 9-o'clock; CW from there traces 9→12→3 = top semicircle.
+  const cx = 36, cy = 32, r = 28, sw = 6;
+  const C = 2 * Math.PI * r;
+  const half = Math.PI * r; // gauge arc length = half circumference
+  const winsLen = total > 0 ? (wins / total) * half : 0;
+  const neuLen  = total > 0 ? (neutral / total) * half : 0;
+  const losLen  = total > 0 ? (losses / total) * half : 0;
+  // Each segment rotates to its starting position (CW degrees from 3-o'clock)
+  const neuStartDeg = 180 + (total > 0 ? (wins / total) * 180 : 0);
+  const losStartDeg = 180 + (total > 0 ? ((wins + neutral) / total) * 180 : 0);
+  return (
+    <div className="bg-bg-surface border border-border rounded-xl p-5 relative">
+      <div className="text-text-secondary text-xs font-medium uppercase tracking-wider mb-2">Win Rate</div>
+      <div className="flex items-baseline gap-2">
+        <div className="font-mono text-2xl font-bold text-text-primary">{winRate.toFixed(1)}%</div>
+        {change !== null && change !== undefined && <ChangeIndicator value={change} />}
+      </div>
+      <div className="absolute right-4 top-4 flex flex-col items-center gap-1">
+        <svg width={96} height={50} viewBox="0 0 72 38">
+          {/* Background track */}
+          <circle cx={cx} cy={cy} r={r} fill="none"
+            stroke="rgb(var(--border))" strokeWidth={sw} strokeLinecap="butt"
+            strokeDasharray={`${half} ${C - half}`}
+            transform={`rotate(180, ${cx}, ${cy})`} />
+          {/* Wins */}
+          {winsLen > 0.01 && (
+            <circle cx={cx} cy={cy} r={r} fill="none"
+              stroke="rgb(var(--positive))" strokeWidth={sw} strokeLinecap="butt"
+              strokeDasharray={`${winsLen} ${C - winsLen}`}
+              transform={`rotate(180, ${cx}, ${cy})`} />
+          )}
+          {/* Neutral */}
+          {neuLen > 0.01 && (
+            <circle cx={cx} cy={cy} r={r} fill="none"
+              stroke="rgb(var(--accent))" strokeWidth={sw} strokeLinecap="butt"
+              strokeDasharray={`${neuLen} ${C - neuLen}`}
+              transform={`rotate(${neuStartDeg}, ${cx}, ${cy})`} />
+          )}
+          {/* Losses */}
+          {losLen > 0.01 && (
+            <circle cx={cx} cy={cy} r={r} fill="none"
+              stroke="rgb(var(--negative))" strokeWidth={sw} strokeLinecap="butt"
+              strokeDasharray={`${losLen} ${C - losLen}`}
+              transform={`rotate(${losStartDeg}, ${cx}, ${cy})`} />
+          )}
+        </svg>
+        <div className="flex justify-between" style={{ width: 96 }}>
+          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-positive/20 text-positive text-[9px] font-bold">{wins}</span>
+          {neutral > 0 && <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-accent/20 text-accent text-[9px] font-bold">{neutral}</span>}
+          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-negative/20 text-negative text-[9px] font-bold">{losses}</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const AvgWinLossCard = ({ avgWin, avgLoss }) => {
+  const absLoss = Math.abs(avgLoss);
+  const total = avgWin + absLoss;
+  const ratio = absLoss > 0 ? (avgWin / absLoss).toFixed(2) : avgWin > 0 ? '∞' : '0.00';
+  const winPct = total > 0 ? (avgWin / total) * 100 : 50;
+  return (
+    <div className="bg-bg-surface border border-border rounded-xl p-5">
+      <div className="flex items-center gap-4">
+        <div>
+          <div className="text-text-secondary text-xs font-medium uppercase tracking-wider mb-2">Avg Win / Loss</div>
+          <div className="font-mono text-2xl font-bold text-text-primary">{ratio}</div>
+        </div>
+        <div className="flex-1 flex flex-col gap-3 ml-8">
+          <div className="flex h-2 rounded-full overflow-hidden">
+            <div className="bg-positive" style={{ width: `${winPct}%` }} />
+            <div className="bg-negative flex-1" />
+          </div>
+          <div className="flex justify-between text-[12px] font-mono">
+            <span className="text-positive">${avgWin.toFixed(0)}</span>
+            <span className="text-negative">-${absLoss.toFixed(0)}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // =====================================================
 // DASHBOARD PAGE
 // =====================================================
-const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, dailyNotes, onSaveNote, onDeleteNote, tags, strategyRules }) => {
+const applyEvalFilter = (trades, evalFilter) => {
+  if (evalFilter === 'exclude') return trades.filter(t => !t.isEval);
+  if (evalFilter === 'only') return trades.filter(t => t.isEval);
+  return trades;
+};
+
+const EvalFilterControl = ({ trades, evalFilter, setEvalFilter }) => {
+  if (!trades.some(t => t.isEval)) return null;
+  return (
+    <div className="flex-shrink-0 flex border border-border rounded-lg overflow-hidden text-xs font-medium">
+      {[
+        { value: 'all', label: 'All' },
+        { value: 'exclude', label: 'Excl. Evals' },
+        { value: 'only', label: 'Only Evals' },
+      ].map(({ value, label }, i, arr) => (
+        <button
+          key={value}
+          className={`px-3 py-1.5 transition-colors ${i < arr.length - 1 ? 'border-r border-border' : ''} ${
+            evalFilter === value
+              ? 'bg-accent/15 text-accent'
+              : 'bg-bg-input text-text-secondary hover:text-text-primary'
+          }`}
+          onClick={() => setEvalFilter(value)}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+};
+
+const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, onOpenImport, onOpenAddTrade, onEditTrade, dailyNotes, onSaveNote, onDeleteNote, tags, strategyRules, evalFilter, setEvalFilter }) => {
   const [period, setPeriod] = useState('all');
 
+  const baseTrades = applyEvalFilter(trades, evalFilter);
   const dateRange = getDateRange(period);
-  const filteredTrades = filterTradesByDateRange(trades, dateRange);
+  const filteredTrades = filterTradesByDateRange(baseTrades, dateRange);
   const stats = calculateAnalytics(filteredTrades);
 
   const prevRange = getPreviousDateRange(period);
-  const prevTrades = prevRange ? filterTradesByDateRange(trades, prevRange) : null;
+  const prevTrades = prevRange ? filterTradesByDateRange(baseTrades, prevRange) : null;
   const prevStats = prevTrades ? calculateAnalytics(prevTrades) : null;
   const showChange = period !== 'all' && prevStats;
 
@@ -904,16 +1289,27 @@ const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, dailyNotes, onS
           <h1 className="text-2xl font-bold text-text-primary">Dashboard</h1>
           <p className="text-text-secondary text-sm mt-1">Overview of your trading performance</p>
         </div>
-        {subscriptionStatus && (subscriptionStatus.isPremium || subscriptionStatus.isTrialActive) && (
-          <button className="flex items-center gap-2 px-4 py-2.5 bg-accent text-accent-text text-sm font-semibold rounded-lg hover:brightness-110 transition-all" onClick={onOpenForm}>
-            <Icons.Plus className="w-4 h-4" />
-            New Trade
+        <div className="flex items-center gap-2">
+          <button className="flex items-center gap-2 px-4 py-2.5 bg-bg-surface border border-border text-text-secondary text-sm font-semibold rounded-lg hover:text-text-primary hover:border-accent transition-all" onClick={onOpenImport}>
+            <Icons.Download className="w-4 h-4" />
+            Import CSV
           </button>
-        )}
+          {subscriptionStatus && subscriptionStatus.isPremium && (subscriptionStatus.tradeCount == null || subscriptionStatus.tradeCount < 50) && (
+            <button className="flex items-center gap-2 px-4 py-2.5 bg-accent text-accent-text text-sm font-semibold rounded-lg hover:brightness-110 transition-all" onClick={onOpenForm}>
+              <Icons.Plus className="w-4 h-4" />
+              New Trade
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Period Filter */}
-      <PeriodFilter value={period} onChange={setPeriod} trades={trades} />
+      {/* Period Filter + Eval filter */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex-1 min-w-0">
+          <PeriodFilter value={period} onChange={setPeriod} trades={trades} />
+        </div>
+        <EvalFilterControl trades={trades} evalFilter={evalFilter} setEvalFilter={setEvalFilter} />
+      </div>
 
       {/* Stats grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -923,7 +1319,7 @@ const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, dailyNotes, onS
           color={stats.totalPL >= 0 ? 'text-positive' : 'text-negative'}
           change={showChange ? calcPercentChange(stats.totalPL, prevStats.totalPL) : null}
         />
-        <StatCard label="Win Rate" value={`${stats.winRate.toFixed(1)}%`} color="text-text-primary"
+        <WinRateCard wins={stats.wins} losses={stats.losses} total={stats.totalTrades}
           change={showChange ? calcPercentChange(stats.winRate, prevStats.winRate) : null} />
         <StatCard label="Total Trades" value={stats.totalTrades} color="text-text-primary"
           change={showChange ? calcPercentChange(stats.totalTrades, prevStats.totalTrades) : null} />
@@ -931,18 +1327,15 @@ const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, dailyNotes, onS
       </div>
 
       {/* Secondary stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="Avg Win" value={`$${stats.avgWin.toFixed(2)}`} color="text-positive"
-          change={showChange ? calcPercentChange(stats.avgWin, prevStats.avgWin) : null} />
-        <StatCard label="Avg Loss" value={`$${stats.avgLoss.toFixed(2)}`} color="text-negative"
-          change={showChange ? calcPercentChange(Math.abs(stats.avgLoss), Math.abs(prevStats.avgLoss)) : null} />
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <AvgWinLossCard avgWin={stats.avgWin} avgLoss={stats.avgLoss} />
         <StatCard label="Best Trade" value={`$${stats.bestTrade.toFixed(2)}`} color="text-positive"
           change={showChange ? calcPercentChange(stats.bestTrade, prevStats.bestTrade) : null} />
         <StatCard label="Worst Trade" value={`$${stats.worstTrade.toFixed(2)}`} color="text-negative" />
       </div>
 
       {/* Calendar */}
-      <CalendarView trades={trades} dailyNotes={dailyNotes} onSaveNote={onSaveNote} onDeleteNote={onDeleteNote} tags={tags} subscriptionStatus={subscriptionStatus} strategyRules={strategyRules} />
+      <CalendarView trades={baseTrades} dailyNotes={dailyNotes} onSaveNote={onSaveNote} onDeleteNote={onDeleteNote} tags={tags} subscriptionStatus={subscriptionStatus} strategyRules={strategyRules} onOpenAddTrade={onOpenAddTrade} onEditTrade={onEditTrade} />
     </div>
   );
 };
@@ -950,16 +1343,23 @@ const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, dailyNotes, onS
 // =====================================================
 // DAY DETAIL PANEL
 // =====================================================
-const DayDetailPanel = ({ dateKey, dayData, onClose, dailyNotes, onSaveNote, onDeleteNote, tags, subscriptionStatus, strategyRules }) => {
+const DayDetailPanel = ({ dateKey, dayData, onClose, dailyNotes, onSaveNote, onDeleteNote, tags, subscriptionStatus, strategyRules, onEditTrade }) => {
   const [expandedTrade, setExpandedTrade] = useState(null);
   const [dailyChecks, setDailyChecks] = useState([]);
   const [tradeChecksMap, setTradeChecksMap] = useState({});
   const [checksLoading, setChecksLoading] = useState(false);
   const date = new Date(dateKey + 'T00:00:00');
   const formatted = formatFullDateEST(date);
-  const isElite = subscriptionStatus && subscriptionStatus.plan === 'elite';
+  const isElite = subscriptionStatus && subscriptionStatus.isPremium;
   const dayRules = strategyRules ? strategyRules.filter(r => r.type === 'day') : [];
   const tradeRules = strategyRules ? strategyRules.filter(r => r.type === 'trade') : [];
+  const windowWidth = useWindowWidth();
+  const isUltrawide = windowWidth >= 2000;
+  const setSidePanelOffset = React.useContext(SidePanelContext);
+  useEffect(() => {
+    if (isUltrawide) setSidePanelOffset(480);
+    return () => setSidePanelOffset(0);
+  }, [isUltrawide, setSidePanelOffset]);
 
   useEffect(() => {
     if (!isElite || !strategyRules || strategyRules.length === 0) return;
@@ -1070,8 +1470,8 @@ const DayDetailPanel = ({ dateKey, dayData, onClose, dailyNotes, onSaveNote, onD
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-bg-surface border border-border rounded-xl w-full max-w-lg max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+    <div className={isUltrawide ? "fixed right-0 top-0 h-screen z-40 flex" : "fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"} onClick={!isUltrawide ? onClose : undefined}>
+      <div className={isUltrawide ? "w-[480px] h-full flex flex-col bg-bg-surface border-l border-border shadow-2xl" : "bg-bg-surface border border-border rounded-xl w-full max-w-lg max-h-[85vh] flex flex-col"} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <div>
@@ -1084,28 +1484,30 @@ const DayDetailPanel = ({ dateKey, dayData, onClose, dailyNotes, onSaveNote, onD
         </div>
 
         {/* Summary stats */}
-        {dayData.tradeCount > 0 && (
-          <div className="grid grid-cols-4 gap-3 px-6 py-4 border-b border-border">
-            <div className="text-center">
-              <div className="text-text-secondary text-xs mb-1">Total P/L</div>
+        <div className="grid grid-cols-4 gap-3 px-6 py-4 border-b border-border">
+          <div className="text-center">
+            <div className="text-text-secondary text-xs mb-1">Total P/L</div>
+            {dayData.tradeCount > 0 ? (
               <div className={`font-mono text-sm font-bold ${dayData.totalPL >= 0 ? 'text-positive' : 'text-negative'}`}>
                 ${dayData.totalPL.toFixed(2)}
               </div>
-            </div>
-            <div className="text-center">
-              <div className="text-text-secondary text-xs mb-1">Win Rate</div>
-              <div className="font-mono text-sm font-bold text-text-primary">{winRate}%</div>
-            </div>
-            <div className="text-center">
-              <div className="text-text-secondary text-xs mb-1">Trades</div>
-              <div className="font-mono text-sm font-bold text-text-primary">{dayData.tradeCount}</div>
-            </div>
-            <div className="text-center">
-              <div className="text-text-secondary text-xs mb-1">Avg Duration</div>
-              <div className="font-mono text-sm font-bold text-text-primary">{formatDuration(avgDuration)}</div>
-            </div>
+            ) : (
+              <div className="font-mono text-sm font-bold text-text-muted">N/A</div>
+            )}
           </div>
-        )}
+          <div className="text-center">
+            <div className="text-text-secondary text-xs mb-1">Win Rate</div>
+            <div className="font-mono text-sm font-bold text-text-primary">{dayData.tradeCount > 0 ? `${winRate}%` : 'N/A'}</div>
+          </div>
+          <div className="text-center">
+            <div className="text-text-secondary text-xs mb-1">Trades</div>
+            <div className="font-mono text-sm font-bold text-text-primary">{dayData.tradeCount}</div>
+          </div>
+          <div className="text-center">
+            <div className="text-text-secondary text-xs mb-1">Avg Duration</div>
+            <div className="font-mono text-sm font-bold text-text-primary">{dayData.tradeCount > 0 ? formatDuration(avgDuration) : 'N/A'}</div>
+          </div>
+        </div>
 
         {/* Trade list */}
         <div className="flex-1 overflow-y-auto px-6 py-3">
@@ -1140,6 +1542,15 @@ const DayDetailPanel = ({ dateKey, dayData, onClose, dailyNotes, onSaveNote, onD
                         <span className={`font-mono text-sm font-semibold ${pl >= 0 ? 'text-positive' : 'text-negative'}`}>
                           {pl >= 0 ? '+' : ''}${pl.toFixed(2)}
                         </span>
+                        {onEditTrade && (
+                          <button
+                            className="text-text-muted hover:text-accent transition-colors"
+                            title="Edit trade"
+                            onClick={(e) => { e.stopPropagation(); onEditTrade(trade); onClose(); }}
+                          >
+                            <Icons.Edit className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         <Icons.ChevronDown className={`w-3.5 h-3.5 text-text-muted transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                       </div>
                     </button>
@@ -1257,11 +1668,13 @@ const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'Ju
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-const CalendarView = ({ trades, dailyNotes, onSaveNote, onDeleteNote, tags, subscriptionStatus, strategyRules }) => {
+const CalendarView = ({ trades, dailyNotes, onSaveNote, onDeleteNote, tags, subscriptionStatus, strategyRules, onOpenAddTrade, onEditTrade }) => {
   const [viewMode, setViewMode] = useState('daily'); // 'daily' | 'heatmap' | 'monthly'
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState(null);
   const dailyData = groupTradesByDate(trades);
+  const canAddTrade = subscriptionStatus && subscriptionStatus.isPremium
+    && (subscriptionStatus.tradeCount == null || subscriptionStatus.tradeCount < 50);
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -1378,6 +1791,7 @@ const CalendarView = ({ trades, dailyNotes, onSaveNote, onDeleteNote, tags, subs
           dailyData={dailyData}
           onSelectDay={setSelectedDay}
           dailyNotes={dailyNotes}
+          onOpenAddTrade={canAddTrade ? onOpenAddTrade : undefined}
         />
       )}
 
@@ -1407,6 +1821,7 @@ const CalendarView = ({ trades, dailyNotes, onSaveNote, onDeleteNote, tags, subs
           tags={tags}
           subscriptionStatus={subscriptionStatus}
           strategyRules={strategyRules}
+          onEditTrade={onEditTrade}
         />
       )}
     </div>
@@ -1414,7 +1829,7 @@ const CalendarView = ({ trades, dailyNotes, onSaveNote, onDeleteNote, tags, subs
 };
 
 // --- Daily Calendar (original view) ---
-const DailyCalendar = ({ year, month, dailyData, onSelectDay, dailyNotes }) => {
+const DailyCalendar = ({ year, month, dailyData, onSelectDay, dailyNotes, onOpenAddTrade }) => {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
   // Build weeks as rows: each week is an array of 7 day slots (null for empty)
@@ -1463,6 +1878,8 @@ const DailyCalendar = ({ year, month, dailyData, onSelectDay, dailyNotes }) => {
               const hasActivity = data !== undefined;
               const pl = hasActivity ? data.totalPL : 0;
               const hasNote = dailyNotes && dailyNotes.some(n => n.date === slot.dateKey);
+              const dayWins = hasActivity ? data.trades.filter(t => getTradePL(t) > 0).length : 0;
+              const dayWinRate = hasActivity && data.tradeCount > 0 ? Math.round((dayWins / data.tradeCount) * 100) : null;
 
               let bgClass = 'bg-bg-input';
               if (hasActivity) {
@@ -1472,24 +1889,37 @@ const DailyCalendar = ({ year, month, dailyData, onSelectDay, dailyNotes }) => {
               return (
                 <div
                   key={slot.day}
-                  className={`h-24 rounded-lg border border-border p-2 ${bgClass} cursor-pointer hover:brightness-110 transition-all`}
+                  className={`h-24 rounded-lg border border-border p-2 ${bgClass} cursor-pointer hover:brightness-110 transition-all group relative`}
                   onClick={() => onSelectDay(slot.dateKey)}
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-text-secondary">{slot.day}</span>
-                    {hasNote && (
-                      <svg className="w-3 h-3 text-accent" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z"></path></svg>
-                    )}
+                    <div className="flex items-center gap-1">
+                      {hasNote && (
+                        <svg className="w-3 h-3 text-accent" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z"></path></svg>
+                      )}
+                      {onOpenAddTrade && (
+                        <button
+                          className="opacity-0 group-hover:opacity-100 transition-opacity w-4 h-4 rounded flex items-center justify-center bg-accent/20 hover:bg-accent/40 text-accent text-[10px] font-bold leading-none"
+                          onClick={(e) => { e.stopPropagation(); onOpenAddTrade(slot.dateKey); }}
+                          title="Add trade"
+                        >+</button>
+                      )}
+                    </div>
                   </div>
-                  {hasActivity && (
-                    <>
-                      <div className={`font-mono text-sm font-semibold mt-1 ${pl >= 0 ? 'text-positive' : 'text-negative'}`}>
-                        ${pl.toFixed(0)}
-                      </div>
-                      <div className="text-text-tertiary text-[10px] mt-0.5">
-                        {data.tradeCount} trade{data.tradeCount !== 1 ? 's' : ''}
-                      </div>
-                    </>
+                  <div className={`font-mono text-sm font-semibold mt-1 ${hasActivity ? (pl >= 0 ? 'text-positive' : 'text-negative') : 'text-text-muted'}`}>
+                    {hasActivity ? `$${pl.toFixed(0)}` : '—'}
+                  </div>
+                  <div className="text-text-tertiary text-[10px] mt-0.5">
+                    {hasActivity ? data.tradeCount : 0} trade{(!hasActivity || data.tradeCount !== 1) ? 's' : ''}
+                  </div>
+                  {hasActivity && dayWinRate !== null && (
+                    <div className={`text-[10px] mt-0.5 font-mono ${dayWinRate >= 50 ? 'text-positive/70' : 'text-negative/70'}`}>
+                      {dayWinRate}% WR
+                    </div>
+                  )}
+                  {!hasActivity && (
+                    <div className="text-text-muted text-[10px] mt-0.5 font-mono">N/A WR</div>
                   )}
                 </div>
               );
@@ -1801,8 +2231,112 @@ const MonthlyGrid = ({ year, dailyData }) => {
 };
 
 // =====================================================
+// TOAST NOTIFICATION
+// =====================================================
+
+const Toast = ({ toast, onClose }) => {
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(onClose, 5000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  if (!toast) return null;
+
+  return (
+    <div className="fixed bottom-6 right-6 z-[200] flex items-start gap-3 bg-bg-surface border border-amber-500/40 rounded-xl px-4 py-3 shadow-2xl max-w-sm">
+      <div className="w-8 h-8 rounded-full bg-amber-500/15 flex items-center justify-center flex-shrink-0 mt-0.5">
+        <svg className="w-4 h-4 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+          <line x1="12" y1="9" x2="12" y2="13"></line>
+          <line x1="12" y1="17" x2="12.01" y2="17"></line>
+        </svg>
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-text-primary text-sm font-semibold">Duplicates skipped</p>
+        <p className="text-text-secondary text-xs mt-0.5">{toast.message}</p>
+      </div>
+      <button onClick={onClose} className="text-text-muted hover:text-text-primary transition-colors flex-shrink-0 mt-0.5">
+        <Icons.X className="w-4 h-4" />
+      </button>
+    </div>
+  );
+};
+
+// =====================================================
 // CSV IMPORT MODAL
 // =====================================================
+
+// Strip futures contract month+year suffix (e.g. NQH6 -> NQ, MNQH6 -> MNQ, ESZ25 -> ES)
+const parseContractTicker = (name) => {
+  if (!name) return name;
+  return name.trim().replace(/[FGHJKMNQUVXZ]\d{1,2}$/, '').trim() || name.trim();
+};
+
+// Known broker CSV formats — matched by required header presence
+const KNOWN_BROKER_FORMATS = [
+  {
+    name: 'Topstep',
+    requiredHeaders: ['ContractName', 'EnteredAt', 'ExitedAt', 'EntryPrice', 'ExitPrice', 'PnL', 'Size', 'Type', 'Fees'],
+    transform: (row) => {
+      const isShort = row.Type && row.Type.toLowerCase() === 'short';
+      const qty = Math.abs(parseFloat(row.Size) || 0);
+      const pnl = parseFloat(row.PnL) || 0;
+      const fees = parseFloat(row.Fees) || 0;
+      return {
+        ticker: parseContractTicker(row.ContractName),
+        enterTime: row.EnteredAt,
+        exitTime: row.ExitedAt,
+        enterPrice: row.EntryPrice,
+        exitPrice: row.ExitPrice,
+        quantity: isShort ? -qty : qty,
+        manualPL: pnl - fees,
+        comments: '',
+      };
+    },
+  },
+  {
+    name: 'Tradovate (Positions)',
+    requiredHeaders: ['Product', 'Avg. Buy', 'Avg. Sell', 'Paired Qty', 'P/L', 'Buy Fill ID', 'Sell Fill ID', 'Bought Timestamp', 'Sold Timestamp'],
+    transform: (row) => {
+      const buyFillId = parseInt(row['Buy Fill ID']) || 0;
+      const sellFillId = parseInt(row['Sell Fill ID']) || 0;
+      const isLong = sellFillId > buyFillId;
+      const qty = Math.abs(parseFloat(row['Paired Qty']) || 0);
+      return {
+        ticker: parseContractTicker(row.Product),
+        enterTime: isLong ? row['Bought Timestamp'] : row['Sold Timestamp'],
+        exitTime: isLong ? row['Sold Timestamp'] : row['Bought Timestamp'],
+        enterPrice: isLong ? row['Avg. Buy'] : row['Avg. Sell'],
+        exitPrice: isLong ? row['Avg. Sell'] : row['Avg. Buy'],
+        quantity: isLong ? qty : -qty,
+        manualPL: parseFloat(row['P/L']) || 0,
+        comments: '',
+      };
+    },
+  },
+  {
+    name: 'Tradovate (Fills)',
+    requiredHeaders: ['symbol', 'buyFillId', 'sellFillId', 'qty', 'buyPrice', 'sellPrice', 'pnl', 'boughtTimestamp', 'soldTimestamp'],
+    transform: (row) => {
+      const buyFillId = parseInt(row.buyFillId) || 0;
+      const sellFillId = parseInt(row.sellFillId) || 0;
+      const isLong = sellFillId > buyFillId;
+      const qty = Math.abs(parseFloat(row.qty) || 0);
+      return {
+        ticker: parseContractTicker(row.symbol),
+        enterTime: isLong ? row.boughtTimestamp : row.soldTimestamp,
+        exitTime: isLong ? row.soldTimestamp : row.boughtTimestamp,
+        enterPrice: isLong ? row.buyPrice : row.sellPrice,
+        exitPrice: isLong ? row.sellPrice : row.buyPrice,
+        quantity: isLong ? qty : -qty,
+        manualPL: parseFloat(row.pnl) || 0,
+        comments: '',
+      };
+    },
+  },
+];
+
 const CSV_TRADE_FIELDS = [
   { key: 'ticker', label: 'Ticker', required: true, aliases: ['ticker', 'symbol', 'instrument', 'name', 'asset'] },
   { key: 'enterTime', label: 'Enter Time', required: true, aliases: ['entertime', 'opendate', 'opentime', 'entrydate', 'entrytime', 'entry_time', 'open_date', 'entry date', 'entry time'] },
@@ -1814,7 +2348,7 @@ const CSV_TRADE_FIELDS = [
   { key: 'comments', label: 'Comments (Optional)', required: false, aliases: ['comments', 'notes', 'comment', 'note', 'description'] },
 ];
 
-const CSVImportModal = ({ isOpen, onClose, triggerReload }) => {
+const CSVImportModal = ({ isOpen, onClose, triggerReload, onDuplicatesSkipped }) => {
   const [step, setStep] = useState(1);
   const [csvData, setCsvData] = useState([]);
   const [csvHeaders, setCsvHeaders] = useState([]);
@@ -1823,11 +2357,13 @@ const CSVImportModal = ({ isOpen, onClose, triggerReload }) => {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
   const [error, setError] = useState(null);
+  const [detectedFormat, setDetectedFormat] = useState(null);
 
   useEffect(() => {
     if (!isOpen) {
       setStep(1); setCsvData([]); setCsvHeaders([]); setColumnMap({});
-      setMappedTrades([]); setImporting(false); setImportResult(null); setError(null);
+      setMappedTrades([]); setImporting(false); setImportResult(null);
+      setError(null); setDetectedFormat(null);
     }
   }, [isOpen]);
 
@@ -1848,13 +2384,30 @@ const CSVImportModal = ({ isOpen, onClose, triggerReload }) => {
           setError('CSV file is empty');
           return;
         }
-        setCsvData(results.data);
-        setCsvHeaders(results.meta.fields || []);
 
-        // Auto-detect column mapping
+        const headers = results.meta.fields || [];
+
+        // Check for a known broker format first
+        const knownFormat = KNOWN_BROKER_FORMATS.find(fmt =>
+          fmt.requiredHeaders.every(h => headers.includes(h))
+        );
+
+        if (knownFormat) {
+          const trades = results.data
+            .map(knownFormat.transform)
+            .filter(t => t.ticker && t.enterTime && t.exitTime);
+          setDetectedFormat(knownFormat.name);
+          setMappedTrades(trades);
+          setStep(3);
+          return;
+        }
+
+        // Unknown format — fall through to manual column mapping
+        setCsvData(results.data);
+        setCsvHeaders(headers);
         const autoMap = {};
         CSV_TRADE_FIELDS.forEach(field => {
-          const match = (results.meta.fields || []).find(h =>
+          const match = headers.find(h =>
             field.aliases.some(alias => h.toLowerCase().replace(/[^a-z0-9]/g, '').includes(alias.replace(/[^a-z0-9]/g, '')))
           );
           if (match) autoMap[field.key] = match;
@@ -1881,7 +2434,8 @@ const CSVImportModal = ({ isOpen, onClose, triggerReload }) => {
         }
       });
       return trade;
-    }).filter(t => t.ticker && t.enterTime && t.exitTime);
+    }).filter(t => t.ticker && t.enterTime && t.exitTime)
+      .map(t => ({ ...t, ticker: parseContractTicker(t.ticker) }));
 
     setMappedTrades(trades);
     setStep(3);
@@ -1891,10 +2445,26 @@ const CSVImportModal = ({ isOpen, onClose, triggerReload }) => {
     setImporting(true);
     setError(null);
     try {
+      // CSV timestamps are in EST with no timezone info. Append the EST offset so the
+      // server stores the correct UTC value instead of treating them as UTC.
+      const toESTIso = (ts) => {
+        if (!ts) return ts;
+        const s = String(ts).trim();
+        const offset = getESTOffset(new Date(s));
+        // Normalize "YYYY-MM-DD HH:MM:SS" → "YYYY-MM-DDTHH:MM:SS" for reliable parsing
+        const normalized = s.replace(/^(\d{4}-\d{2}-\d{2}) (\d{2}:)/, '$1T$2');
+        const d = new Date(normalized + offset);
+        return isNaN(d.getTime()) ? s : d.toISOString();
+      };
+      const tradesToSend = mappedTrades.map(t => ({
+        ...t,
+        enterTime: toESTIso(t.enterTime),
+        exitTime: toESTIso(t.exitTime),
+      }));
       const response = await authFetch('/api/importTrades', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ trades: mappedTrades }),
+        body: JSON.stringify({ trades: tradesToSend }),
       });
       const data = await response.json();
       if (data.error) {
@@ -1902,6 +2472,9 @@ const CSVImportModal = ({ isOpen, onClose, triggerReload }) => {
       } else {
         setImportResult(data);
         triggerReload();
+        if (data.skipped > 0 && onDuplicatesSkipped) {
+          onDuplicatesSkipped(data.skipped);
+        }
       }
     } catch (err) {
       setError('Import failed. Please try again.');
@@ -1975,6 +2548,12 @@ const CSVImportModal = ({ isOpen, onClose, triggerReload }) => {
           {/* Step 3: Preview & Confirm */}
           {step === 3 && !importResult && (
             <div className="space-y-4">
+              {detectedFormat && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-positive/10 border border-positive/20 rounded-lg">
+                  <span className="w-1.5 h-1.5 rounded-full bg-positive flex-shrink-0"></span>
+                  <span className="text-positive text-xs font-medium">{detectedFormat} format detected — columns mapped automatically</span>
+                </div>
+              )}
               <p className="text-text-secondary text-sm">{mappedTrades.length} trades ready to import. Preview below (showing first 50):</p>
               <div className="overflow-x-auto border border-border rounded-lg">
                 <table className="w-full text-xs">
@@ -2017,7 +2596,7 @@ const CSVImportModal = ({ isOpen, onClose, triggerReload }) => {
                 <Icons.Check className="w-8 h-8 text-positive" />
               </div>
               <h3 className="text-text-primary font-semibold text-lg mb-2">Import Complete</h3>
-              <p className="text-text-secondary text-sm">{importResult.imported} trades imported successfully.</p>
+              <p className="text-text-secondary text-sm">{importResult.imported} trade{importResult.imported !== 1 ? 's' : ''} imported successfully.{importResult.skipped > 0 ? ` ${importResult.skipped} duplicate${importResult.skipped !== 1 ? 's' : ''} skipped.` : ''}</p>
             </div>
           )}
         </div>
@@ -2062,7 +2641,7 @@ const CSVImportModal = ({ isOpen, onClose, triggerReload }) => {
 // =====================================================
 // TRADE LIST PAGE
 // =====================================================
-const TradeListPage = ({ trades, triggerReload, onEdit, subscriptionStatus, onOpenForm, tags }) => {
+const TradeListPage = ({ trades, triggerReload, onEdit, subscriptionStatus, onOpenForm, onOpenImport, tags, strategyRules }) => {
   const [searchTicker, setSearchTicker] = useState('');
   const [sortField, setSortField] = useState('exitTime');
   const [sortDir, setSortDir] = useState('desc');
@@ -2070,11 +2649,80 @@ const TradeListPage = ({ trades, triggerReload, onEdit, subscriptionStatus, onOp
   const [dateTo, setDateTo] = useState('');
   const [sideFilters, setSideFilters] = useState([]);
   const [filterTags, setFilterTags] = useState([]);
-  const [csvImportOpen, setCsvImportOpen] = useState(false);
   const [showNewTagInline, setShowNewTagInline] = useState(false);
   const [inlineTagName, setInlineTagName] = useState('');
   const [inlineTagColor, setInlineTagColor] = useState(TAG_COLOR_PRESETS[0]);
   const [inlineTagCreating, setInlineTagCreating] = useState(false);
+  const [expandedTradeId, setExpandedTradeId] = useState(null);
+  const [tradeChecksMap, setTradeChecksMap] = useState({});
+  const [checksLoading, setChecksLoading] = useState(false);
+  const [deletingIds, setDeletingIds] = useState(new Set());
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+
+  const doDelete = async (id) => {
+    setDeletingIds(prev => new Set([...prev, id]));
+    setDeleteConfirmId(null);
+    try {
+      const response = await authFetch('/api/removeTrade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ _id: id }),
+      });
+      const data = await response.json();
+      if (data.error) {
+        setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+      } else {
+        triggerReload();
+      }
+    } catch {
+      setDeletingIds(prev => { const s = new Set(prev); s.delete(id); return s; });
+    }
+  };
+
+  const handleDeleteClick = (id) => {
+    if (localStorage.getItem('skipTradeDeleteConfirm') === 'true') {
+      doDelete(id);
+    } else {
+      setDeleteConfirmId(id);
+    }
+  };
+
+  const isElite = subscriptionStatus && subscriptionStatus.isPremium;
+  const tradeRules = strategyRules ? strategyRules.filter(r => r.type === 'trade') : [];
+
+  const fetchTradeChecksForList = async (tradeId) => {
+    if (tradeChecksMap[tradeId] !== undefined) return;
+    try {
+      const resp = await authFetch(`/api/strategy/checks/trade/${tradeId}`);
+      const data = await resp.json();
+      if (!data.error) setTradeChecksMap(prev => ({ ...prev, [tradeId]: data.checks || [] }));
+    } catch (err) {
+      console.error('Failed to fetch trade checks:', err);
+    }
+  };
+
+  const handleTradeRuleToggle = async (tradeId, ruleId, followed) => {
+    setChecksLoading(true);
+    try {
+      const resp = await authFetch('/api/strategy/checks/trade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tradeId, ruleId, followed }),
+      });
+      const check = await resp.json();
+      if (!check.error) {
+        setTradeChecksMap(prev => {
+          const existing = prev[tradeId] || [];
+          const filtered = existing.filter(ch => ch.ruleId !== ruleId);
+          return { ...prev, [tradeId]: [...filtered, check] };
+        });
+      }
+    } catch (err) {
+      console.error('Failed to toggle trade check:', err);
+    } finally {
+      setChecksLoading(false);
+    }
+  };
 
   const handleInlineCreateTag = async () => {
     if (!inlineTagName.trim() || inlineTagCreating) return;
@@ -2124,7 +2772,7 @@ const TradeListPage = ({ trades, triggerReload, onEdit, subscriptionStatus, onOp
     URL.revokeObjectURL(url);
   };
 
-  let filtered = trades;
+  let filtered = deletingIds.size > 0 ? trades.filter(t => !deletingIds.has(t._id)) : trades;
 
   if (searchTicker) {
     const terms = searchTicker.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
@@ -2220,12 +2868,12 @@ const TradeListPage = ({ trades, triggerReload, onEdit, subscriptionStatus, onOp
           </button>
           <button
             className="flex items-center gap-2 px-4 py-2.5 bg-bg-surface border border-border text-text-secondary text-sm font-semibold rounded-lg hover:text-text-primary hover:border-accent transition-all"
-            onClick={() => setCsvImportOpen(true)}
+            onClick={onOpenImport}
           >
             <Icons.Download className="w-4 h-4" />
             Import CSV
           </button>
-          {subscriptionStatus && (subscriptionStatus.isPremium || subscriptionStatus.isTrialActive) && (
+          {subscriptionStatus && subscriptionStatus.isPremium && (subscriptionStatus.tradeCount == null || subscriptionStatus.tradeCount < 50) && (
             <button className="flex items-center gap-2 px-4 py-2.5 bg-accent text-accent-text text-sm font-semibold rounded-lg hover:brightness-110 transition-all" onClick={onOpenForm}>
               <Icons.Plus className="w-4 h-4" />
               New Trade
@@ -2242,8 +2890,10 @@ const TradeListPage = ({ trades, triggerReload, onEdit, subscriptionStatus, onOp
             type="text"
             placeholder="Search tickers (comma-separated)..."
             value={searchTicker}
-            onChange={(e) => setSearchTicker(e.target.value)}
+            onChange={(e) => setSearchTicker(e.target.value.toUpperCase())}
             className="w-full pl-9 pr-4 py-2.5 bg-bg-input border border-border rounded-lg text-text-primary text-sm placeholder-text-muted focus:outline-none focus:border-accent transition-colors"
+            style={{ textTransform: 'uppercase' }}
+            autoComplete="off"
           />
         </div>
         <input
@@ -2392,70 +3042,131 @@ const TradeListPage = ({ trades, triggerReload, onEdit, subscriptionStatus, onOp
                 {filtered.map(trade => {
                   const pl = getTradePL(trade);
                   const duration = new Date(trade.exitTime) - new Date(trade.enterTime);
+                  const isExpanded = expandedTradeId === trade._id;
+                  const tradeTags = tags && trade.tags ? tags.filter(tag => trade.tags.includes(tag._id)) : [];
                   return (
-                    <tr key={trade._id} className="border-b border-border/50 hover:bg-bg-input/50 transition-colors">
-                      <td className="px-4 py-3">
-                        <div className="text-text-primary text-sm">{formatDateTime(trade.exitTime)}</div>
-                        <div className="text-text-muted text-xs">{formatTime(trade.enterTime)} - {formatTime(trade.exitTime)}</div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="font-mono text-sm font-semibold text-text-primary">{trade.ticker}</span>
-                        <span className={`ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
-                          trade.quantity > 0
-                            ? 'bg-positive/15 text-positive'
-                            : 'bg-negative/15 text-negative'
-                        }`}>
-                          {trade.quantity > 0 ? 'LONG' : 'SHORT'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-1">
-                          {trade.tags && trade.tags.map(tagId => {
-                            const tag = tags && tags.find(t => t._id === tagId);
-                            if (!tag) return null;
-                            return (
-                              <span
-                                key={tagId}
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
-                                style={{ backgroundColor: tag.color + '20', color: tag.color }}
-                              >
-                                {tag.name}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 font-mono text-sm text-text-secondary">${trade.enterPrice.toFixed(2)}</td>
-                      <td className="px-4 py-3 font-mono text-sm text-text-secondary">${trade.exitPrice.toFixed(2)}</td>
-                      <td className="px-4 py-3 font-mono text-sm text-text-secondary">{trade.quantity}</td>
-                      <td className="px-4 py-3">
-                        <span className={`font-mono text-sm font-semibold ${pl >= 0 ? 'text-positive' : 'text-negative'}`}>
-                          {pl >= 0 ? '+' : ''}${pl.toFixed(2)}
-                        </span>
-                        {trade.manualPL !== null && trade.manualPL !== undefined && (
-                          <span className="text-text-muted text-xs ml-1">(M)</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-text-secondary">{formatDuration(duration)}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            className="p-1.5 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-input transition-colors"
-                            onClick={() => onEdit(trade)}
-                            title="Edit"
-                          >
-                            <Icons.Edit />
-                          </button>
-                          <button
-                            className="p-1.5 rounded-lg text-text-tertiary hover:text-negative hover:bg-negative/10 transition-colors"
-                            onClick={() => handleRemoveTrade(trade._id, triggerReload)}
-                            title="Delete"
-                          >
-                            <Icons.Trash />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
+                    <React.Fragment key={trade._id}>
+                      <tr
+                        className="border-b border-border/50 hover:bg-bg-input/50 transition-colors cursor-pointer"
+                        onClick={() => onEdit(trade)}
+                      >
+                        <td className="px-4 py-3">
+                          <div className="text-text-primary text-sm">{formatDateTime(trade.exitTime)}</div>
+                          <div className="text-text-muted text-xs">{formatTime(trade.enterTime)} - {formatTime(trade.exitTime)}</div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="font-mono text-sm font-semibold text-text-primary">{trade.ticker}</span>
+                          <span className={`ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
+                            trade.quantity > 0
+                              ? 'bg-positive/15 text-positive'
+                              : 'bg-negative/15 text-negative'
+                          }`}>
+                            {trade.quantity > 0 ? 'LONG' : 'SHORT'}
+                          </span>
+                          {trade.isEval && (
+                            <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-accent/15 text-accent">EVAL</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap gap-1">
+                            {trade.tags && trade.tags.map(tagId => {
+                              const tag = tags && tags.find(t => t._id === tagId);
+                              if (!tag) return null;
+                              return (
+                                <span
+                                  key={tagId}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
+                                  style={{ backgroundColor: tag.color + '20', color: tag.color }}
+                                >
+                                  {tag.name}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 font-mono text-sm text-text-secondary">${trade.enterPrice.toFixed(2)}</td>
+                        <td className="px-4 py-3 font-mono text-sm text-text-secondary">${trade.exitPrice.toFixed(2)}</td>
+                        <td className="px-4 py-3 font-mono text-sm text-text-secondary">{trade.quantity}</td>
+                        <td className="px-4 py-3">
+                          <span className={`font-mono text-sm font-semibold ${pl >= 0 ? 'text-positive' : 'text-negative'}`}>
+                            {pl >= 0 ? '+' : ''}${pl.toFixed(2)}
+                          </span>
+                          {trade.manualPL !== null && trade.manualPL !== undefined && (
+                            <span className="text-text-muted text-xs ml-1">(M)</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-text-secondary">{formatDuration(duration)}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              className="p-1.5 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-input transition-colors"
+                              onClick={(e) => { e.stopPropagation(); onEdit(trade); }}
+                              title="Edit"
+                            >
+                              <Icons.Edit />
+                            </button>
+                            <button
+                              className="p-1.5 rounded-lg text-text-tertiary hover:text-negative hover:bg-negative/10 transition-colors"
+                              onClick={(e) => { e.stopPropagation(); handleDeleteClick(trade._id); }}
+                              title="Delete"
+                            >
+                              <Icons.Trash />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr className="border-b border-border/50">
+                          <td colSpan="9" className="px-6 py-4 bg-bg-input/20">
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                              <div className="space-y-3">
+                                {tradeTags.length > 0 && (
+                                  <div>
+                                    <span className="text-text-muted text-[10px] font-semibold uppercase tracking-wider">Tags</span>
+                                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                                      {tradeTags.map(tag => (
+                                        <span key={tag._id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: tag.color + '22', color: tag.color }}>
+                                          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: tag.color }}></span>
+                                          {tag.name}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                {trade.comments && (
+                                  <div>
+                                    <span className="text-text-muted text-[10px] font-semibold uppercase tracking-wider">Notes</span>
+                                    <div className="text-xs text-text-secondary bg-bg-surface rounded-lg px-3 py-2 mt-1.5">{trade.comments}</div>
+                                  </div>
+                                )}
+                                {trade.screenshot && (
+                                  <div>
+                                    <span className="text-text-muted text-[10px] font-semibold uppercase tracking-wider">Screenshot</span>
+                                    <img src={trade.screenshot} alt="Trade screenshot" className="rounded-lg border border-border max-h-48 w-full object-contain bg-bg-surface mt-1.5" />
+                                  </div>
+                                )}
+                                {!trade.comments && !trade.screenshot && tradeTags.length === 0 && (!isElite || tradeRules.length === 0) && (
+                                  <p className="text-text-muted text-xs">No notes or screenshot attached to this trade.</p>
+                                )}
+                              </div>
+                              {isElite && tradeRules.length > 0 && (
+                                <div>
+                                  <span className="text-text-muted text-[10px] font-semibold uppercase tracking-wider">Trade Rules</span>
+                                  <div className="mt-1.5">
+                                    <RuleChecklist
+                                      rules={tradeRules}
+                                      checks={tradeChecksMap[trade._id] || []}
+                                      onToggle={(ruleId, followed) => handleTradeRuleToggle(trade._id, ruleId, followed)}
+                                      loading={checksLoading}
+                                    />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>
@@ -2464,7 +3175,36 @@ const TradeListPage = ({ trades, triggerReload, onEdit, subscriptionStatus, onOp
         )}
       </div>
 
-      <CSVImportModal isOpen={csvImportOpen} onClose={() => setCsvImportOpen(false)} triggerReload={triggerReload} />
+      {deleteConfirmId && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => setDeleteConfirmId(null)}>
+          <div className="bg-bg-surface border border-border rounded-xl p-6 w-full max-w-sm shadow-xl" onClick={e => e.stopPropagation()}>
+            <h3 className="text-text-primary font-semibold mb-1">Delete Trade</h3>
+            <p className="text-text-secondary text-sm mb-5">Are you sure you want to delete this trade? This cannot be undone.</p>
+            <label className="flex items-center gap-2 text-text-tertiary text-sm mb-5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="rounded"
+                onChange={e => {
+                  if (e.target.checked) localStorage.setItem('skipTradeDeleteConfirm', 'true');
+                  else localStorage.removeItem('skipTradeDeleteConfirm');
+                }}
+              />
+              Do not show again
+            </label>
+            <div className="flex gap-2 justify-end">
+              <button
+                className="px-4 py-2 text-sm text-text-secondary hover:text-text-primary transition-colors"
+                onClick={() => setDeleteConfirmId(null)}
+              >Cancel</button>
+              <button
+                className="px-4 py-2 text-sm bg-negative text-white rounded-lg hover:opacity-80 transition-opacity"
+                onClick={() => doDelete(deleteConfirmId)}
+              >Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
@@ -2472,7 +3212,7 @@ const TradeListPage = ({ trades, triggerReload, onEdit, subscriptionStatus, onOp
 // =====================================================
 // ANALYTICS PAGE
 // =====================================================
-const AnalyticsPage = ({ trades: allTrades }) => {
+const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
   const canvasRef = useRef(null);
   const barCanvasRef = useRef(null);
   const timeCanvasRef = useRef(null);
@@ -2482,12 +3222,13 @@ const AnalyticsPage = ({ trades: allTrades }) => {
   const [hoveredTimeIndex, setHoveredTimeIndex] = useState(null);
   const [period, setPeriod] = useState('all');
 
+  const baseTradesForPeriod = applyEvalFilter(allTrades, evalFilter);
   const dateRange = getDateRange(period);
-  const trades = filterTradesByDateRange(allTrades, dateRange);
+  const trades = filterTradesByDateRange(baseTradesForPeriod, dateRange);
   const stats = calculateAnalytics(trades);
 
   const prevRange = getPreviousDateRange(period);
-  const prevTrades = prevRange ? filterTradesByDateRange(allTrades, prevRange) : null;
+  const prevTrades = prevRange ? filterTradesByDateRange(baseTradesForPeriod, prevRange) : null;
   const prevStats = prevTrades ? calculateAnalytics(prevTrades) : null;
   const showChange = period !== 'all' && prevStats;
 
@@ -2983,8 +3724,13 @@ const AnalyticsPage = ({ trades: allTrades }) => {
         <p className="text-text-secondary text-sm mt-1">Detailed performance analysis</p>
       </div>
 
-      {/* Period Filter */}
-      <PeriodFilter value={period} onChange={setPeriod} trades={allTrades} />
+      {/* Period Filter + Eval filter */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex-1 min-w-0">
+          <PeriodFilter value={period} onChange={setPeriod} trades={allTrades} />
+        </div>
+        <EvalFilterControl trades={allTrades} evalFilter={evalFilter} setEvalFilter={setEvalFilter} />
+      </div>
 
       {trades.length === 0 ? (
         <div className="bg-bg-surface border border-border rounded-xl p-8 text-center">
@@ -2996,7 +3742,7 @@ const AnalyticsPage = ({ trades: allTrades }) => {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <StatCard label="Total P/L" value={`$${stats.totalPL.toFixed(2)}`} color={stats.totalPL >= 0 ? 'text-positive' : 'text-negative'}
           change={showChange ? calcPercentChange(stats.totalPL, prevStats.totalPL) : null} />
-        <StatCard label="Win Rate" value={`${stats.winRate.toFixed(1)}%`} color="text-text-primary"
+        <WinRateCard wins={stats.wins} losses={stats.losses} total={stats.totalTrades}
           change={showChange ? calcPercentChange(stats.winRate, prevStats.winRate) : null} />
         <StatCard label="Profit Factor" value={profitFactor.toFixed(2)} color="text-text-primary"
           change={showChange ? calcPercentChange(profitFactor, prevProfitFactor) : null} />
@@ -3195,10 +3941,6 @@ const TAG_COLOR_PRESETS = [
 
 const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, customColors, tags, triggerReload, subscriptionStatus }) => {
   const [activeTab, setActiveTab] = useState('brokers');
-  const [tvUsername, setTvUsername] = useState('');
-  const [tvPassword, setTvPassword] = useState('');
-  const [tvCid, setTvCid] = useState('');
-  const [tvSecret, setTvSecret] = useState('');
   const [tvEnvironment, setTvEnvironment] = useState('demo');
   const [tvStatus, setTvStatus] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -3212,6 +3954,49 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
 
   useEffect(() => { fetchStatus(); }, []);
 
+  // Handle OAuth callback: exchange code when redirected back from Tradovate
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('tv_code');
+    const env = params.get('tv_env');
+    const error = params.get('tv_error');
+
+    // Clear OAuth params from URL immediately
+    if (code || error) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+
+    if (error) {
+      setMessage({ type: 'error', text: 'Tradovate OAuth failed. Please try again.' });
+      return;
+    }
+
+    if (!code) return;
+
+    const exchangeCode = async () => {
+      setSaving(true);
+      setMessage(null);
+      try {
+        const response = await authFetch('/api/tradovate/exchange', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code, environment: env || 'demo' }),
+        });
+        const data = await response.json();
+        if (data.error) {
+          setMessage({ type: 'error', text: data.error });
+        } else {
+          setMessage({ type: 'success', text: 'Tradovate connected successfully!' });
+          fetchStatus();
+        }
+      } catch (err) {
+        setMessage({ type: 'error', text: 'Failed to connect Tradovate' });
+      }
+      setSaving(false);
+    };
+    exchangeCode();
+  }, []);
+
   const fetchStatus = async () => {
     try {
       const response = await authFetch('/api/tradovate/status');
@@ -3223,31 +4008,8 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
     }
   };
 
-  const handleSaveCredentials = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    setMessage(null);
-    try {
-      const response = await authFetch('/api/tradovate/credentials', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: tvUsername, password: tvPassword,
-          cid: tvCid, secret: tvSecret, environment: tvEnvironment,
-        }),
-      });
-      const data = await response.json();
-      if (data.error) {
-        setMessage({ type: 'error', text: data.error });
-      } else {
-        setMessage({ type: 'success', text: data.message });
-        setTvUsername(''); setTvPassword(''); setTvCid(''); setTvSecret('');
-        fetchStatus();
-      }
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to save credentials' });
-    }
-    setSaving(false);
+  const handleConnect = () => {
+    window.location.href = `/api/tradovate/connect?environment=${tvEnvironment}`;
   };
 
   const handleSync = async () => {
@@ -3427,8 +4189,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
               <div className="px-5 pb-5 border-t border-border pt-4">
                 <div className="bg-bg-page/50 rounded-lg p-3 mb-4">
                   <p className="text-xs text-text-secondary leading-relaxed">
-                    <strong className="text-text-primary">Setup:</strong> Log in to your Tradovate account and navigate to{' '}
-                    <span className="font-mono text-accent">Settings &gt; API Access</span>. Create a new API application to get your Client ID and Secret. Use your Tradovate account username and password along with the API credentials below.
+                    <strong className="text-text-primary">Setup:</strong> Click <em>Connect with Tradovate</em> below to authorize access through Tradovate's secure login. No username or password is stored by this app.
                   </p>
                 </div>
 
@@ -3459,7 +4220,13 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                     </div>
                   </div>
                 ) : (
-                  <form onSubmit={handleSaveCredentials} className="space-y-4">
+                  <div className="space-y-4">
+                    {tvStatus && tvStatus.expired && (
+                      <p className="text-xs text-negative">Your Tradovate session has expired. Please reconnect.</p>
+                    )}
+                    {saving && (
+                      <p className="text-xs text-text-secondary">Connecting to Tradovate...</p>
+                    )}
                     <div className="flex gap-2">
                       <button
                         type="button"
@@ -3484,40 +4251,15 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                         Live
                       </button>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs text-text-secondary mb-1.5">Username</label>
-                        <input type="text" value={tvUsername} onChange={(e) => setTvUsername(e.target.value)}
-                          placeholder="Tradovate username" required
-                          className="w-full px-3 py-2.5 bg-bg-input border border-border rounded-lg text-text-primary text-sm placeholder-text-muted focus:outline-none focus:border-accent transition-colors" />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-text-secondary mb-1.5">Password</label>
-                        <input type="password" value={tvPassword} onChange={(e) => setTvPassword(e.target.value)}
-                          placeholder="Tradovate password" required
-                          className="w-full px-3 py-2.5 bg-bg-input border border-border rounded-lg text-text-primary text-sm placeholder-text-muted focus:outline-none focus:border-accent transition-colors" />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-text-secondary mb-1.5">Client ID (CID)</label>
-                        <input type="text" value={tvCid} onChange={(e) => setTvCid(e.target.value)}
-                          placeholder="API Client ID" required
-                          className="w-full px-3 py-2.5 bg-bg-input border border-border rounded-lg text-text-primary text-sm placeholder-text-muted focus:outline-none focus:border-accent transition-colors" />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-text-secondary mb-1.5">API Secret</label>
-                        <input type="password" value={tvSecret} onChange={(e) => setTvSecret(e.target.value)}
-                          placeholder="API Secret" required
-                          className="w-full px-3 py-2.5 bg-bg-input border border-border rounded-lg text-text-primary text-sm placeholder-text-muted focus:outline-none focus:border-accent transition-colors" />
-                      </div>
-                    </div>
                     <button
-                      type="submit"
+                      type="button"
                       className="px-6 py-2.5 bg-accent text-accent-text text-sm font-semibold rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
+                      onClick={handleConnect}
                       disabled={saving}
                     >
-                      {saving ? 'Validating & Saving...' : 'Connect Tradovate'}
+                      Connect with Tradovate
                     </button>
-                  </form>
+                  </div>
                 )}
               </div>
             )}
@@ -3774,15 +4516,11 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                   <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold uppercase ${
                     subscriptionStatus && subscriptionStatus.isPremium
                       ? 'bg-accent/15 text-accent'
-                      : subscriptionStatus && subscriptionStatus.isTrialActive
-                        ? 'bg-info/15 text-info'
-                        : 'bg-text-muted/15 text-text-secondary'
+                      : 'bg-text-muted/15 text-text-secondary'
                   }`}>
                     {subscriptionStatus && subscriptionStatus.isPremium
                       ? (subscriptionStatus.plan || 'Pro')
-                      : subscriptionStatus && subscriptionStatus.isTrialActive
-                        ? 'Free Trial'
-                        : 'Free'}
+                      : 'Free'}
                   </span>
                   {subscriptionStatus && subscriptionStatus.subscriptionStatus && (
                     <span className={`text-xs ${
@@ -3794,11 +4532,6 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                     </span>
                   )}
                 </div>
-                {subscriptionStatus && subscriptionStatus.isTrialActive && (
-                  <p className="text-text-tertiary text-sm">
-                    {subscriptionStatus.trialDaysRemaining} day{subscriptionStatus.trialDaysRemaining !== 1 ? 's' : ''} remaining in your trial
-                  </p>
-                )}
                 {subscriptionStatus && subscriptionStatus.createdDate && (
                   <p className="text-text-muted text-xs mt-1">
                     Account created: {new Date(subscriptionStatus.createdDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
@@ -3886,7 +4619,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
               >
                 Light
               </button>
-              {subscriptionStatus && subscriptionStatus.isPremium ? (
+              {subscriptionStatus && subscriptionStatus.plan === 'elite' ? (
                 <button
                   className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                     theme === 'custom' ? 'bg-bg-surface text-text-primary' : 'text-text-secondary hover:text-text-primary'
@@ -3898,7 +4631,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
               ) : (
                 <button
                   className="px-4 py-2 rounded-md text-sm font-medium text-text-muted cursor-not-allowed"
-                  title="Upgrade to Pro to use custom themes"
+                  title="Upgrade to Elite to use custom themes"
                   disabled
                 >
                   Custom
@@ -3908,7 +4641,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
             </div>
           </div>
 
-          {theme === 'custom' && subscriptionStatus && subscriptionStatus.isPremium && (
+          {theme === 'custom' && subscriptionStatus && subscriptionStatus.plan === 'elite' && (
             <div className="mt-4 pt-4 border-t border-border space-y-4">
               <div className="text-text-secondary text-sm font-medium">Custom Colors</div>
               <div className="grid grid-cols-3 gap-4">
@@ -3957,25 +4690,23 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
 // =====================================================
 // PRE-MARKET PAGE
 // =====================================================
-const PreMarketPage = ({ subscriptionStatus }) => {
+const PreMarketPage = ({ subscriptionStatus, trades }) => {
   const [items, setItems] = useState([]);
   const [completions, setCompletions] = useState([]);
-  const [newsReleases, setNewsReleases] = useState([]);
-  const [settings, setSettings] = useState({ resetTime: '06:00', timezone: 'America/New_York', hasDiscordWebhook: false, discordWebhookMasked: null });
+  const [settings, setSettings] = useState({ resetTime: '06:00', timezone: 'America/New_York' });
   const [loading, setLoading] = useState(true);
-  const [newsLoading, setNewsLoading] = useState(true);
   const [newItemLabel, setNewItemLabel] = useState('');
   const [editingId, setEditingId] = useState(null);
   const [editingLabel, setEditingLabel] = useState('');
   const [showSettings, setShowSettings] = useState(false);
-  const [webhookInput, setWebhookInput] = useState('');
-  const [webhookSaving, setWebhookSaving] = useState(false);
-  const [webhookMsg, setWebhookMsg] = useState(null);
+  const [consistencyData, setConsistencyData] = useState(null);
+  const [consistencyLoading, setConsistencyLoading] = useState(true);
+
+  const isElite = subscriptionStatus && subscriptionStatus.isPremium;
 
   const getTodayDate = () => {
     const now = new Date();
-    // Format as YYYY-MM-DD in user's local timezone
-    return now.toLocaleDateString('en-CA'); // en-CA gives YYYY-MM-DD
+    return now.toLocaleDateString('en-CA'); // YYYY-MM-DD
   };
 
   const todayDate = getTodayDate();
@@ -3991,8 +4722,6 @@ const PreMarketPage = ({ subscriptionStatus }) => {
           setSettings({
             resetTime: data.settings.resetTime,
             timezone: data.settings.timezone,
-            hasDiscordWebhook: data.settings.hasDiscordWebhook || false,
-            discordWebhookMasked: data.settings.discordWebhookMasked || null,
           });
         }
       }
@@ -4003,22 +4732,30 @@ const PreMarketPage = ({ subscriptionStatus }) => {
     }
   };
 
-  const fetchNews = async () => {
+  const fetchConsistency = async () => {
     try {
-      const resp = await authFetch(`/api/premarket/news?date=${todayDate}`);
+      const end = new Date();
+      const start = new Date();
+      start.setDate(start.getDate() - 90);
+      const startDate = start.toLocaleDateString('en-CA');
+      const endDate = end.toLocaleDateString('en-CA');
+      const resp = await authFetch(`/api/premarket/consistency?startDate=${startDate}&endDate=${endDate}`);
       const data = await resp.json();
-      setNewsReleases(data.events || []);
+      if (!data.error) {
+        setConsistencyData(data.completionsByDate || {});
+      }
     } catch (err) {
-      console.error('Failed to fetch news:', err);
+      console.error('Failed to fetch consistency:', err);
     } finally {
-      setNewsLoading(false);
+      setConsistencyLoading(false);
     }
   };
 
   useEffect(() => {
+    if (!isElite) { setLoading(false); setConsistencyLoading(false); return; }
     fetchChecklist();
-    fetchNews();
-  }, []);
+    fetchConsistency();
+  }, [isElite]);
 
   const addItem = async () => {
     const label = newItemLabel.trim();
@@ -4105,53 +4842,6 @@ const PreMarketPage = ({ subscriptionStatus }) => {
     }
   };
 
-  const saveWebhook = async () => {
-    const url = webhookInput.trim();
-    if (!url) return;
-    if (!url.startsWith('https://discord.com/api/webhooks/')) {
-      setWebhookMsg('Must be a Discord webhook URL');
-      return;
-    }
-    setWebhookSaving(true);
-    setWebhookMsg(null);
-    try {
-      const resp = await authFetch('/api/premarket/webhook', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ webhookUrl: url }),
-      });
-      const result = await resp.json();
-      if (result.error) {
-        setWebhookMsg(result.error);
-      } else {
-        setSettings(prev => ({ ...prev, hasDiscordWebhook: result.hasDiscordWebhook, discordWebhookMasked: result.discordWebhookMasked }));
-        setWebhookInput('');
-        setWebhookMsg('Webhook saved');
-      }
-    } catch (err) {
-      setWebhookMsg('Failed to save webhook');
-    } finally {
-      setWebhookSaving(false);
-    }
-  };
-
-  const removeWebhook = async () => {
-    setWebhookSaving(true);
-    setWebhookMsg(null);
-    try {
-      const resp = await authFetch('/api/premarket/webhook', { method: 'DELETE' });
-      const result = await resp.json();
-      if (!result.error) {
-        setSettings(prev => ({ ...prev, hasDiscordWebhook: false, discordWebhookMasked: null }));
-        setWebhookMsg('Webhook removed');
-      }
-    } catch (err) {
-      setWebhookMsg('Failed to remove webhook');
-    } finally {
-      setWebhookSaving(false);
-    }
-  };
-
   const isCompleted = (itemId) => completions.some(c => c.itemId === itemId);
   const completedCount = items.filter(i => isCompleted(i._id)).length;
   const progress = items.length > 0 ? Math.round((completedCount / items.length) * 100) : 0;
@@ -4164,6 +4854,21 @@ const PreMarketPage = ({ subscriptionStatus }) => {
     'UTC': 'UTC',
   };
 
+  if (!isElite) {
+    return (
+      <div className="text-center py-16">
+        <Icons.Sunrise className="w-12 h-12 text-text-muted mx-auto mb-4" />
+        <h2 className="text-text-primary text-xl font-semibold mb-2">Pre-Market Prep</h2>
+        <p className="text-text-secondary text-sm mb-6 max-w-md mx-auto">
+          Build a daily pre-market checklist, track your routine consistency, and see how your preparation correlates with trading performance.
+        </p>
+        <a href="/upgrade" className="inline-flex items-center gap-2 px-6 py-3 bg-accent text-accent-text text-sm font-semibold rounded-xl hover:brightness-110 transition-all">
+          <Icons.Zap className="w-4 h-4" /> Upgrade to Elite
+        </a>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -4171,6 +4876,44 @@ const PreMarketPage = ({ subscriptionStatus }) => {
       </div>
     );
   }
+
+  // --- Consistency analytics (computed client-side) ---
+  const now90 = new Date();
+  const start90 = new Date();
+  start90.setDate(start90.getDate() - 90);
+  const start90Str = start90.toLocaleDateString('en-CA');
+  const now90Str = now90.toLocaleDateString('en-CA');
+
+  const tradingDates = trades
+    ? [...new Set(
+        trades
+          .filter(t => t.exitTime)
+          .map(t => {
+            const e = toEST(t.exitTime);
+            return `${e.year}-${String(e.month).padStart(2, '0')}-${String(e.day).padStart(2, '0')}`;
+          })
+          .filter(d => d >= start90Str && d <= now90Str)
+      )]
+    : [];
+
+  const tradingDaysCount = tradingDates.length;
+
+  const itemConsistency = consistencyData !== null && items.length > 0
+    ? items.map(item => {
+        const daysCompleted = tradingDates.filter(d => {
+          const completedIds = consistencyData[d] || [];
+          return completedIds.includes(item._id);
+        }).length;
+        const rate = tradingDaysCount > 0 ? daysCompleted / tradingDaysCount : 0;
+        return { item, daysCompleted, rate };
+      }).sort((a, b) => a.rate - b.rate)
+    : [];
+
+  const overallRate = itemConsistency.length > 0
+    ? itemConsistency.reduce((sum, x) => sum + x.rate, 0) / itemConsistency.length
+    : 0;
+
+  const overallPct = Math.round(overallRate * 100);
 
   return (
     <div className="space-y-6">
@@ -4233,51 +4976,6 @@ const PreMarketPage = ({ subscriptionStatus }) => {
               </select>
             </div>
           </div>
-
-          {/* Discord Webhook — paid users only */}
-          {subscriptionStatus && subscriptionStatus.isPremium && (
-            <div className="border-t border-border pt-3 mt-3">
-              <h3 className="text-sm font-medium text-text-primary mb-1">Discord Notifications</h3>
-              <p className="text-xs text-text-secondary mb-2">Get a daily economic calendar summary sent to your Discord channel at your configured reset time.</p>
-              {settings.hasDiscordWebhook ? (
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 bg-bg-page border border-border rounded-lg px-3 py-2 text-sm text-text-secondary font-mono">
-                    {settings.discordWebhookMasked}
-                  </div>
-                  <button
-                    onClick={removeWebhook}
-                    disabled={webhookSaving}
-                    className="px-3 py-2 text-xs font-medium text-negative border border-negative/30 rounded-lg hover:bg-negative/10 transition-colors disabled:opacity-50"
-                  >
-                    Remove
-                  </button>
-                </div>
-              ) : (
-                <div className="flex gap-2">
-                  <input
-                    type="password"
-                    value={webhookInput}
-                    onChange={(e) => setWebhookInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') saveWebhook(); }}
-                    placeholder="https://discord.com/api/webhooks/..."
-                    className="flex-1 bg-bg-page border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder-text-secondary"
-                  />
-                  <button
-                    onClick={saveWebhook}
-                    disabled={webhookSaving || !webhookInput.trim()}
-                    className="px-3 py-2 bg-accent text-white rounded-lg text-xs font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
-                  >
-                    {webhookSaving ? 'Saving...' : 'Save'}
-                  </button>
-                </div>
-              )}
-              {webhookMsg && (
-                <p className={`text-xs mt-1.5 ${webhookMsg.includes('Failed') || webhookMsg.includes('Must') ? 'text-negative' : 'text-positive'}`}>
-                  {webhookMsg}
-                </p>
-              )}
-            </div>
-          )}
         </div>
       )}
 
@@ -4382,33 +5080,84 @@ const PreMarketPage = ({ subscriptionStatus }) => {
         </div>
       </div>
 
-      {/* Economic Releases Section */}
+      {/* Consistency Analytics Section */}
       <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
         <div className="px-5 py-4 border-b border-border">
-          <h2 className="text-sm font-semibold text-text-primary uppercase tracking-wider">Today's Economic Releases</h2>
+          <h2 className="text-sm font-semibold text-text-primary uppercase tracking-wider">Checklist Consistency</h2>
+          <p className="text-xs text-text-secondary mt-0.5">On days you traded (last 90 days)</p>
         </div>
 
-        <div className="divide-y divide-border">
-          {newsLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
-            </div>
-          ) : newsReleases.length > 0 ? (
-            newsReleases.map((event, idx) => (
-              <div key={idx} className="flex items-center gap-3 px-5 py-3">
-                <Icons.BarChart className="w-4 h-4 text-accent flex-shrink-0" />
-                <span className="flex-1 text-sm text-text-primary">{event.eventName}</span>
-                {event.eventTime && (
-                  <span className="text-xs text-text-secondary">{event.eventTime}</span>
-                )}
+        {consistencyLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+          </div>
+        ) : tradingDaysCount === 0 ? (
+          <div className="px-5 py-8 text-center text-sm text-text-secondary">
+            No trading days found in the last 90 days
+          </div>
+        ) : items.length === 0 ? (
+          <div className="px-5 py-8 text-center text-sm text-text-secondary">
+            Add checklist items above to start tracking consistency
+          </div>
+        ) : (
+          <div className="px-5 py-4 space-y-4">
+            {/* Overall stat */}
+            <div className="flex items-center gap-4">
+              <div className="relative w-16 h-16 flex-shrink-0">
+                <svg className="w-16 h-16 -rotate-90" viewBox="0 0 64 64">
+                  <circle cx="32" cy="32" r="26" fill="none" stroke="var(--border)" strokeWidth="6" />
+                  <circle
+                    cx="32" cy="32" r="26" fill="none"
+                    stroke={overallPct >= 75 ? 'var(--positive)' : overallPct >= 40 ? 'var(--accent)' : 'var(--negative)'}
+                    strokeWidth="6"
+                    strokeLinecap="round"
+                    strokeDasharray={`${2 * Math.PI * 26}`}
+                    strokeDashoffset={`${2 * Math.PI * 26 * (1 - overallRate)}`}
+                  />
+                </svg>
+                <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-text-primary">
+                  {overallPct}%
+                </span>
               </div>
-            ))
-          ) : (
-            <div className="px-5 py-8 text-center text-sm text-text-secondary">
-              No economic releases scheduled for today
+              <div>
+                <div className="text-text-primary font-semibold text-base">Overall Adherence</div>
+                <div className="text-text-secondary text-xs mt-0.5">{tradingDaysCount} trading {tradingDaysCount === 1 ? 'day' : 'days'} analyzed</div>
+              </div>
             </div>
-          )}
-        </div>
+
+            {/* Per-item breakdown */}
+            <div className="space-y-2.5">
+              {itemConsistency.map(({ item, daysCompleted, rate }) => {
+                const pct = Math.round(rate * 100);
+                const isMostSkipped = rate < 0.5;
+                return (
+                  <div key={item._id}>
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-sm text-text-primary truncate">{item.label}</span>
+                        {isMostSkipped && (
+                          <span className="text-xs text-negative font-medium flex-shrink-0">Most skipped</span>
+                        )}
+                      </div>
+                      <span className="text-xs text-text-secondary flex-shrink-0 ml-2">
+                        {daysCompleted}/{tradingDaysCount} — {pct}%
+                      </span>
+                    </div>
+                    <div className="w-full bg-bg-page rounded-full h-1.5">
+                      <div
+                        className="h-1.5 rounded-full transition-all duration-300"
+                        style={{
+                          width: `${pct}%`,
+                          backgroundColor: pct >= 75 ? 'var(--positive)' : pct >= 40 ? 'var(--accent)' : 'var(--negative)',
+                        }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -4423,8 +5172,8 @@ const UpgradePage = ({ pricing }) => {
     {
       name: (planDefs.trial && planDefs.trial.name) || 'Trial',
       price: '$0',
-      period: `${(pricing && pricing.trialDays) || '14'} days`,
-      features: (planDefs.trial && planDefs.trial.features) || ['Up to 50 trades', 'Basic analytics'],
+      period: '14 days',
+      features: (planDefs.trial && planDefs.trial.features) || ['All Pro features for 14 days', 'Up to 50 trades'],
       accent: false,
       popular: false,
     },
@@ -4505,11 +5254,13 @@ const UpgradePage = ({ pricing }) => {
 // =====================================================
 const ScreenshotMarkupModal = ({ isOpen, onClose, onSave, initialImage }) => {
   const canvasRef = useRef(null);
+  const textInputRef = useRef(null);
   const [currentTool, setCurrentTool] = useState('pen');
   const [currentColor, setCurrentColor] = useState('#ef4444');
   const [isDrawing, setIsDrawing] = useState(false);
   const [history, setHistory] = useState([]);
   const [historyStep, setHistoryStep] = useState(-1);
+  const [textInput, setTextInput] = useState({ visible: false, x: 0, y: 0, value: '' });
 
   useEffect(() => {
     if (!isOpen || !canvasRef.current) return;
@@ -4556,7 +5307,27 @@ const ScreenshotMarkupModal = ({ isOpen, onClose, onSave, initialImage }) => {
     img.src = initialImage;
   };
 
+  useEffect(() => {
+    if (textInput.visible && textInputRef.current) {
+      textInputRef.current.focus();
+    }
+  }, [textInput.visible]);
+
+  const commitText = () => {
+    if (!textInput.visible) return;
+    if (textInput.value.trim()) {
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      ctx.font = 'bold 18px Inter, sans-serif';
+      ctx.fillStyle = currentColor;
+      ctx.fillText(textInput.value, textInput.x, textInput.y + 18);
+      saveState();
+    }
+    setTextInput({ visible: false, x: 0, y: 0, value: '' });
+  };
+
   const startDrawing = (e) => {
+    if (textInput.visible) return;
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -4570,8 +5341,7 @@ const ScreenshotMarkupModal = ({ isOpen, onClose, onSave, initialImage }) => {
     if (currentTool === 'pen') { ctx.beginPath(); ctx.moveTo(x, y); }
     else if (currentTool === 'arrow') { canvas.dataset.startX = x; canvas.dataset.startY = y; }
     else if (currentTool === 'text') {
-      const text = prompt('Enter text:');
-      if (text) { ctx.font = '16px Inter, sans-serif'; ctx.fillStyle = currentColor; ctx.fillText(text, x, y); saveState(); }
+      setTextInput({ visible: true, x, y, value: '' });
       setIsDrawing(false);
     }
   };
@@ -4678,14 +5448,40 @@ const ScreenshotMarkupModal = ({ isOpen, onClose, onSave, initialImage }) => {
 
         {/* Canvas */}
         <div className="flex-1 overflow-auto p-4 flex justify-center">
-          <canvas
-            ref={canvasRef}
-            className="cursor-crosshair rounded-lg"
-            onMouseDown={startDrawing}
-            onMouseMove={draw}
-            onMouseUp={stopDrawing}
-            onMouseLeave={stopDrawing}
-          />
+          <div className="relative" style={{ display: 'inline-block' }}>
+            <canvas
+              ref={canvasRef}
+              className={`rounded-lg ${currentTool === 'text' ? 'cursor-text' : 'cursor-crosshair'}`}
+              onMouseDown={startDrawing}
+              onMouseMove={draw}
+              onMouseUp={stopDrawing}
+              onMouseLeave={stopDrawing}
+            />
+            {textInput.visible && (
+              <input
+                ref={textInputRef}
+                type="text"
+                className="absolute bg-transparent border-none outline-none p-0 m-0"
+                style={{
+                  left: textInput.x,
+                  top: textInput.y,
+                  color: currentColor,
+                  font: 'bold 18px Inter, sans-serif',
+                  minWidth: 80,
+                  width: Math.max(80, textInput.value.length * 11 + 20),
+                  caretColor: currentColor,
+                  textShadow: '0 1px 3px rgba(0,0,0,0.8)',
+                }}
+                value={textInput.value}
+                onChange={e => setTextInput(prev => ({ ...prev, value: e.target.value }))}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') { e.preventDefault(); commitText(); }
+                  if (e.key === 'Escape') { setTextInput({ visible: false, x: 0, y: 0, value: '' }); }
+                }}
+                onBlur={commitText}
+              />
+            )}
+          </div>
         </div>
 
         {/* Actions */}
@@ -4699,9 +5495,103 @@ const ScreenshotMarkupModal = ({ isOpen, onClose, onSave, initialImage }) => {
 };
 
 // =====================================================
+// TICKER AUTOFILL
+// =====================================================
+const TickerAutofill = ({ id, name, placeholder, defaultValue, className, trades, onChange }) => {
+  const [value, setValue] = useState(defaultValue || '');
+  const [open, setOpen] = useState(false);
+  const [highlightIdx, setHighlightIdx] = useState(-1);
+  const wrapperRef = useRef(null);
+
+  // Build merged suggestion list: user history first, then static, deduplicated
+  const suggestions = useMemo(() => {
+    const userTickers = [...new Set((trades || []).map(t => (t.ticker || '').toUpperCase()).filter(Boolean))];
+    const seen = new Set(userTickers);
+    const staticFiltered = COMMON_TICKERS.filter(t => !seen.has(t));
+    return [...userTickers, ...staticFiltered];
+  }, [trades]);
+
+  const filtered = useMemo(() => {
+    const q = value.toUpperCase().trim();
+    if (!q) return suggestions.slice(0, 8);
+    return suggestions.filter(t => t.startsWith(q)).slice(0, 8);
+  }, [value, suggestions]);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const select = (ticker) => {
+    setValue(ticker);
+    setOpen(false);
+    setHighlightIdx(-1);
+    if (onChange) onChange(ticker);
+  };
+
+  const handleKeyDown = (e) => {
+    if (!open || filtered.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightIdx(prev => (prev + 1) % filtered.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightIdx(prev => (prev - 1 + filtered.length) % filtered.length);
+    } else if (e.key === 'Enter' && highlightIdx >= 0) {
+      e.preventDefault();
+      select(filtered[highlightIdx]);
+    } else if (e.key === 'Escape') {
+      setOpen(false);
+      setHighlightIdx(-1);
+    }
+  };
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <input
+        id={id}
+        name={name}
+        type="text"
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => {
+          const v = e.target.value.toUpperCase();
+          setValue(v);
+          setOpen(true);
+          setHighlightIdx(-1);
+          if (onChange) onChange(v);
+        }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={handleKeyDown}
+        className={className}
+        style={{ textTransform: 'uppercase' }}
+        autoComplete="off"
+      />
+      {open && filtered.length > 0 && (
+        <ul className="absolute z-50 left-0 right-0 mt-1 bg-bg-surface border border-border rounded-lg shadow-lg max-h-52 overflow-y-auto">
+          {filtered.map((t, i) => (
+            <li
+              key={t}
+              className={`px-3 py-2 text-sm cursor-pointer font-mono ${i === highlightIdx ? 'bg-accent/20 text-accent' : 'text-text-primary hover:bg-bg-input'}`}
+              onMouseDown={() => select(t)}
+              onMouseEnter={() => setHighlightIdx(i)}
+            >
+              {t}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+};
+
+// =====================================================
 // TRADE FORM POPUP
 // =====================================================
-const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, tags }) => {
+const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, prefillDate, tags, strategyRules, subscriptionStatus, trades }) => {
   const [screenshot, setScreenshot] = useState(null);
   const [pastedImage, setPastedImage] = useState(null);
   const [isMarkupOpen, setIsMarkupOpen] = useState(false);
@@ -4712,6 +5602,23 @@ const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, tags }) 
   const [quickTagName, setQuickTagName] = useState('');
   const [quickTagColor, setQuickTagColor] = useState(TAG_COLOR_PRESETS[0]);
   const [creatingTag, setCreatingTag] = useState(false);
+  const [isEval, setIsEval] = useState(false);
+  const [tradeRuleChecks, setTradeRuleChecks] = useState([]);
+  const [pendingRuleChecks, setPendingRuleChecks] = useState([]);
+  const [ruleChecksLoading, setRuleChecksLoading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef(null);
+  const windowWidth = useWindowWidth();
+  const isUltrawide = windowWidth >= 2000;
+  const setSidePanelOffset = React.useContext(SidePanelContext);
+  const tradeRules = strategyRules ? strategyRules.filter(r => r.type === 'trade') : [];
+  const isElite = subscriptionStatus && subscriptionStatus.plan === 'elite';
+  useEffect(() => {
+    if (!isOpen) { setSidePanelOffset(0); return; }
+    if (isUltrawide) setSidePanelOffset(520);
+    else setSidePanelOffset(0);
+    return () => setSidePanelOffset(0);
+  }, [isOpen, isUltrawide, setSidePanelOffset]);
 
   const handleQuickCreateTag = async () => {
     if (!quickTagName.trim() || creatingTag) return;
@@ -4740,19 +5647,34 @@ const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, tags }) 
     const handleEscape = (e) => { if (e.key === 'Escape') onClose(); };
     if (isOpen) {
       document.addEventListener('keydown', handleEscape);
-      document.body.style.overflow = 'hidden';
+      if (!isUltrawide) document.body.style.overflow = 'hidden';
     }
     return () => {
       document.removeEventListener('keydown', handleEscape);
       document.body.style.overflow = 'unset';
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, isUltrawide]);
 
   useEffect(() => {
-    if (!isOpen) { setScreenshot(null); setPastedImage(null); setSelectedTags([]); return; }
+    if (!isOpen) {
+      setScreenshot(null); setPastedImage(null); setSelectedTags([]);
+      setIsEval(false); setTradeRuleChecks([]); setPendingRuleChecks([]);
+      return;
+    }
     if (editingTrade && editingTrade.screenshot) setScreenshot(editingTrade.screenshot);
     if (editingTrade && editingTrade.tags) setSelectedTags(editingTrade.tags);
     else setSelectedTags([]);
+    if (editingTrade) {
+      setIsEval(editingTrade.isEval || false);
+      if (editingTrade._id && tradeRules.length > 0) {
+        authFetch(`/api/strategy/checks/trade/${editingTrade._id}`)
+          .then(r => r.json())
+          .then(data => { if (!data.error) setTradeRuleChecks(data.checks || []); })
+          .catch(() => {});
+      }
+    } else {
+      setIsEval(false);
+    }
 
     const handlePaste = (e) => {
       const items = e.clipboardData?.items;
@@ -4776,11 +5698,122 @@ const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, tags }) 
 
   const isEditing = editingTrade !== null;
 
-  const handleSubmit = (e) => {
-    if (isEditing) {
-      handleUpdateTrade(e, editingTrade._id, () => { triggerReload(); onClose(); }, screenshot, selectedTags);
+  const uploadScreenshot = async (dataUrl) => {
+    setIsUploading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+      const base64 = dataUrl.split(',')[1];
+      const byteChars = atob(base64);
+      const byteArr = new Uint8Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
+      const blob = new Blob([byteArr], { type: 'image/jpeg' });
+      const fileName = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
+      const { data, error } = await supabase.storage.from('trade-screenshots').upload(fileName, blob, { contentType: 'image/jpeg', upsert: false });
+      if (error) throw new Error(error.message);
+      const { data: urlData } = supabase.storage.from('trade-screenshots').getPublicUrl(data.path);
+      return urlData.publicUrl;
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => setPastedImage(event.target.result);
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleRuleToggle = async (ruleId, followed) => {
+    if (isEditing && editingTrade?._id) {
+      setRuleChecksLoading(true);
+      try {
+        const resp = await authFetch('/api/strategy/checks/trade', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tradeId: editingTrade._id, ruleId, followed }),
+        });
+        const check = await resp.json();
+        if (!check.error) {
+          setTradeRuleChecks(prev => {
+            const filtered = prev.filter(ch => ch.ruleId !== ruleId);
+            return [...filtered, check];
+          });
+        }
+      } catch (err) {
+        console.error('Failed to toggle rule:', err);
+      } finally {
+        setRuleChecksLoading(false);
+      }
     } else {
-      handleTrade(e, () => { triggerReload(); onClose(); }, screenshot, selectedTags);
+      setPendingRuleChecks(prev => {
+        const filtered = prev.filter(ch => ch.ruleId !== ruleId);
+        return [...filtered, { ruleId, followed }];
+      });
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    helper.hideError();
+    const ticker = e.target.querySelector('#ticker').value;
+    const enterTimeRaw = e.target.querySelector('#enterTime').value;
+    const exitTimeRaw = e.target.querySelector('#exitTime').value;
+    const enterPrice = e.target.querySelector('#enterPrice').value;
+    const exitPrice = e.target.querySelector('#exitPrice').value;
+    const quantity = e.target.querySelector('#quantity').value;
+    const manualPL = e.target.querySelector('#manualPL').value;
+    const comments = e.target.querySelector('#comments').value;
+    if (!ticker || !enterTimeRaw || !exitTimeRaw || !enterPrice || !exitPrice || !quantity) {
+      helper.handleError('Ticker, enter time, exit time, enter price, exit price, and quantity are required');
+      return;
+    }
+    const enterTime = enterTimeRaw + getESTOffset(new Date(enterTimeRaw));
+    const exitTime = exitTimeRaw + getESTOffset(new Date(exitTimeRaw));
+    const tradeData = {
+      ticker, enterTime, exitTime,
+      enterPrice: parseFloat(enterPrice),
+      exitPrice: parseFloat(exitPrice),
+      quantity: parseFloat(quantity),
+      comments, isEval,
+    };
+    if (manualPL) tradeData.manualPL = parseFloat(manualPL);
+    if (screenshot) tradeData.screenshot = screenshot;
+    if (selectedTags.length > 0) tradeData.tags = selectedTags;
+    try {
+      if (isEditing) {
+        tradeData._id = editingTrade._id;
+        const resp = await authFetch('/api/updateTrade', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(tradeData),
+        });
+        const result = await resp.json();
+        if (result.error) { helper.handleError(result.error); return; }
+      } else {
+        const resp = await authFetch('/api/trades', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(tradeData),
+        });
+        const result = await resp.json();
+        if (result.error) { helper.handleError(result.error); return; }
+        if (result._id && pendingRuleChecks.length > 0) {
+          await Promise.all(
+            pendingRuleChecks.filter(ch => ch.followed).map(ch =>
+              authFetch('/api/strategy/checks/trade', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ tradeId: result._id, ruleId: ch.ruleId, followed: ch.followed }),
+              }).catch(() => {})
+            )
+          );
+        }
+      }
+      triggerReload();
+      onClose();
+    } catch (err) {
+      helper.handleError(err.message || 'An error occurred');
     }
   };
 
@@ -4795,8 +5828,8 @@ const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, tags }) 
 
   return (
     <>
-      <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={onClose}>
-        <div className="bg-bg-surface border border-border rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      <div className={isUltrawide ? "fixed right-0 top-0 h-screen z-40 flex" : "fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"} onClick={!isUltrawide ? onClose : undefined}>
+        <div className={isUltrawide ? "w-[520px] h-full overflow-y-auto bg-bg-surface border-l border-border shadow-2xl" : "bg-bg-surface border border-border rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto"} onClick={(e) => e.stopPropagation()}>
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-border sticky top-0 bg-bg-surface z-10">
             <h2 className="text-lg font-semibold text-text-primary">{isEditing ? 'Edit Trade' : 'New Trade'}</h2>
@@ -4815,28 +5848,28 @@ const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, tags }) 
           >
             <div>
               <label htmlFor="ticker" className={labelClass}>Ticker</label>
-              <input id="ticker" type="text" name="ticker" placeholder="AAPL" defaultValue={isEditing ? editingTrade.ticker : ''} className={inputClass} />
+              <TickerAutofill id="ticker" name="ticker" placeholder="AAPL" defaultValue={isEditing ? editingTrade.ticker : ''} className={inputClass} trades={trades} />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label htmlFor="enterTime" className={labelClass}>Enter Time</label>
-                <input id="enterTime" type="datetime-local" name="enterTime" step="1" defaultValue={isEditing ? formatDateTimeForInput(editingTrade.enterTime) : ''} className={inputClass} />
+                <input id="enterTime" type="datetime-local" name="enterTime" step="1" defaultValue={isEditing ? formatDateTimeForInput(editingTrade.enterTime) : `${prefillDate || new Date().toISOString().split('T')[0]}T09:30:00`} className={inputClass} />
               </div>
               <div>
                 <label htmlFor="exitTime" className={labelClass}>Exit Time</label>
-                <input id="exitTime" type="datetime-local" name="exitTime" step="1" defaultValue={isEditing ? formatDateTimeForInput(editingTrade.exitTime) : ''} className={inputClass} />
+                <input id="exitTime" type="datetime-local" name="exitTime" step="1" defaultValue={isEditing ? formatDateTimeForInput(editingTrade.exitTime) : `${prefillDate || new Date().toISOString().split('T')[0]}T09:30:00`} className={inputClass} />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label htmlFor="enterPrice" className={labelClass}>Enter Price</label>
-                <input id="enterPrice" type="number" step="0.01" min="0" name="enterPrice" placeholder="0.00" defaultValue={isEditing ? editingTrade.enterPrice : ''} className={inputClass} />
+                <label htmlFor="enterPrice" className={labelClass}>Enter Price <span className="text-text-muted font-normal normal-case">(or use P/L)</span></label>
+                <input id="enterPrice" type="number" step="0.01" min="0" name="enterPrice" placeholder="0.00" defaultValue={isEditing ? editingTrade.enterPrice || '' : ''} className={inputClass} />
               </div>
               <div>
-                <label htmlFor="exitPrice" className={labelClass}>Exit Price</label>
-                <input id="exitPrice" type="number" step="0.01" min="0" name="exitPrice" placeholder="0.00" defaultValue={isEditing ? editingTrade.exitPrice : ''} className={inputClass} />
+                <label htmlFor="exitPrice" className={labelClass}>Exit Price <span className="text-text-muted font-normal normal-case">(or use P/L)</span></label>
+                <input id="exitPrice" type="number" step="0.01" min="0" name="exitPrice" placeholder="0.00" defaultValue={isEditing ? editingTrade.exitPrice || '' : ''} className={inputClass} />
               </div>
             </div>
 
@@ -4847,8 +5880,8 @@ const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, tags }) 
                 <p className="text-text-muted text-xs mt-0.5">Use negative for short trades</p>
               </div>
               <div>
-                <label htmlFor="manualPL" className={labelClass}>P/L (Optional)</label>
-                <input id="manualPL" type="number" step="0.01" name="manualPL" placeholder="Auto-calc" defaultValue={isEditing && editingTrade.manualPL ? editingTrade.manualPL : ''} className={inputClass} />
+                <label htmlFor="manualPL" className={labelClass}>P/L <span className="text-text-muted font-normal normal-case">(or use prices)</span></label>
+                <input id="manualPL" type="number" step="0.01" name="manualPL" placeholder="Required if no prices" defaultValue={isEditing && editingTrade.manualPL ? editingTrade.manualPL : ''} className={inputClass} />
               </div>
             </div>
 
@@ -4856,6 +5889,40 @@ const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, tags }) 
               <label htmlFor="comments" className={labelClass}>Comments</label>
               <textarea id="comments" name="comments" placeholder="Trade notes..." rows="3" defaultValue={isEditing ? editingTrade.comments : ''} className={`${inputClass} resize-none`}></textarea>
             </div>
+
+            {/* Eval checkbox */}
+            <div>
+              <label className="flex items-center gap-2.5 cursor-pointer select-none group">
+                <div
+                  className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${
+                    isEval ? 'bg-accent border-accent' : 'border-border group-hover:border-accent/60'
+                  }`}
+                  onClick={() => setIsEval(prev => !prev)}
+                >
+                  {isEval && <Icons.Check className="w-3 h-3 text-accent-text" />}
+                </div>
+                <span className="text-sm text-text-secondary group-hover:text-text-primary transition-colors" onClick={() => setIsEval(prev => !prev)}>
+                  Evaluation trade
+                </span>
+                {isEval && (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-accent/15 text-accent">EVAL</span>
+                )}
+              </label>
+              <p className="text-text-muted text-xs mt-1 ml-7">Mark this trade as taken on an evaluation account. Eval trades can be excluded from analytics.</p>
+            </div>
+
+            {/* Strategy rule checklist */}
+            {tradeRules.length > 0 && (
+              <div>
+                <label className={labelClass}>Strategy Checklist</label>
+                <RuleChecklist
+                  rules={tradeRules}
+                  checks={isEditing ? tradeRuleChecks : pendingRuleChecks.map(ch => ({ ruleId: ch.ruleId, followed: ch.followed }))}
+                  onToggle={handleRuleToggle}
+                  loading={ruleChecksLoading}
+                />
+              </div>
+            )}
 
             {/* Tags section */}
             <div>
@@ -4941,48 +6008,80 @@ const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, tags }) 
               )}
             </div>
 
-            {/* Screenshot section */}
+            {/* Screenshot section — Elite only */}
             <div>
-              <label className={labelClass}>Screenshot</label>
-              {!screenshot && !pastedImage && (
-                <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
-                  <Icons.Download className="w-8 h-8 text-text-muted mx-auto mb-2" />
-                  <p className="text-text-tertiary text-sm">Paste screenshot (Ctrl+V)</p>
-                </div>
-              )}
+              <div className="flex items-center gap-2 mb-1.5">
+                <label className={labelClass + ' mb-0'}>Screenshot</label>
+                {!isElite && (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-yellow-500/15 text-yellow-400">Elite</span>
+                )}
+              </div>
+              {isElite ? (
+                <>
+                  {!screenshot && !pastedImage && (
+                    <div className="border-2 border-dashed border-border rounded-lg p-6 text-center">
+                      <Icons.Download className="w-8 h-8 text-text-muted mx-auto mb-2" />
+                      <p className="text-text-tertiary text-sm mb-3">Paste (Ctrl+V) or drag an image here, or</p>
+                      <button
+                        type="button"
+                        className="px-3 py-1.5 bg-bg-input border border-border text-text-secondary text-xs rounded-lg hover:border-accent hover:text-text-primary transition-colors"
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        Choose File
+                      </button>
+                      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+                    </div>
+                  )}
 
-              {pastedImage && !screenshot && (
-                <div className="space-y-3">
-                  <img src={pastedImage} alt="Pasted screenshot" className="rounded-lg max-h-48 w-full object-contain bg-bg-input cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setLightboxOpen(true)} />
-                  <div className="flex gap-2">
-                    <button type="button" className="flex-1 py-2 text-xs bg-accent text-accent-text font-semibold rounded-lg hover:brightness-110" onClick={() => { setMarkupSource(pastedImage); setIsMarkupOpen(true); }}>
-                      Annotate
-                    </button>
-                    <button type="button" className="flex-1 py-2 text-xs bg-bg-input border border-border text-text-primary rounded-lg hover:border-accent" onClick={async () => {
-                      const resized = await resizeImage(pastedImage);
-                      setScreenshot(resized);
-                      setPastedImage(null);
-                    }}>
-                      Use As-Is
-                    </button>
-                    <button type="button" className="py-2 px-3 text-xs bg-bg-input border border-border text-text-secondary rounded-lg hover:text-negative hover:border-negative/50" onClick={() => { setScreenshot(null); setPastedImage(null); }}>
-                      Remove
-                    </button>
-                  </div>
-                </div>
-              )}
+                  {pastedImage && !screenshot && (
+                    <div className="space-y-3">
+                      <img src={pastedImage} alt="Pasted screenshot" className="rounded-lg max-h-48 w-full object-contain bg-bg-input cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setLightboxOpen(true)} />
+                      <div className="flex gap-2">
+                        <button type="button" className="flex-1 py-2 text-xs bg-accent text-accent-text font-semibold rounded-lg hover:brightness-110" onClick={() => { setMarkupSource(pastedImage); setIsMarkupOpen(true); }}>
+                          Annotate
+                        </button>
+                        <button type="button" className="flex-1 py-2 text-xs bg-bg-input border border-border text-text-primary rounded-lg hover:border-accent disabled:opacity-50" disabled={isUploading} onClick={async () => {
+                          try {
+                            const resized = await resizeImage(pastedImage);
+                            const url = await uploadScreenshot(resized);
+                            setScreenshot(url);
+                            setPastedImage(null);
+                          } catch (err) {
+                            helper.handleError('Failed to upload screenshot: ' + err.message);
+                          }
+                        }}>
+                          {isUploading ? 'Uploading...' : 'Use As-Is'}
+                        </button>
+                        <button type="button" className="py-2 px-3 text-xs bg-bg-input border border-border text-text-secondary rounded-lg hover:text-negative hover:border-negative/50" onClick={() => { setScreenshot(null); setPastedImage(null); }}>
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
-              {screenshot && (
-                <div className="space-y-3">
-                  <img src={screenshot} alt="Trade screenshot" className="rounded-lg max-h-48 w-full object-contain bg-bg-input cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setLightboxOpen(true)} />
-                  <div className="flex gap-2">
-                    <button type="button" className="flex-1 py-2 text-xs bg-accent text-accent-text font-semibold rounded-lg hover:brightness-110" onClick={() => { setMarkupSource(screenshot); setIsMarkupOpen(true); }}>
-                      Annotate
-                    </button>
-                    <button type="button" className="py-2 px-3 text-xs bg-bg-input border border-border text-text-secondary rounded-lg hover:text-negative hover:border-negative/50" onClick={() => { setScreenshot(null); setPastedImage(null); }}>
-                      Remove
-                    </button>
+                  {screenshot && (
+                    <div className="space-y-3">
+                      <img src={screenshot} alt="Trade screenshot" className="rounded-lg max-h-48 w-full object-contain bg-bg-input cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setLightboxOpen(true)} />
+                      <div className="flex gap-2">
+                        <button type="button" className="flex-1 py-2 text-xs bg-accent text-accent-text font-semibold rounded-lg hover:brightness-110" onClick={() => { setMarkupSource(screenshot); setIsMarkupOpen(true); }}>
+                          Annotate
+                        </button>
+                        <button type="button" className="py-2 px-3 text-xs bg-bg-input border border-border text-text-secondary rounded-lg hover:text-negative hover:border-negative/50" onClick={() => { setScreenshot(null); setPastedImage(null); }}>
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="border border-border rounded-lg p-4 flex items-center gap-3 bg-bg-input">
+                  <Icons.Lock className="w-4 h-4 text-text-muted flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-text-secondary text-xs">Screenshot attachments are available on the <span className="text-yellow-400 font-medium">Elite</span> plan.</p>
                   </div>
+                  <a href="/upgrade" className="flex-shrink-0 px-2.5 py-1.5 text-xs font-semibold bg-yellow-500 text-black rounded-lg hover:brightness-110 transition-all">
+                    Upgrade
+                  </a>
                 </div>
               )}
             </div>
@@ -5016,7 +6115,16 @@ const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, tags }) 
       <ScreenshotMarkupModal
         isOpen={isMarkupOpen}
         onClose={() => setIsMarkupOpen(false)}
-        onSave={(annotatedImage) => { setScreenshot(annotatedImage); setPastedImage(null); setMarkupSource(null); }}
+        onSave={async (annotatedImage) => {
+          try {
+            const url = await uploadScreenshot(annotatedImage);
+            setScreenshot(url);
+            setPastedImage(null);
+            setMarkupSource(null);
+          } catch (err) {
+            helper.handleError('Failed to upload screenshot: ' + err.message);
+          }
+        }}
         initialImage={markupSource}
       />
     </>
@@ -5061,10 +6169,14 @@ const RuleChecklist = ({ rules, checks, onToggle, loading }) => {
 // =====================================================
 // STRATEGY PAGE
 // =====================================================
-const StrategyPage = ({ subscriptionStatus, trades }) => {
+const StrategyPage = ({ subscriptionStatus, trades, evalFilter, setEvalFilter }) => {
   const [rules, setRules] = useState([]);
   const [analytics, setAnalytics] = useState([]);
   const [disciplineScore, setDisciplineScore] = useState(0);
+  const [combinations, setCombinations] = useState([]);
+  const [tradeRuleStates, setTradeRuleStates] = useState([]);
+  const [dailyRuleStates, setDailyRuleStates] = useState([]);
+  const [ruleFilters, setRuleFilters] = useState({});
   const [loading, setLoading] = useState(true);
   const [newRuleLabel, setNewRuleLabel] = useState('');
   const [newRuleType, setNewRuleType] = useState('trade');
@@ -5072,7 +6184,7 @@ const StrategyPage = ({ subscriptionStatus, trades }) => {
   const [editingLabel, setEditingLabel] = useState('');
   const [activeTab, setActiveTab] = useState('rules');
 
-  const isElite = subscriptionStatus && subscriptionStatus.plan === 'elite';
+  const isElite = subscriptionStatus && subscriptionStatus.isPremium;
 
   const fetchRules = async () => {
     try {
@@ -5086,11 +6198,14 @@ const StrategyPage = ({ subscriptionStatus, trades }) => {
 
   const fetchAnalytics = async () => {
     try {
-      const resp = await authFetch('/api/strategy/analytics');
+      const resp = await authFetch(`/api/strategy/analytics${evalFilter !== 'all' ? `?evalFilter=${evalFilter}` : ''}`);
       const data = await resp.json();
       if (!data.error) {
         setAnalytics(data.analytics || []);
         setDisciplineScore(data.disciplineScore || 0);
+        setCombinations(data.combinations || []);
+        setTradeRuleStates(data.tradeRuleStates || []);
+        setDailyRuleStates(data.dailyRuleStates || []);
       }
     } catch (err) {
       console.error('Failed to fetch analytics:', err);
@@ -5101,6 +6216,11 @@ const StrategyPage = ({ subscriptionStatus, trades }) => {
     if (!isElite) { setLoading(false); return; }
     Promise.all([fetchRules(), fetchAnalytics()]).finally(() => setLoading(false));
   }, [isElite]);
+
+  useEffect(() => {
+    if (!isElite) return;
+    fetchAnalytics();
+  }, [evalFilter]);
 
   const handleAddRule = async () => {
     if (!newRuleLabel.trim()) return;
@@ -5182,6 +6302,7 @@ const StrategyPage = ({ subscriptionStatus, trades }) => {
           <h1 className="text-text-primary text-2xl font-bold">Strategy</h1>
           <p className="text-text-secondary text-sm mt-1">Define and track your trading rules</p>
         </div>
+        {trades && <EvalFilterControl trades={trades} evalFilter={evalFilter} setEvalFilter={setEvalFilter} />}
       </div>
 
       {/* Tabs */}
@@ -5329,125 +6450,915 @@ const StrategyPage = ({ subscriptionStatus, trades }) => {
         </div>
       )}
 
-      {activeTab === 'analytics' && (
-        <div className="space-y-6">
-          {/* Discipline Score */}
-          <div className="bg-bg-surface border border-border rounded-xl p-5">
-            <h3 className="text-text-primary font-semibold text-sm mb-3">Overall Discipline Score</h3>
-            <div className="flex items-center gap-4">
-              <div className="text-3xl font-bold font-mono text-accent">{disciplineScore.toFixed(0)}%</div>
-              <div className="flex-1">
-                <div className="w-full bg-bg-input rounded-full h-3">
-                  <div
-                    className="bg-accent h-3 rounded-full transition-all"
-                    style={{ width: `${Math.min(100, disciplineScore)}%` }}
-                  />
+      {activeTab === 'analytics' && (() => {
+        // Computed values for analytics tab
+        const tradeAnalytics = analytics.filter(a => a.type === 'trade');
+        const dayAnalytics = analytics.filter(a => a.type === 'day');
+
+        // Insights: top rules by profitability
+        const mostProfitableTradeRule = tradeAnalytics
+          .filter(a => a.followedCount >= 2)
+          .sort((a, b) => b.avgPLFollowed - a.avgPLFollowed)[0];
+        const bestDailyRule = dayAnalytics
+          .filter(a => a.daysWithDataFollowed >= 2)
+          .sort((a, b) => b.winRateFollowed - a.winRateFollowed)[0];
+
+        // Rule filters
+        const getFilter = (ruleId) => ruleFilters[ruleId] || 'any';
+        const hasActiveFilters = Object.values(ruleFilters).some(v => v !== 'any');
+        const toggleFilter = (ruleId, state) => setRuleFilters(prev => ({ ...prev, [ruleId]: (prev[ruleId] || 'any') === state ? 'any' : state }));
+
+        // Compute filtered stats based on active rule filters
+        const filteredStats = (() => {
+          if (!hasActiveFilters) return null;
+          const activeFilters = Object.entries(ruleFilters).filter(([, s]) => s !== 'any');
+          const tradeFilters = activeFilters.filter(([id]) => rules.find(r => r._id === id && r.type === 'trade'));
+          const dayFilters = activeFilters.filter(([id]) => rules.find(r => r._id === id && r.type === 'day'));
+          let pls = [];
+          if (tradeFilters.length > 0) {
+            pls = tradeRuleStates
+              .filter(t => tradeFilters.every(([id, state]) => state === 'followed' ? !!t.checks[id] : !t.checks[id]))
+              .map(t => t.pl);
+          }
+          if (dayFilters.length > 0) {
+            const dayPLs = dailyRuleStates
+              .filter(d => dayFilters.every(([id, state]) => state === 'followed' ? !!d.checks[id] : !d.checks[id]))
+              .flatMap(d => d.tradePLs);
+            pls = [...pls, ...dayPLs];
+          }
+          if (pls.length === 0) return { count: 0, avgPL: 0, winRate: 0, profitFactor: 0 };
+          const count = pls.length;
+          const avgPL = pls.reduce((s, v) => s + v, 0) / count;
+          const winRate = (pls.filter(v => v > 0).length / count) * 100;
+          const grossWin = pls.filter(v => v > 0).reduce((s, v) => s + v, 0);
+          const grossLoss = Math.abs(pls.filter(v => v < 0).reduce((s, v) => s + v, 0));
+          const profitFactor = grossLoss > 0 ? grossWin / grossLoss : grossWin > 0 ? 99 : 0;
+          return { count, avgPL, winRate, profitFactor };
+        })();
+
+        // Small metric display helper
+        const Metric = ({ label, followed, broken, isPositiveBetter = true }) => {
+          const fGood = isPositiveBetter ? followed >= broken : followed <= broken;
+          return (
+            <div className="flex justify-between text-xs py-1 border-b border-border/40 last:border-0">
+              <span className="text-text-muted">{label}</span>
+              <div className="flex gap-4">
+                <span className={`font-mono font-medium ${fGood ? 'text-positive' : 'text-text-secondary'}`}>{followed}</span>
+                <span className={`font-mono font-medium ${!fGood ? 'text-positive' : 'text-text-secondary'}`}>{broken}</span>
+              </div>
+            </div>
+          );
+        };
+
+        return (
+          <div className="space-y-6">
+            {/* Discipline Score */}
+            <div className="bg-bg-surface border border-border rounded-xl p-5">
+              <h3 className="text-text-primary font-semibold text-sm mb-3">Overall Discipline Score</h3>
+              <div className="flex items-center gap-4">
+                <div className="text-3xl font-bold font-mono text-accent">{disciplineScore.toFixed(0)}%</div>
+                <div className="flex-1">
+                  <div className="w-full bg-bg-input rounded-full h-3">
+                    <div className="bg-accent h-3 rounded-full transition-all" style={{ width: `${Math.min(100, disciplineScore)}%` }} />
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* Per-rule analytics */}
-          {analytics.length === 0 ? (
-            <div className="bg-bg-surface border border-border rounded-xl p-8 text-center">
-              <p className="text-text-muted text-sm">No rule check data yet. Start checking off rules in your day detail panels.</p>
-            </div>
-          ) : (
-            <>
-              {/* Trade Rule Analytics */}
-              {analytics.filter(a => a.type === 'trade').length > 0 && (
-                <div className="bg-bg-surface border border-border rounded-xl p-5">
-                  <h3 className="text-text-primary font-semibold text-sm mb-4">Trade Rule Analytics</h3>
-                  <div className="space-y-4">
-                    {analytics.filter(a => a.type === 'trade').map(a => (
-                      <div key={a.ruleId} className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-text-primary text-sm">{a.label}</span>
-                          <span className="text-text-secondary text-xs font-mono">{a.adherenceRate.toFixed(0)}% adherence</span>
+            {analytics.length === 0 ? (
+              <div className="bg-bg-surface border border-border rounded-xl p-8 text-center">
+                <p className="text-text-muted text-sm">No rule check data yet. Start checking off rules in your day detail panels.</p>
+              </div>
+            ) : (
+              <>
+                {/* Insights */}
+                {(mostProfitableTradeRule || bestDailyRule) && (
+                  <div className="bg-bg-surface border border-border rounded-xl p-5">
+                    <h3 className="text-text-primary font-semibold text-sm mb-4">Top Insights</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {mostProfitableTradeRule && (
+                        <div className="bg-positive/5 border border-positive/20 rounded-lg p-4">
+                          <div className="text-text-muted text-[10px] font-semibold uppercase tracking-wider mb-1">Most Profitable Trade Rule</div>
+                          <div className="text-text-primary text-sm font-medium leading-snug mb-2">{mostProfitableTradeRule.label}</div>
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-positive text-xl font-mono font-bold">{mostProfitableTradeRule.avgPLFollowed >= 0 ? '+' : ''}${mostProfitableTradeRule.avgPLFollowed.toFixed(2)}</span>
+                            <span className="text-text-muted text-xs">avg P/L when followed</span>
+                          </div>
+                          <div className="flex gap-3 mt-1.5 text-xs text-text-tertiary">
+                            <span>{mostProfitableTradeRule.winRateFollowed.toFixed(0)}% win rate</span>
+                            <span>{mostProfitableTradeRule.profitFactorFollowed.toFixed(2)}x profit factor</span>
+                          </div>
                         </div>
-                        <div className="w-full bg-bg-input rounded-full h-2">
-                          <div
-                            className={`h-2 rounded-full transition-all ${a.adherenceRate >= 70 ? 'bg-positive' : a.adherenceRate >= 40 ? 'bg-warning' : 'bg-negative'}`}
-                            style={{ width: `${Math.min(100, a.adherenceRate)}%` }}
-                          />
+                      )}
+                      {bestDailyRule && (
+                        <div className="bg-accent/5 border border-accent/20 rounded-lg p-4">
+                          <div className="text-text-muted text-[10px] font-semibold uppercase tracking-wider mb-1">Best Daily Rule (Win Rate)</div>
+                          <div className="text-text-primary text-sm font-medium leading-snug mb-2">{bestDailyRule.label}</div>
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-accent text-xl font-mono font-bold">{bestDailyRule.winRateFollowed.toFixed(0)}%</span>
+                            <span className="text-text-muted text-xs">day win rate when followed</span>
+                          </div>
+                          <div className="flex gap-3 mt-1.5 text-xs text-text-tertiary">
+                            <span>{bestDailyRule.avgPLFollowed >= 0 ? '+' : ''}${bestDailyRule.avgPLFollowed.toFixed(2)} avg day P/L</span>
+                            <span>{bestDailyRule.profitFactorFollowed.toFixed(2)}x profit factor</span>
+                          </div>
                         </div>
-                        <div className="flex gap-4 text-xs">
-                          <span className="text-text-tertiary">
-                            Followed: <span className="text-positive font-mono">{a.followedCount}</span>
-                          </span>
-                          <span className="text-text-tertiary">
-                            Broken: <span className="text-negative font-mono">{a.brokenCount}</span>
-                          </span>
-                          {a.total > 0 && (
-                            <>
-                              <span className="text-text-tertiary">
-                                Avg P&L followed: <span className={`font-mono ${a.avgPLFollowed >= 0 ? 'text-positive' : 'text-negative'}`}>${a.avgPLFollowed.toFixed(2)}</span>
-                              </span>
-                              <span className="text-text-tertiary">
-                                Avg P&L broken: <span className={`font-mono ${a.avgPLBroken >= 0 ? 'text-positive' : 'text-negative'}`}>${a.avgPLBroken.toFixed(2)}</span>
-                              </span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* Daily Rule Analytics */}
-              {analytics.filter(a => a.type === 'day').length > 0 && (
-                <div className="bg-bg-surface border border-border rounded-xl p-5">
-                  <h3 className="text-text-primary font-semibold text-sm mb-4">Daily Rule Analytics</h3>
-                  <div className="space-y-4">
-                    {analytics.filter(a => a.type === 'day').map(a => (
-                      <div key={a.ruleId} className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-text-primary text-sm">{a.label}</span>
-                          <span className="text-text-secondary text-xs font-mono">{a.adherenceRate.toFixed(0)}% adherence</span>
-                        </div>
-                        <div className="w-full bg-bg-input rounded-full h-2">
-                          <div
-                            className={`h-2 rounded-full transition-all ${a.adherenceRate >= 70 ? 'bg-positive' : a.adherenceRate >= 40 ? 'bg-warning' : 'bg-negative'}`}
-                            style={{ width: `${Math.min(100, a.adherenceRate)}%` }}
-                          />
-                        </div>
-                        <div className="flex gap-4 text-xs">
-                          <span className="text-text-tertiary">
-                            Followed: <span className="text-positive font-mono">{a.followedCount}</span>
-                          </span>
-                          <span className="text-text-tertiary">
-                            Broken: <span className="text-negative font-mono">{a.brokenCount}</span>
-                          </span>
-                        </div>
+                {/* Rule Filter */}
+                {rules.length > 0 && (tradeRuleStates.length > 0 || dailyRuleStates.length > 0) && (
+                  <div className="bg-bg-surface border border-border rounded-xl p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h3 className="text-text-primary font-semibold text-sm">Filter by Rule State</h3>
+                        <p className="text-text-tertiary text-xs mt-0.5">Select rules to see performance when they're followed or broken</p>
                       </div>
-                    ))}
+                      {hasActiveFilters && (
+                        <button className="text-xs text-text-tertiary hover:text-text-primary transition-colors" onClick={() => setRuleFilters({})}>Clear all</button>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      {rules.map(rule => {
+                        const f = getFilter(rule._id);
+                        return (
+                          <div key={rule._id} className="flex items-center gap-3">
+                            <span className="flex-1 text-text-primary text-xs truncate">{rule.label}</span>
+                            <div className="flex rounded-lg overflow-hidden border border-border text-[11px] font-medium shrink-0">
+                              <button
+                                className={`px-3 py-1.5 transition-colors ${f === 'followed' ? 'bg-positive text-white' : 'text-text-tertiary hover:text-positive hover:bg-positive/10'}`}
+                                onClick={() => toggleFilter(rule._id, 'followed')}
+                              >✓ Followed</button>
+                              <button
+                                className={`px-3 py-1.5 border-x border-border transition-colors ${f === 'any' ? 'bg-bg-input text-text-primary' : 'text-text-tertiary hover:text-text-primary hover:bg-bg-input'}`}
+                                onClick={() => toggleFilter(rule._id, 'any')}
+                              >Any</button>
+                              <button
+                                className={`px-3 py-1.5 transition-colors ${f === 'broken' ? 'bg-negative text-white' : 'text-text-tertiary hover:text-negative hover:bg-negative/10'}`}
+                                onClick={() => toggleFilter(rule._id, 'broken')}
+                              >✗ Broken</button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {hasActiveFilters && filteredStats && (
+                      <div className="mt-4 pt-4 border-t border-border">
+                        {filteredStats.count === 0 ? (
+                          <p className="text-text-muted text-xs text-center">No trades match this filter combination.</p>
+                        ) : (
+                          <>
+                            <div className="text-text-secondary text-xs font-medium mb-3">Filtered Results — {filteredStats.count} trade{filteredStats.count !== 1 ? 's' : ''}</div>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                              {[
+                                { label: 'Win Rate', value: filteredStats.winRate.toFixed(0) + '%', color: filteredStats.winRate >= 50 ? 'text-positive' : 'text-negative' },
+                                { label: 'Avg P/L', value: (filteredStats.avgPL >= 0 ? '+' : '') + '$' + filteredStats.avgPL.toFixed(2), color: filteredStats.avgPL >= 0 ? 'text-positive' : 'text-negative' },
+                                { label: 'Profit Factor', value: filteredStats.profitFactor >= 99 ? '∞' : filteredStats.profitFactor.toFixed(2) + 'x', color: filteredStats.profitFactor >= 1 ? 'text-positive' : 'text-negative' },
+                                { label: 'Trades', value: filteredStats.count, color: 'text-text-primary' },
+                              ].map(item => (
+                                <div key={item.label} className="bg-bg-input rounded-lg px-3 py-2.5 text-center">
+                                  <div className="text-text-muted text-[10px] uppercase tracking-wider mb-1">{item.label}</div>
+                                  <div className={`font-mono font-bold text-sm ${item.color}`}>{item.value}</div>
+                                </div>
+                              ))}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* Most Broken Rules */}
-              {analytics.filter(a => a.brokenCount > 0).length > 0 && (
-                <div className="bg-bg-surface border border-border rounded-xl p-5">
-                  <h3 className="text-text-primary font-semibold text-sm mb-3">Most Broken Rules</h3>
-                  <div className="space-y-2">
-                    {analytics
-                      .filter(a => a.brokenCount > 0)
-                      .sort((a, b) => b.brokenCount - a.brokenCount)
-                      .slice(0, 5)
-                      .map(a => (
+                {/* Trade Rule Analytics */}
+                {tradeAnalytics.length > 0 && (
+                  <div className="bg-bg-surface border border-border rounded-xl p-5">
+                    <h3 className="text-text-primary font-semibold text-sm mb-4">Trade Rule Analytics</h3>
+                    <div className="space-y-5">
+                      {tradeAnalytics.map(a => (
+                        <div key={a.ruleId}>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-text-primary text-sm font-medium">{a.label}</span>
+                            <span className={`text-xs font-mono ${a.adherenceRate >= 70 ? 'text-positive' : a.adherenceRate >= 40 ? 'text-warning' : 'text-negative'}`}>{a.adherenceRate.toFixed(0)}% adherence</span>
+                          </div>
+                          <div className="w-full bg-bg-input rounded-full h-1.5 mb-3">
+                            <div className={`h-1.5 rounded-full transition-all ${a.adherenceRate >= 70 ? 'bg-positive' : a.adherenceRate >= 40 ? 'bg-warning' : 'bg-negative'}`} style={{ width: `${Math.min(100, a.adherenceRate)}%` }} />
+                          </div>
+                          <div className="rounded-lg border border-border overflow-hidden">
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="bg-bg-input border-b border-border">
+                                  <th className="text-left px-3 py-2 text-text-muted font-medium">Metric</th>
+                                  <th className="text-right px-3 py-2 text-positive font-medium">Followed ({a.followedCount})</th>
+                                  <th className="text-right px-3 py-2 text-negative font-medium">Broken ({a.brokenCount})</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {[
+                                  { label: 'Avg P/L', fVal: (a.avgPLFollowed >= 0 ? '+' : '') + '$' + a.avgPLFollowed.toFixed(2), bVal: (a.avgPLBroken >= 0 ? '+' : '') + '$' + a.avgPLBroken.toFixed(2), fBetter: a.avgPLFollowed >= a.avgPLBroken },
+                                  { label: 'Win Rate', fVal: a.winRateFollowed.toFixed(0) + '%', bVal: a.winRateBroken.toFixed(0) + '%', fBetter: a.winRateFollowed >= a.winRateBroken },
+                                  { label: 'Profit Factor', fVal: a.profitFactorFollowed >= 99 ? '∞' : a.profitFactorFollowed.toFixed(2) + 'x', bVal: a.profitFactorBroken >= 99 ? '∞' : a.profitFactorBroken.toFixed(2) + 'x', fBetter: a.profitFactorFollowed >= a.profitFactorBroken },
+                                ].map(row => (
+                                  <tr key={row.label} className="border-b border-border/40 last:border-0">
+                                    <td className="px-3 py-2 text-text-muted">{row.label}</td>
+                                    <td className={`px-3 py-2 text-right font-mono font-semibold ${row.fBetter ? 'text-positive' : 'text-text-secondary'}`}>{row.fVal}</td>
+                                    <td className={`px-3 py-2 text-right font-mono font-semibold ${!row.fBetter ? 'text-positive' : 'text-text-secondary'}`}>{row.bVal}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Daily Rule Analytics */}
+                {dayAnalytics.length > 0 && (
+                  <div className="bg-bg-surface border border-border rounded-xl p-5">
+                    <h3 className="text-text-primary font-semibold text-sm mb-1">Daily Rule Analytics</h3>
+                    <p className="text-text-tertiary text-xs mb-4">Stats are computed at the day level — each followed/broken day is one data point</p>
+                    <div className="space-y-5">
+                      {dayAnalytics.map(a => (
+                        <div key={a.ruleId}>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-text-primary text-sm font-medium">{a.label}</span>
+                            <span className={`text-xs font-mono ${a.adherenceRate >= 70 ? 'text-positive' : a.adherenceRate >= 40 ? 'text-warning' : 'text-negative'}`}>{a.adherenceRate.toFixed(0)}% adherence</span>
+                          </div>
+                          <div className="w-full bg-bg-input rounded-full h-1.5 mb-3">
+                            <div className={`h-1.5 rounded-full transition-all ${a.adherenceRate >= 70 ? 'bg-positive' : a.adherenceRate >= 40 ? 'bg-warning' : 'bg-negative'}`} style={{ width: `${Math.min(100, a.adherenceRate)}%` }} />
+                          </div>
+                          <div className="rounded-lg border border-border overflow-hidden">
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="bg-bg-input border-b border-border">
+                                  <th className="text-left px-3 py-2 text-text-muted font-medium">Day Metric</th>
+                                  <th className="text-right px-3 py-2 text-positive font-medium">Followed ({a.daysWithDataFollowed ?? a.followedCount}d)</th>
+                                  <th className="text-right px-3 py-2 text-negative font-medium">Broken ({a.daysWithDataBroken ?? a.brokenCount}d)</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {[
+                                  { label: 'Avg Day P/L', fVal: (a.avgPLFollowed >= 0 ? '+' : '') + '$' + a.avgPLFollowed.toFixed(2), bVal: (a.avgPLBroken >= 0 ? '+' : '') + '$' + a.avgPLBroken.toFixed(2), fBetter: a.avgPLFollowed >= a.avgPLBroken },
+                                  { label: 'Day Win Rate', fVal: a.winRateFollowed.toFixed(0) + '%', bVal: a.winRateBroken.toFixed(0) + '%', fBetter: a.winRateFollowed >= a.winRateBroken },
+                                  { label: 'Profit Factor', fVal: a.profitFactorFollowed >= 99 ? '∞' : a.profitFactorFollowed.toFixed(2) + 'x', bVal: a.profitFactorBroken >= 99 ? '∞' : a.profitFactorBroken.toFixed(2) + 'x', fBetter: a.profitFactorFollowed >= a.profitFactorBroken },
+                                ].map(row => (
+                                  <tr key={row.label} className="border-b border-border/40 last:border-0">
+                                    <td className="px-3 py-2 text-text-muted">{row.label}</td>
+                                    <td className={`px-3 py-2 text-right font-mono font-semibold ${row.fBetter ? 'text-positive' : 'text-text-secondary'}`}>{row.fVal}</td>
+                                    <td className={`px-3 py-2 text-right font-mono font-semibold ${!row.fBetter ? 'text-positive' : 'text-text-secondary'}`}>{row.bVal}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Most Broken Rules */}
+                {analytics.filter(a => a.brokenCount > 0).length > 0 && (
+                  <div className="bg-bg-surface border border-border rounded-xl p-5">
+                    <h3 className="text-text-primary font-semibold text-sm mb-3">Most Broken Rules</h3>
+                    <div className="space-y-2">
+                      {analytics.filter(a => a.brokenCount > 0).sort((a, b) => b.brokenCount - a.brokenCount).slice(0, 5).map(a => (
                         <div key={a.ruleId} className="flex items-center justify-between bg-bg-input rounded-lg px-3 py-2">
                           <span className="text-text-primary text-sm">{a.label}</span>
                           <span className="text-negative text-xs font-mono">{a.brokenCount} time{a.brokenCount !== 1 ? 's' : ''}</span>
                         </div>
                       ))}
+                    </div>
                   </div>
+                )}
+
+                {/* Combination Analytics */}
+                {combinations && combinations.length > 0 && (
+                  <div className="bg-bg-surface border border-border rounded-xl p-5">
+                    <h3 className="text-text-primary font-semibold text-sm mb-1">Rule Combination Analysis</h3>
+                    <p className="text-text-tertiary text-xs mb-5">How P&L compares when following pairs of rules together</p>
+                    <div className="space-y-6">
+                      {combinations.map((combo, idx) => {
+                        const rows = [
+                          { label: '✓ Both followed', stats: combo.both, highlight: true },
+                          { label: `✓ ${combo.rule1Label} only`, stats: combo.onlyRule1 },
+                          { label: `✓ ${combo.rule2Label} only`, stats: combo.onlyRule2 },
+                          { label: 'Neither followed', stats: combo.neither },
+                        ].filter(r => r.stats.count > 0);
+                        if (rows.length === 0) return null;
+                        return (
+                          <div key={idx}>
+                            <div className="text-xs font-medium mb-2 flex items-center gap-1.5 flex-wrap">
+                              <span className="px-2 py-0.5 rounded bg-accent/10 text-accent truncate max-w-[45%]">{combo.rule1Label}</span>
+                              <span className="text-text-muted">×</span>
+                              <span className="px-2 py-0.5 rounded bg-accent/10 text-accent truncate max-w-[45%]">{combo.rule2Label}</span>
+                            </div>
+                            <div className="rounded-lg border border-border overflow-hidden">
+                              <table className="w-full text-xs">
+                                <thead>
+                                  <tr className="bg-bg-input border-b border-border">
+                                    <th className="text-left px-3 py-2 text-text-tertiary font-medium">Scenario</th>
+                                    <th className="text-right px-3 py-2 text-text-tertiary font-medium">Trades</th>
+                                    <th className="text-right px-3 py-2 text-text-tertiary font-medium">Avg P/L</th>
+                                    <th className="text-right px-3 py-2 text-text-tertiary font-medium">Win Rate</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {rows.map((row, ri) => (
+                                    <tr key={ri} className={`border-b border-border/50 last:border-0 ${row.highlight ? 'bg-positive/5' : ''}`}>
+                                      <td className="px-3 py-2 text-text-secondary">{row.label}</td>
+                                      <td className="px-3 py-2 text-right font-mono text-text-primary">{row.stats.count}</td>
+                                      <td className={`px-3 py-2 text-right font-mono font-semibold ${row.stats.avgPL >= 0 ? 'text-positive' : 'text-negative'}`}>{row.stats.avgPL >= 0 ? '+' : ''}${row.stats.avgPL.toFixed(2)}</td>
+                                      <td className="px-3 py-2 text-right font-mono text-text-secondary">{row.stats.winRate.toFixed(0)}%</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        );
+      })()}
+    </div>
+  );
+};
+
+// =====================================================
+// BACKTESTING PAGE
+// =====================================================
+// Wrapper — handles subscription gate without conditionally calling hooks.
+const BacktestingPage = ({ subscriptionStatus }) => {
+  const plan = subscriptionStatus?.plan;
+
+  // Elite-only feature — show locked peek for everyone else
+  if (plan !== 'elite') {
+    return (
+      <div className="max-w-4xl">
+        <h1 className="text-text-primary text-2xl font-bold mb-1">Backtesting</h1>
+        <p className="text-text-muted text-sm mb-8">Track wins and losses across backtesting sessions</p>
+
+        {/* Blurred peek of the interface */}
+        <div className="relative rounded-xl overflow-hidden">
+          <div className="pointer-events-none select-none blur-[6px] opacity-60">
+            {/* Fake active session panel */}
+            <div className="bg-bg-surface border border-accent/30 rounded-xl p-5 space-y-4 mb-6">
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="w-2 h-2 rounded-full bg-positive"></span>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-positive">Active Session</span>
+                  </div>
+                  <h2 className="text-text-primary font-semibold text-lg">Morning Breakout v2 <span className="text-text-muted font-normal ml-2 text-sm">(NQ)</span></h2>
+                  <p className="text-text-muted text-xs mt-0.5">Started 2026-02-15</p>
                 </div>
+              </div>
+              <div className="border-t border-border pt-4">
+                <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider mb-3">Log Trade</p>
+                <div className="flex flex-wrap items-end gap-3">
+                  <div className="flex rounded-lg overflow-hidden border border-border">
+                    <span className="px-4 py-2 text-sm font-semibold bg-positive text-white">Win</span>
+                    <span className="px-4 py-2 text-sm font-semibold bg-bg-input text-text-muted">Loss</span>
+                  </div>
+                  <div className="flex-1 min-w-[100px] bg-bg-input border border-border rounded-lg px-3 py-2 text-sm text-text-muted">2.50</div>
+                  <div className="bg-bg-input border border-border rounded-lg px-3 py-2 text-sm text-text-muted">09:45</div>
+                  <span className="px-4 py-2 bg-accent text-accent-text text-sm font-semibold rounded-lg">Add Trade</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Fake stats overview */}
+            <div className="bg-bg-surface border border-border rounded-xl p-5">
+              <h2 className="text-text-primary font-semibold mb-4">Stats Overview</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                {[
+                  { label: 'Total Trades', value: '24' },
+                  { label: 'Wins', value: '16' },
+                  { label: 'Losses', value: '8' },
+                  { label: 'Win Rate', value: '66.7%' },
+                  { label: 'Avg P/F', value: '2.14x' },
+                ].map(stat => (
+                  <div key={stat.label} className="bg-bg-input rounded-lg p-3 text-center">
+                    <div className="text-xl font-bold font-mono text-text-primary">{stat.value}</div>
+                    <div className="text-text-muted text-xs mt-0.5">{stat.label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Overlay CTA */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="bg-bg-surface/95 backdrop-blur-sm border border-border rounded-xl p-8 text-center shadow-2xl max-w-sm mx-4">
+              <Icons.FlaskConical className="w-10 h-10 text-yellow-400 mx-auto mb-3" />
+              <h2 className="text-text-primary font-semibold text-lg mb-2">Elite Feature</h2>
+              <p className="text-text-muted text-sm mb-5">
+                Backtesting is available exclusively on the Elite plan. Create sessions, log trades, and track your strategy performance over time.
+              </p>
+              <button
+                className="px-6 py-2.5 bg-yellow-500 text-black text-sm font-semibold rounded-lg hover:brightness-110 transition-all"
+                onClick={() => { window.location.href = '/upgrade'; }}
+              >
+                Upgrade to Elite
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return <BacktestingContent />;
+};
+
+const BacktestingContent = () => {
+  const [sessions, setSessions] = useState([]);
+  const [activeTrades, setActiveTrades] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [statsFilter, setStatsFilter] = useState('all'); // 'last1' | 'last3' | 'last5' | 'all'
+  const [showStartForm, setShowStartForm] = useState(false);
+  const [showEndForm, setShowEndForm] = useState(false);
+
+  // Start session form state
+  const [newTicker, setNewTicker] = useState('');
+  const [newName, setNewName] = useState('');
+  const [newStartDate, setNewStartDate] = useState(() => new Date().toISOString().slice(0, 10));
+
+  // End session form state
+  const [endDate, setEndDate] = useState(() => new Date().toISOString().slice(0, 10));
+
+  // Add trade form state
+  const [tradeResult, setTradeResult] = useState('win');
+  const [tradePF, setTradePF] = useState('');
+  const [tradeTime, setTradeTime] = useState('');
+  const [tradeSubmitting, setTradeSubmitting] = useState(false);
+
+  const activeSession = sessions.find(s => s.isActive) || null;
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await authFetch('/api/backtesting/sessions');
+      const data = await res.json();
+      setSessions(data.sessions || []);
+    } catch (err) {
+      console.error('Failed to load sessions', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadActiveTrades = async (sessionId) => {
+    try {
+      const res = await authFetch(`/api/backtesting/sessions/${sessionId}/trades`);
+      const data = await res.json();
+      setActiveTrades(data.trades || []);
+    } catch (err) {
+      console.error('Failed to load active trades', err);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    if (activeSession) loadActiveTrades(activeSession._id);
+    else setActiveTrades([]);
+  }, [activeSession?._id]);
+
+  const handleStartSession = async (e) => {
+    e.preventDefault();
+    if (!newTicker.trim()) return;
+    try {
+      await authFetch('/api/backtesting/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName.trim() || undefined, ticker: newTicker.trim(), startDate: newStartDate }),
+      });
+      setShowStartForm(false);
+      setNewTicker(''); setNewName(''); setNewStartDate(new Date().toISOString().slice(0, 10));
+      await load();
+    } catch (err) {
+      console.error('Failed to start session', err);
+    }
+  };
+
+  const handleEndSession = async (e) => {
+    e.preventDefault();
+    if (!activeSession) return;
+    try {
+      await authFetch(`/api/backtesting/sessions/${activeSession._id}/end`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ endDate }),
+      });
+      setShowEndForm(false);
+      setEndDate(new Date().toISOString().slice(0, 10));
+      await load();
+    } catch (err) {
+      console.error('Failed to end session', err);
+    }
+  };
+
+  const handleContinueSession = async (sessionId) => {
+    try {
+      await authFetch(`/api/backtesting/sessions/${sessionId}/continue`, { method: 'POST' });
+      await load();
+    } catch (err) {
+      console.error('Failed to continue session', err);
+    }
+  };
+
+  const handleDeleteSession = async (sessionId) => {
+    if (!window.confirm('Delete this session and all its trades?')) return;
+    try {
+      await authFetch(`/api/backtesting/sessions/${sessionId}`, { method: 'DELETE' });
+      await load();
+    } catch (err) {
+      console.error('Failed to delete session', err);
+    }
+  };
+
+  const handleAddTrade = async (e) => {
+    e.preventDefault();
+    if (!activeSession || !tradePF || !tradeTime) return;
+    setTradeSubmitting(true);
+    try {
+      await authFetch('/api/backtesting/trades', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: activeSession._id,
+          result: tradeResult,
+          profitFactor: parseFloat(tradePF),
+          timeOfDay: tradeTime,
+        }),
+      });
+      setTradePF(''); setTradeTime(''); setTradeResult('win');
+      await loadActiveTrades(activeSession._id);
+      await load(); // refresh stats
+    } catch (err) {
+      console.error('Failed to add trade', err);
+    } finally {
+      setTradeSubmitting(false);
+    }
+  };
+
+  const handleDeleteTrade = async (tradeId) => {
+    try {
+      await authFetch(`/api/backtesting/trades/${tradeId}`, { method: 'DELETE' });
+      await loadActiveTrades(activeSession._id);
+      await load();
+    } catch (err) {
+      console.error('Failed to delete trade', err);
+    }
+  };
+
+  // Compute aggregate stats from filtered sessions
+  const filteredSessions = (() => {
+    const completed = sessions.filter(s => !s.isActive);
+    if (statsFilter === 'last1') return completed.slice(0, 1);
+    if (statsFilter === 'last3') return completed.slice(0, 3);
+    if (statsFilter === 'last5') return completed.slice(0, 5);
+    return sessions; // 'all' includes active session
+  })();
+
+  const aggregateStats = (() => {
+    const total = filteredSessions.reduce((s, x) => s + (x.tradeCount || 0), 0);
+    const wins = filteredSessions.reduce((s, x) => s + (x.winCount || 0), 0);
+    const losses = filteredSessions.reduce((s, x) => s + (x.lossCount || 0), 0);
+    const pfSum = filteredSessions.reduce((s, x) => s + (x.avgProfitFactor || 0) * (x.tradeCount || 0), 0);
+    return {
+      total,
+      wins,
+      losses,
+      winRate: total > 0 ? (wins / total) * 100 : 0,
+      avgPF: total > 0 ? pfSum / total : 0,
+    };
+  })();
+
+  const inputClass = 'bg-bg-input border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:outline-none focus:border-accent w-full';
+  const labelClass = 'block text-text-tertiary text-xs font-semibold uppercase tracking-wider mb-1';
+  const btnPrimary = 'px-4 py-2 bg-accent text-accent-text text-sm font-semibold rounded-lg hover:brightness-110 transition-all';
+  const btnSecondary = 'px-4 py-2 bg-bg-input border border-border text-text-secondary text-sm font-medium rounded-lg hover:text-text-primary transition-colors';
+
+  const FILTER_OPTIONS = [
+    { id: 'last1', label: 'Last Session' },
+    { id: 'last3', label: 'Last 3' },
+    { id: 'last5', label: 'Last 5' },
+    { id: 'all', label: 'All Time' },
+  ];
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-48 text-text-muted text-sm">
+        Loading backtesting data...
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6 max-w-4xl">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-text-primary text-2xl font-bold">Backtesting</h1>
+          <p className="text-text-muted text-sm mt-1">Track wins and losses across backtesting sessions</p>
+        </div>
+        {!activeSession && !showStartForm && (
+          <button className={btnPrimary} onClick={() => setShowStartForm(true)}>
+            + Start Session
+          </button>
+        )}
+      </div>
+
+      {/* Start Session Form */}
+      {showStartForm && (
+        <div className="bg-bg-surface border border-border rounded-xl p-5">
+          <h2 className="text-text-primary font-semibold mb-4">Start New Session</h2>
+          <form onSubmit={handleStartSession} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className={labelClass}>Ticker *</label>
+              <input className={inputClass} placeholder="NQ, ES, MNQ..." value={newTicker} onChange={e => setNewTicker(e.target.value)} required />
+            </div>
+            <div>
+              <label className={labelClass}>Session Name (optional)</label>
+              <input className={inputClass} placeholder="e.g. Morning breakout v2" value={newName} onChange={e => setNewName(e.target.value)} />
+            </div>
+            <div>
+              <label className={labelClass}>Start Date</label>
+              <input type="date" className={inputClass} value={newStartDate} onChange={e => setNewStartDate(e.target.value)} required />
+            </div>
+            <div className="flex items-end gap-3">
+              <button type="submit" className={btnPrimary}>Start</button>
+              <button type="button" className={btnSecondary} onClick={() => setShowStartForm(false)}>Cancel</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Active Session Panel */}
+      {activeSession && (
+        <div className="bg-bg-surface border border-accent/30 rounded-xl p-5 space-y-4">
+          <div className="flex items-start justify-between flex-wrap gap-3">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="w-2 h-2 rounded-full bg-positive animate-pulse"></span>
+                <span className="text-xs font-semibold uppercase tracking-wider text-positive">Active Session</span>
+              </div>
+              <h2 className="text-text-primary font-semibold text-lg">
+                {activeSession.name || activeSession.ticker}
+                {activeSession.name && <span className="text-text-muted font-normal ml-2 text-sm">({activeSession.ticker})</span>}
+              </h2>
+              <p className="text-text-muted text-xs mt-0.5">Started {activeSession.startDate}</p>
+            </div>
+            <div className="flex gap-2">
+              {!showStartForm && (
+                <button className={btnPrimary} onClick={() => setShowStartForm(true)}>+ New Session</button>
               )}
-            </>
+              <button
+                className="px-4 py-2 bg-negative/10 border border-negative/30 text-negative text-sm font-medium rounded-lg hover:bg-negative/20 transition-colors"
+                onClick={() => setShowEndForm(!showEndForm)}
+              >
+                End Session
+              </button>
+            </div>
+          </div>
+
+          {/* End session inline form */}
+          {showEndForm && (
+            <form onSubmit={handleEndSession} className="flex items-end gap-3 pt-2 border-t border-border">
+              <div>
+                <label className={labelClass}>End Date</label>
+                <input type="date" className={`${inputClass} w-auto`} value={endDate} onChange={e => setEndDate(e.target.value)} required />
+              </div>
+              <button type="submit" className="px-4 py-2 bg-negative/10 border border-negative/30 text-negative text-sm font-medium rounded-lg hover:bg-negative/20 transition-colors">
+                Confirm End
+              </button>
+              <button type="button" className={btnSecondary} onClick={() => setShowEndForm(false)}>Cancel</button>
+            </form>
+          )}
+
+          {/* Add Trade Form */}
+          <form onSubmit={handleAddTrade} className="border-t border-border pt-4">
+            <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider mb-3">Log Trade</p>
+            <div className="flex flex-wrap items-end gap-3">
+              {/* Win / Loss toggle */}
+              <div>
+                <label className={labelClass}>Result</label>
+                <div className="flex rounded-lg overflow-hidden border border-border">
+                  <button
+                    type="button"
+                    onClick={() => setTradeResult('win')}
+                    className={`px-4 py-2 text-sm font-semibold transition-colors ${tradeResult === 'win' ? 'bg-positive text-white' : 'bg-bg-input text-text-muted hover:text-text-primary'}`}
+                  >
+                    Win
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTradeResult('loss')}
+                    className={`px-4 py-2 text-sm font-semibold transition-colors ${tradeResult === 'loss' ? 'bg-negative text-white' : 'bg-bg-input text-text-muted hover:text-text-primary'}`}
+                  >
+                    Loss
+                  </button>
+                </div>
+              </div>
+              <div className="flex-1 min-w-[100px]">
+                <label className={labelClass}>Profit Factor</label>
+                <input
+                  type="number" step="0.01" min="0"
+                  className={inputClass}
+                  placeholder="e.g. 2.5"
+                  value={tradePF}
+                  onChange={e => setTradePF(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Time of Trade</label>
+                <input
+                  type="time"
+                  className={inputClass}
+                  value={tradeTime}
+                  onChange={e => setTradeTime(e.target.value)}
+                  required
+                />
+              </div>
+              <button type="submit" className={btnPrimary} disabled={tradeSubmitting}>
+                {tradeSubmitting ? 'Adding...' : 'Add Trade'}
+              </button>
+            </div>
+          </form>
+
+          {/* Trades list for active session */}
+          {activeTrades.length > 0 && (
+            <div className="border-t border-border pt-4">
+              <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider mb-2">
+                Trades ({activeTrades.length})
+              </p>
+              <div className="rounded-lg border border-border overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-bg-input border-b border-border">
+                      <th className="text-left px-3 py-2 text-text-tertiary font-medium text-xs">#</th>
+                      <th className="text-left px-3 py-2 text-text-tertiary font-medium text-xs">Result</th>
+                      <th className="text-right px-3 py-2 text-text-tertiary font-medium text-xs">Profit Factor</th>
+                      <th className="text-right px-3 py-2 text-text-tertiary font-medium text-xs">Time</th>
+                      <th className="text-right px-3 py-2 text-text-tertiary font-medium text-xs"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activeTrades.map((t, i) => (
+                      <tr key={t._id} className="border-b border-border/50 last:border-0 hover:bg-bg-input/50">
+                        <td className="px-3 py-2 text-text-muted font-mono">{i + 1}</td>
+                        <td className="px-3 py-2">
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${t.result === 'win' ? 'bg-positive/10 text-positive' : 'bg-negative/10 text-negative'}`}>
+                            {t.result === 'win' ? 'Win' : 'Loss'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono text-text-primary">{t.profitFactor.toFixed(2)}x</td>
+                        <td className="px-3 py-2 text-right font-mono text-text-secondary">{t.timeOfDay}</td>
+                        <td className="px-3 py-2 text-right">
+                          <button
+                            onClick={() => handleDeleteTrade(t._id)}
+                            className="text-text-muted hover:text-negative transition-colors p-1"
+                          >
+                            <Icons.Trash className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           )}
         </div>
       )}
+
+      {/* Stats Overview */}
+      {sessions.length > 0 && (
+        <div className="bg-bg-surface border border-border rounded-xl p-5">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+            <h2 className="text-text-primary font-semibold">Stats Overview</h2>
+            <div className="flex gap-1.5 flex-wrap">
+              {FILTER_OPTIONS.map(opt => (
+                <button
+                  key={opt.id}
+                  onClick={() => setStatsFilter(opt.id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    statsFilter === opt.id
+                      ? 'bg-accent text-accent-text'
+                      : 'bg-bg-input text-text-muted hover:text-text-primary border border-border'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            {[
+              { label: 'Total Trades', value: aggregateStats.total, mono: true },
+              { label: 'Wins', value: aggregateStats.wins, color: 'text-positive', mono: true },
+              { label: 'Losses', value: aggregateStats.losses, color: 'text-negative', mono: true },
+              { label: 'Win Rate', value: `${aggregateStats.winRate.toFixed(1)}%`, color: aggregateStats.winRate >= 50 ? 'text-positive' : 'text-negative', mono: true },
+              { label: 'Avg P/F', value: `${aggregateStats.avgPF.toFixed(2)}x`, mono: true },
+            ].map(stat => (
+              <div key={stat.label} className="bg-bg-input rounded-lg p-3 text-center">
+                <div className={`text-xl font-bold font-mono ${stat.color || 'text-text-primary'}`}>{stat.value}</div>
+                <div className="text-text-muted text-xs mt-0.5">{stat.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Sessions List */}
+      <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
+        <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+          <h2 className="text-text-primary font-semibold">Sessions</h2>
+          {!activeSession && !showStartForm && (
+            <button className={btnPrimary} onClick={() => setShowStartForm(true)}>+ Start Session</button>
+          )}
+        </div>
+
+        {sessions.length === 0 ? (
+          <div className="px-5 py-12 text-center">
+            <Icons.FlaskConical className="w-10 h-10 text-text-muted mx-auto mb-3" />
+            <p className="text-text-muted text-sm">No sessions yet. Start your first backtesting session.</p>
+            <button className={`${btnPrimary} mt-4`} onClick={() => setShowStartForm(true)}>+ Start Session</button>
+          </div>
+        ) : (
+          <div className="divide-y divide-border">
+            {sessions.map(session => (
+              <div key={session._id} className="px-5 py-4 flex items-center gap-4 flex-wrap hover:bg-bg-input/30 transition-colors">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-text-primary font-medium">
+                      {session.name || session.ticker}
+                    </span>
+                    {session.name && (
+                      <span className="text-text-muted text-xs">({session.ticker})</span>
+                    )}
+                    {session.isActive && (
+                      <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-positive/10 text-positive border border-positive/20">
+                        Active
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-text-muted text-xs mt-0.5">
+                    {session.startDate}
+                    {session.endDate ? ` → ${session.endDate}` : ' → now'}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-4 text-sm flex-wrap">
+                  <div className="text-center">
+                    <div className="font-mono font-semibold text-text-primary">{session.tradeCount || 0}</div>
+                    <div className="text-text-muted text-xs">trades</div>
+                  </div>
+                  <div className="text-center">
+                    <div className={`font-mono font-semibold ${(session.winRate || 0) >= 50 ? 'text-positive' : 'text-negative'}`}>
+                      {(session.winRate || 0).toFixed(1)}%
+                    </div>
+                    <div className="text-text-muted text-xs">win rate</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="font-mono font-semibold text-text-primary">{(session.avgProfitFactor || 0).toFixed(2)}x</div>
+                    <div className="text-text-muted text-xs">avg P/F</div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {!session.isActive && (
+                    <button
+                      onClick={() => handleContinueSession(session._id)}
+                      className={btnSecondary}
+                    >
+                      Continue
+                    </button>
+                  )}
+                  <button
+                    onClick={() => handleDeleteSession(session._id)}
+                    className="p-2 text-text-muted hover:text-negative transition-colors rounded-lg hover:bg-negative/10"
+                  >
+                    <Icons.Trash className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
@@ -5455,28 +7366,37 @@ const StrategyPage = ({ subscriptionStatus, trades }) => {
 // =====================================================
 // TRIAL BANNER
 // =====================================================
-const TrialBanner = ({ subscriptionStatus, proPrice }) => {
+const FreeBanner = ({ subscriptionStatus, proPrice }) => {
   if (!subscriptionStatus) return null;
-  if (subscriptionStatus.isPremium) return null;
+  const plan = subscriptionStatus.plan;
+  if (plan === 'pro' || plan === 'elite') return null;
 
-  const { isTrialActive, trialDaysRemaining } = subscriptionStatus;
-
-  if (isTrialActive) {
+  if (plan === 'trial') {
+    const trialEndsAt = subscriptionStatus.trialEndsAt ? new Date(subscriptionStatus.trialEndsAt) : null;
+    const daysLeft = trialEndsAt ? Math.max(0, Math.ceil((trialEndsAt - new Date()) / (1000 * 60 * 60 * 24))) : null;
+    const tradeCount = subscriptionStatus.tradeCount ?? null;
+    const tradesLeft = tradeCount !== null ? Math.max(0, 50 - tradeCount) : null;
     return (
       <div className="bg-accent/10 border border-accent/30 rounded-lg px-4 py-3 mb-6">
         <p className="text-sm text-accent">
-          <span className="font-semibold">Free Trial Active!</span> You have <span className="font-semibold">{trialDaysRemaining} day{trialDaysRemaining !== 1 ? 's' : ''}</span> remaining.
-          <span className="text-text-secondary ml-1">Upgrade now for just ${proPrice}/month to keep full access!</span>
+          <span className="font-semibold">You're on your free trial.</span>
+          <span className="text-text-secondary ml-1">
+            {daysLeft !== null && <span className="text-accent font-medium">{daysLeft} day{daysLeft !== 1 ? 's' : ''} left</span>}
+            {daysLeft !== null && tradesLeft !== null && <span className="text-text-muted mx-1">·</span>}
+            {tradesLeft !== null && <span className="text-accent font-medium">{tradesLeft} of 50 trades remaining</span>}
+            {(daysLeft !== null || tradesLeft !== null) && <span>. </span>}
+            Upgrade to Pro before your trial ends to keep unlimited access.
+          </span>
         </p>
       </div>
     );
   }
 
   return (
-    <div className="bg-negative/10 border border-negative/30 rounded-lg px-4 py-3 mb-6">
-      <p className="text-sm text-negative">
-        <span className="font-semibold">Trial Expired!</span>
-        <span className="text-text-secondary ml-1">Upgrade now for just ${proPrice}/month to continue adding trades and unlock all features!</span>
+    <div className="bg-accent/10 border border-accent/30 rounded-lg px-4 py-3 mb-6">
+      <p className="text-sm text-accent">
+        <span className="font-semibold">Your trial has ended.</span>
+        <span className="text-text-secondary ml-1">Upgrade to Pro for just ${proPrice}/month to unlock unlimited trades, broker sync, CSV import, strategy tracking, and more.</span>
       </p>
     </div>
   );
@@ -5486,12 +7406,18 @@ const TrialBanner = ({ subscriptionStatus, proPrice }) => {
 // MAIN APP
 // =====================================================
 const App = () => {
-  const [currentPage, setCurrentPage] = useState('dashboard');
+  const [currentPage, setCurrentPage] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return (params.get('tv_code') || params.get('tv_error')) ? 'settings' : 'dashboard';
+  });
   const [reloadTrades, setReloadTrades] = useState(false);
   const [trades, setTrades] = useState([]);
   const [tags, setTags] = useState([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingTrade, setEditingTrade] = useState(null);
+  const [prefillDate, setPrefillDate] = useState(null);
+  const [csvImportOpen, setCsvImportOpen] = useState(false);
+  const [toast, setToast] = useState(null);
   const [subscriptionStatus, setSubscriptionStatus] = useState(null);
   const [syncNotification, setSyncNotification] = useState(null);
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
@@ -5499,8 +7425,18 @@ const App = () => {
     try { return JSON.parse(localStorage.getItem('customColors')) || {}; } catch { return {}; }
   });
   const [dailyNotes, setDailyNotes] = useState([]);
-  const [pricing, setPricing] = useState({ pro: '19', elite: '24', trialDays: '14' });
+  const [pricing, setPricing] = useState({ pro: '12', elite: '18' });
   const [strategyRules, setStrategyRules] = useState([]);
+  const [sidePanelOffset, setSidePanelOffset] = useState(0);
+  const [evalFilter, setEvalFilterState] = useState(() => {
+    const stored = localStorage.getItem('evalFilter');
+    return ['all', 'exclude', 'only'].includes(stored) ? stored : 'exclude';
+  });
+
+  const setEvalFilter = (val) => {
+    setEvalFilterState(val);
+    localStorage.setItem('evalFilter', val);
+  };
 
   const triggerReload = () => setReloadTrades(!reloadTrades);
 
@@ -5689,11 +7625,13 @@ const App = () => {
   }, []);
 
   const openForm = () => setIsFormOpen(true);
+  const openFormWithDate = (dateKey) => { setPrefillDate(dateKey); setIsFormOpen(true); };
+  const openEditForm = (trade) => { setEditingTrade(trade); setIsFormOpen(true); };
 
   const renderPage = () => {
     switch (currentPage) {
       case 'dashboard':
-        return <DashboardPage trades={trades} subscriptionStatus={subscriptionStatus} onOpenForm={openForm} dailyNotes={dailyNotes} onSaveNote={handleSaveNote} onDeleteNote={handleDeleteNote} tags={tags} strategyRules={strategyRules} />;
+        return <DashboardPage trades={trades} subscriptionStatus={subscriptionStatus} onOpenForm={openForm} onOpenImport={() => setCsvImportOpen(true)} onOpenAddTrade={openFormWithDate} onEditTrade={openEditForm} dailyNotes={dailyNotes} onSaveNote={handleSaveNote} onDeleteNote={handleDeleteNote} tags={tags} strategyRules={strategyRules} evalFilter={evalFilter} setEvalFilter={setEvalFilter} />;
       case 'trades':
         return (
           <TradeListPage
@@ -5702,30 +7640,37 @@ const App = () => {
             onEdit={(trade) => { setEditingTrade(trade); setIsFormOpen(true); }}
             subscriptionStatus={subscriptionStatus}
             onOpenForm={openForm}
+            onOpenImport={() => setCsvImportOpen(true)}
             tags={tags}
+            strategyRules={strategyRules}
           />
         );
       case 'analytics':
-        return <AnalyticsPage trades={trades} />;
+        return <AnalyticsPage trades={trades} evalFilter={evalFilter} setEvalFilter={setEvalFilter} />;
       case 'strategy':
-        return <StrategyPage subscriptionStatus={subscriptionStatus} trades={trades} />;
+        return <StrategyPage subscriptionStatus={subscriptionStatus} trades={trades} evalFilter={evalFilter} setEvalFilter={setEvalFilter} />;
       case 'premarket':
-        return <PreMarketPage subscriptionStatus={subscriptionStatus} />;
+        return <PreMarketPage subscriptionStatus={subscriptionStatus} trades={trades} />;
+      case 'backtesting':
+        return <BacktestingPage subscriptionStatus={subscriptionStatus} />;
       case 'settings':
         return <SettingsPage onSyncComplete={triggerReload} onNavigate={setCurrentPage} theme={theme} onThemeChange={handleThemeChange} customColors={customColors} tags={tags} triggerReload={triggerReload} subscriptionStatus={subscriptionStatus} />;
       case 'upgrade':
         return <UpgradePage pricing={pricing} />;
+      case 'referral':
+        return <ReferralPage />;
       default:
-        return <DashboardPage trades={trades} subscriptionStatus={subscriptionStatus} onOpenForm={openForm} dailyNotes={dailyNotes} onSaveNote={handleSaveNote} onDeleteNote={handleDeleteNote} tags={tags} strategyRules={strategyRules} />;
+        return <DashboardPage trades={trades} subscriptionStatus={subscriptionStatus} onOpenForm={openForm} onOpenImport={() => setCsvImportOpen(true)} onOpenAddTrade={openFormWithDate} onEditTrade={openEditForm} dailyNotes={dailyNotes} onSaveNote={handleSaveNote} onDeleteNote={handleDeleteNote} tags={tags} strategyRules={strategyRules} evalFilter={evalFilter} setEvalFilter={setEvalFilter} />;
     }
   };
 
   return (
+    <SidePanelContext.Provider value={setSidePanelOffset}>
     <div className="flex min-h-screen">
       <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} subscriptionStatus={subscriptionStatus} />
-      <main className="flex-1 lg:ml-60 min-h-screen">
-        <div className="p-6 lg:p-8 max-w-7xl">
-          <TrialBanner subscriptionStatus={subscriptionStatus} proPrice={pricing.pro} />
+      <main className="flex-1 lg:ml-60 min-h-screen transition-[padding] duration-300" style={{ paddingRight: sidePanelOffset }}>
+        <div className="p-6 lg:p-8">
+          <FreeBanner subscriptionStatus={subscriptionStatus} proPrice={pricing.pro} />
           {syncNotification && (
             <div className="flex items-center gap-2 bg-info/10 border border-info/30 rounded-lg px-4 py-3 mb-6 text-info text-sm">
               <Icons.RefreshCw className="w-4 h-4 animate-spin" />
@@ -5738,12 +7683,19 @@ const App = () => {
 
       <TradeFormPopup
         isOpen={isFormOpen}
-        onClose={() => { setIsFormOpen(false); setEditingTrade(null); }}
+        onClose={() => { setIsFormOpen(false); setEditingTrade(null); setPrefillDate(null); }}
         triggerReload={triggerReload}
         editingTrade={editingTrade}
+        prefillDate={prefillDate}
         tags={tags}
+        strategyRules={strategyRules}
+        subscriptionStatus={subscriptionStatus}
+        trades={trades}
       />
+      <CSVImportModal isOpen={csvImportOpen} onClose={() => setCsvImportOpen(false)} triggerReload={triggerReload} onDuplicatesSkipped={(n) => setToast({ message: `${n} trade${n !== 1 ? 's were' : ' was'} already in your journal and ${n !== 1 ? 'were' : 'was'} not added again.` })} />
+      <Toast toast={toast} onClose={() => setToast(null)} />
     </div>
+    </SidePanelContext.Provider>
   );
 };
 
