@@ -2658,6 +2658,43 @@ const TradeListPage = ({ trades, triggerReload, onEdit, subscriptionStatus, onOp
   const [checksLoading, setChecksLoading] = useState(false);
   const [deletingIds, setDeletingIds] = useState(new Set());
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const [showColumnMenu, setShowColumnMenu] = useState(false);
+  const [selectedTradeIds, setSelectedTradeIds] = useState(new Set());
+  const [bulkTagPickerOpen, setBulkTagPickerOpen] = useState(false);
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
+  const [bulkActionLoading, setBulkActionLoading] = useState(false);
+
+  useEffect(() => {
+    setSelectedTradeIds(new Set());
+  }, [searchTicker, dateFrom, dateTo, sideFilters, filterTags]);
+
+  const COLUMN_DEFS = [
+    { id: 'date', label: 'Date', alwaysOn: true },
+    { id: 'ticker', label: 'Ticker', alwaysOn: true },
+    { id: 'tags', label: 'Tags' },
+    { id: 'entry', label: 'Entry' },
+    { id: 'exit', label: 'Exit' },
+    { id: 'qty', label: 'Qty' },
+    { id: 'pl', label: 'P/L', alwaysOn: true },
+    { id: 'duration', label: 'Duration' },
+  ];
+  const DEFAULT_COLUMNS = ['date','ticker','tags','entry','exit','qty','pl','duration'];
+  const [visibleColumns, setVisibleColumns] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('tradeTableColumns'));
+      if (Array.isArray(saved)) return saved;
+    } catch {}
+    return DEFAULT_COLUMNS;
+  });
+  const toggleColumn = (colId) => {
+    setVisibleColumns(prev => {
+      const next = prev.includes(colId) ? prev.filter(c => c !== colId) : [...prev, colId];
+      localStorage.setItem('tradeTableColumns', JSON.stringify(next));
+      return next;
+    });
+  };
+  const isCol = (colId) => visibleColumns.includes(colId);
+  const visibleColCount = visibleColumns.length + 2; // +1 for checkbox, +1 for actions
 
   const doDelete = async (id) => {
     setDeletingIds(prev => new Set([...prev, id]));
@@ -2746,19 +2783,118 @@ const TradeListPage = ({ trades, triggerReload, onEdit, subscriptionStatus, onOp
     setInlineTagCreating(false);
   };
 
+  /**
+   * handleBulkEval - Marks or unmarks selected trades as evaluation trades.
+   * Calls POST /api/bulkUpdateTrades with action 'markEval' or 'unmarkEval'.
+   * Clears selection and triggers data reload on success.
+   * @param {boolean} isEval - true to mark as eval, false to unmark
+   */
+  const handleBulkEval = async (isEval) => {
+    if (selectedTradeIds.size === 0 || bulkActionLoading) return;
+    setBulkActionLoading(true);
+    try {
+      const response = await authFetch('/api/bulkUpdateTrades', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tradeIds: [...selectedTradeIds],
+          action: isEval ? 'markEval' : 'unmarkEval',
+        }),
+      });
+      const data = await response.json();
+      if (!data.error) {
+        setSelectedTradeIds(new Set());
+        triggerReload();
+      }
+    } catch (err) {
+      console.error('Bulk eval error:', err);
+    }
+    setBulkActionLoading(false);
+  };
+
+  /**
+   * handleBulkAddTags - Adds one or more tags to all selected trades.
+   * Calls POST /api/bulkUpdateTrades with action 'addTags' and tag ID array.
+   * Closes tag picker, clears selection, and triggers reload on success.
+   * @param {string[]} tagIds - Array of tag IDs to add
+   */
+  const handleBulkAddTags = async (tagIds) => {
+    if (selectedTradeIds.size === 0 || tagIds.length === 0 || bulkActionLoading) return;
+    setBulkActionLoading(true);
+    try {
+      const response = await authFetch('/api/bulkUpdateTrades', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tradeIds: [...selectedTradeIds],
+          action: 'addTags',
+          tags: tagIds,
+        }),
+      });
+      const data = await response.json();
+      if (!data.error) {
+        setBulkTagPickerOpen(false);
+        setSelectedTradeIds(new Set());
+        triggerReload();
+      }
+    } catch (err) {
+      console.error('Bulk add tags error:', err);
+    }
+    setBulkActionLoading(false);
+  };
+
+  /**
+   * handleBulkDelete - Deletes all selected trades after confirmation.
+   * Calls POST /api/bulkDeleteTrades with array of trade IDs.
+   * Closes confirm modal, clears selection, and triggers reload on success.
+   */
+  const handleBulkDelete = async () => {
+    if (selectedTradeIds.size === 0 || bulkActionLoading) return;
+    setBulkActionLoading(true);
+    try {
+      const response = await authFetch('/api/bulkDeleteTrades', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tradeIds: [...selectedTradeIds] }),
+      });
+      const data = await response.json();
+      if (!data.error) {
+        setBulkDeleteConfirm(false);
+        setSelectedTradeIds(new Set());
+        triggerReload();
+      }
+    } catch (err) {
+      console.error('Bulk delete error:', err);
+    }
+    setBulkActionLoading(false);
+  };
+
   const handleExportCSV = () => {
     if (filtered.length === 0) return;
-    const headers = ['Ticker', 'Enter Time', 'Exit Time', 'Enter Price', 'Exit Price', 'Quantity', 'P/L', 'Comments'];
+    const colMap = [
+      { id: 'date', header: 'Date', value: t => new Date(t.exitTime).toISOString(), alwaysOn: true },
+      { id: 'ticker', header: 'Ticker', value: t => t.ticker, alwaysOn: true },
+      { id: 'tags', header: 'Tags', value: t => {
+        if (!t.tags || !tags) return '';
+        return t.tags.map(tid => { const tag = tags.find(tg => tg._id === tid); return tag ? tag.name : ''; }).filter(Boolean).join('; ');
+      }},
+      { id: 'entry', header: 'Enter Price', value: t => t.enterPrice },
+      { id: 'exit', header: 'Exit Price', value: t => t.exitPrice },
+      { id: 'qty', header: 'Quantity', value: t => t.quantity },
+      { id: 'pl', header: 'P/L', value: t => getTradePL(t).toFixed(2), alwaysOn: true },
+      { id: 'duration', header: 'Duration', value: t => {
+        const dur = new Date(t.exitTime) - new Date(t.enterTime);
+        return formatDuration(dur);
+      }},
+    ];
+    const activeCols = colMap.filter(c => c.alwaysOn || visibleColumns.includes(c.id));
+    // Always include enter/exit times and comments in export for completeness
+    const headers = [...activeCols.map(c => c.header), 'Enter Time', 'Exit Time', 'Comments'];
     const rows = filtered.map(t => {
-      const pl = getTradePL(t);
       return [
-        t.ticker,
+        ...activeCols.map(c => c.value(t)),
         new Date(t.enterTime).toISOString(),
         new Date(t.exitTime).toISOString(),
-        t.enterPrice,
-        t.exitPrice,
-        t.quantity,
-        pl.toFixed(2),
         (t.comments || '').replace(/"/g, '""'),
       ].map(v => `"${v}"`).join(',');
     });
@@ -3006,8 +3142,108 @@ const TradeListPage = ({ trades, triggerReload, onEdit, subscriptionStatus, onOp
             </div>
           )}
         </div>
-        <span className="text-text-tertiary text-sm">{filtered.length} trade{filtered.length !== 1 ? 's' : ''}</span>
+        <div className="flex items-center gap-3">
+          <span className="text-text-tertiary text-sm">{filtered.length} trade{filtered.length !== 1 ? 's' : ''}</span>
+          <div className="relative">
+            <button
+              onClick={() => setShowColumnMenu(v => !v)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-text-tertiary hover:text-text-primary hover:bg-bg-input border border-border transition-colors"
+              title="Toggle columns"
+            >
+              <Icons.Layers className="w-3.5 h-3.5" />
+              Columns
+            </button>
+            {showColumnMenu && (
+              <>
+              <div className="fixed inset-0 z-10" onClick={() => setShowColumnMenu(false)} />
+              <div className="absolute right-0 top-full mt-1 z-20 bg-bg-surface border border-border rounded-lg shadow-xl p-1.5 min-w-[160px]">
+                {COLUMN_DEFS.filter(c => !c.alwaysOn).map(col => (
+                  <label
+                    key={col.id}
+                    className="flex items-center gap-2.5 px-2.5 py-2 rounded-md cursor-pointer hover:bg-bg-input transition-colors"
+                  >
+                    <div
+                      className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${
+                        isCol(col.id) ? 'bg-accent border-accent' : 'border-border'
+                      }`}
+                      onClick={(e) => { e.preventDefault(); toggleColumn(col.id); }}
+                    >
+                      {isCol(col.id) && <Icons.Check className="w-3 h-3 text-accent-text" />}
+                    </div>
+                    <span className="text-sm text-text-secondary">{col.label}</span>
+                  </label>
+                ))}
+              </div>
+              </>
+            )}
+          </div>
+        </div>
       </div>
+
+      {/* Bulk action bar — shown when one or more trades are checkbox-selected */}
+      {selectedTradeIds.size > 0 && (
+        <div className="flex items-center gap-3 px-4 py-3 bg-accent/10 border border-accent/30 rounded-xl">
+          <span className="text-sm font-semibold text-text-primary">{selectedTradeIds.size} trade{selectedTradeIds.size !== 1 ? 's' : ''} selected</span>
+          <div className="flex items-center gap-2 ml-auto">
+            <button
+              className="px-3 py-1.5 text-xs font-medium bg-bg-surface border border-border rounded-lg text-text-secondary hover:text-text-primary hover:border-accent transition-all disabled:opacity-50"
+              onClick={() => handleBulkEval(true)}
+              disabled={bulkActionLoading}
+            >
+              Mark Eval
+            </button>
+            <button
+              className="px-3 py-1.5 text-xs font-medium bg-bg-surface border border-border rounded-lg text-text-secondary hover:text-text-primary hover:border-accent transition-all disabled:opacity-50"
+              onClick={() => handleBulkEval(false)}
+              disabled={bulkActionLoading}
+            >
+              Unmark Eval
+            </button>
+            <div className="relative">
+              <button
+                className="px-3 py-1.5 text-xs font-medium bg-bg-surface border border-border rounded-lg text-text-secondary hover:text-text-primary hover:border-accent transition-all disabled:opacity-50"
+                onClick={() => setBulkTagPickerOpen(v => !v)}
+                disabled={bulkActionLoading}
+              >
+                Add Tags
+              </button>
+              {bulkTagPickerOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setBulkTagPickerOpen(false)} />
+                  <div className="absolute left-0 top-full mt-1 z-20 bg-bg-surface border border-border rounded-lg shadow-xl p-2 min-w-[180px]">
+                    {tags && tags.map(tag => (
+                      <button
+                        key={tag._id}
+                        className="flex items-center gap-2 w-full px-3 py-2 rounded-md text-sm text-text-secondary hover:bg-bg-input hover:text-text-primary transition-colors"
+                        onClick={() => handleBulkAddTags([tag._id])}
+                      >
+                        <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: tag.color }}></span>
+                        {tag.name}
+                      </button>
+                    ))}
+                    {(!tags || tags.length === 0) && (
+                      <p className="text-text-muted text-xs px-3 py-2">No tags created yet</p>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+            <button
+              className="px-3 py-1.5 text-xs font-medium bg-negative/10 border border-negative/30 rounded-lg text-negative hover:bg-negative/20 transition-all disabled:opacity-50"
+              onClick={() => setBulkDeleteConfirm(true)}
+              disabled={bulkActionLoading}
+            >
+              Delete
+            </button>
+            <button
+              className="px-3 py-1.5 text-xs font-medium text-text-tertiary hover:text-text-primary transition-colors"
+              onClick={() => setSelectedTradeIds(new Set())}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Table */}
       <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
@@ -3021,20 +3257,34 @@ const TradeListPage = ({ trades, triggerReload, onEdit, subscriptionStatus, onOp
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border">
+                  <th className="px-4 py-3 w-10">
+                    <input
+                      type="checkbox"
+                      className="rounded border-border accent-accent"
+                      checked={filtered.length > 0 && filtered.every(t => selectedTradeIds.has(t._id))}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedTradeIds(new Set(filtered.map(t => t._id)));
+                        } else {
+                          setSelectedTradeIds(new Set());
+                        }
+                      }}
+                    />
+                  </th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider cursor-pointer hover:text-text-primary" onClick={() => toggleSort('exitTime')}>
                     Date <SortIcon field="exitTime" />
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider cursor-pointer hover:text-text-primary" onClick={() => toggleSort('ticker')}>
                     Ticker <SortIcon field="ticker" />
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Tags</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Entry</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Exit</th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Qty</th>
+                  {isCol('tags') && <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Tags</th>}
+                  {isCol('entry') && <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Entry</th>}
+                  {isCol('exit') && <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Exit</th>}
+                  {isCol('qty') && <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Qty</th>}
                   <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider cursor-pointer hover:text-text-primary" onClick={() => toggleSort('pl')}>
                     P/L <SortIcon field="pl" />
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Duration</th>
+                  {isCol('duration') && <th className="text-left px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Duration</th>}
                   <th className="text-right px-4 py-3 text-xs font-medium text-text-tertiary uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
@@ -3050,6 +3300,21 @@ const TradeListPage = ({ trades, triggerReload, onEdit, subscriptionStatus, onOp
                         className="border-b border-border/50 hover:bg-bg-input/50 transition-colors cursor-pointer"
                         onClick={() => onEdit(trade)}
                       >
+                        <td className="px-4 py-3 w-10" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            className="rounded border-border accent-accent"
+                            checked={selectedTradeIds.has(trade._id)}
+                            onChange={() => {
+                              setSelectedTradeIds(prev => {
+                                const next = new Set(prev);
+                                if (next.has(trade._id)) next.delete(trade._id);
+                                else next.add(trade._id);
+                                return next;
+                              });
+                            }}
+                          />
+                        </td>
                         <td className="px-4 py-3">
                           <div className="text-text-primary text-sm">{formatDateTime(trade.exitTime)}</div>
                           <div className="text-text-muted text-xs">{formatTime(trade.enterTime)} - {formatTime(trade.exitTime)}</div>
@@ -3067,26 +3332,28 @@ const TradeListPage = ({ trades, triggerReload, onEdit, subscriptionStatus, onOp
                             <span className="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-accent/15 text-accent">EVAL</span>
                           )}
                         </td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-wrap gap-1">
-                            {trade.tags && trade.tags.map(tagId => {
-                              const tag = tags && tags.find(t => t._id === tagId);
-                              if (!tag) return null;
-                              return (
-                                <span
-                                  key={tagId}
-                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
-                                  style={{ backgroundColor: tag.color + '20', color: tag.color }}
-                                >
-                                  {tag.name}
-                                </span>
-                              );
-                            })}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 font-mono text-sm text-text-secondary">${trade.enterPrice.toFixed(2)}</td>
-                        <td className="px-4 py-3 font-mono text-sm text-text-secondary">${trade.exitPrice.toFixed(2)}</td>
-                        <td className="px-4 py-3 font-mono text-sm text-text-secondary">{trade.quantity}</td>
+                        {isCol('tags') && (
+                          <td className="px-4 py-3">
+                            <div className="flex flex-wrap gap-1">
+                              {trade.tags && trade.tags.map(tagId => {
+                                const tag = tags && tags.find(t => t._id === tagId);
+                                if (!tag) return null;
+                                return (
+                                  <span
+                                    key={tagId}
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
+                                    style={{ backgroundColor: tag.color + '20', color: tag.color }}
+                                  >
+                                    {tag.name}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </td>
+                        )}
+                        {isCol('entry') && <td className="px-4 py-3 font-mono text-sm text-text-secondary">${trade.enterPrice.toFixed(2)}</td>}
+                        {isCol('exit') && <td className="px-4 py-3 font-mono text-sm text-text-secondary">${trade.exitPrice.toFixed(2)}</td>}
+                        {isCol('qty') && <td className="px-4 py-3 font-mono text-sm text-text-secondary">{trade.quantity}</td>}
                         <td className="px-4 py-3">
                           <span className={`font-mono text-sm font-semibold ${pl >= 0 ? 'text-positive' : 'text-negative'}`}>
                             {pl >= 0 ? '+' : ''}${pl.toFixed(2)}
@@ -3095,7 +3362,7 @@ const TradeListPage = ({ trades, triggerReload, onEdit, subscriptionStatus, onOp
                             <span className="text-text-muted text-xs ml-1">(M)</span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-sm text-text-secondary">{formatDuration(duration)}</td>
+                        {isCol('duration') && <td className="px-4 py-3 text-sm text-text-secondary">{formatDuration(duration)}</td>}
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-2">
                             <button
@@ -3117,7 +3384,7 @@ const TradeListPage = ({ trades, triggerReload, onEdit, subscriptionStatus, onOp
                       </tr>
                       {isExpanded && (
                         <tr className="border-b border-border/50">
-                          <td colSpan="9" className="px-6 py-4 bg-bg-input/20">
+                          <td colSpan={visibleColCount} className="px-6 py-4 bg-bg-input/20">
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                               <div className="space-y-3">
                                 {tradeTags.length > 0 && (
@@ -3200,6 +3467,27 @@ const TradeListPage = ({ trades, triggerReload, onEdit, subscriptionStatus, onOp
                 className="px-4 py-2 text-sm bg-negative text-white rounded-lg hover:opacity-80 transition-opacity"
                 onClick={() => doDelete(deleteConfirmId)}
               >Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk delete confirmation modal */}
+      {bulkDeleteConfirm && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => setBulkDeleteConfirm(false)}>
+          <div className="bg-bg-surface border border-border rounded-xl p-6 w-full max-w-sm shadow-xl" onClick={e => e.stopPropagation()}>
+            <h3 className="text-text-primary font-semibold mb-1">Delete {selectedTradeIds.size} Trade{selectedTradeIds.size !== 1 ? 's' : ''}</h3>
+            <p className="text-text-secondary text-sm mb-5">Are you sure you want to delete {selectedTradeIds.size} trade{selectedTradeIds.size !== 1 ? 's' : ''}? This cannot be undone.</p>
+            <div className="flex gap-2 justify-end">
+              <button
+                className="px-4 py-2 text-sm text-text-secondary hover:text-text-primary transition-colors"
+                onClick={() => setBulkDeleteConfirm(false)}
+              >Cancel</button>
+              <button
+                className="px-4 py-2 text-sm bg-negative text-white rounded-lg hover:opacity-80 transition-opacity disabled:opacity-50"
+                onClick={handleBulkDelete}
+                disabled={bulkActionLoading}
+              >{bulkActionLoading ? 'Deleting...' : 'Delete'}</button>
             </div>
           </div>
         </div>
@@ -4173,99 +4461,32 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                {tvStatus && (
-                  <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium ${
-                    tvStatus.configured ? 'bg-positive/10 text-positive' : 'bg-text-muted/10 text-text-secondary'
-                  }`}>
-                    <div className={`w-2 h-2 rounded-full ${tvStatus.configured ? 'bg-positive' : 'bg-text-muted'}`}></div>
-                    {tvStatus.configured ? 'Connected' : 'Not Connected'}
-                  </div>
-                )}
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-warning/10 text-warning">
+                  Coming Soon
+                </div>
                 {expandedBroker === 'tradovate' ? <Icons.ChevronUp className="w-4 h-4 text-text-secondary" /> : <Icons.ChevronDown className="w-4 h-4 text-text-secondary" />}
               </div>
             </button>
 
             {expandedBroker === 'tradovate' && (
               <div className="px-5 pb-5 border-t border-border pt-4">
-                <div className="bg-bg-page/50 rounded-lg p-3 mb-4">
+                <div className="bg-bg-page/50 rounded-lg p-3 mb-3">
                   <p className="text-xs text-text-secondary leading-relaxed">
-                    <strong className="text-text-primary">Setup:</strong> Click <em>Connect with Tradovate</em> below to authorize access through Tradovate's secure login. No username or password is stored by this app.
+                    Direct API sync is coming soon. In the meantime, you can export your trades as a CSV from Tradovate and import them into RR Metrics.
                   </p>
                 </div>
-
-                {tvStatus && tvStatus.configured ? (
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-4 text-sm">
-                      {tvStatus.environment && (
-                        <span className="px-2 py-1 bg-bg-input rounded text-text-secondary text-xs font-mono">{tvStatus.environment.toUpperCase()}</span>
-                      )}
-                      {tvStatus.lastSyncTime && (
-                        <span className="text-text-tertiary text-xs">Last sync: {new Date(tvStatus.lastSyncTime).toLocaleString()}</span>
-                      )}
-                    </div>
-                    <div className="flex gap-3">
-                      <button
-                        className="px-4 py-2 bg-accent text-accent-text text-sm font-semibold rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
-                        onClick={handleSync}
-                        disabled={syncing}
-                      >
-                        {syncing ? 'Syncing...' : 'Sync Trades'}
-                      </button>
-                      <button
-                        className="px-4 py-2 bg-bg-input border border-border text-text-secondary text-sm rounded-lg hover:text-negative hover:border-negative/50 transition-colors"
-                        onClick={handleDeleteCredentials}
-                      >
-                        Disconnect
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {tvStatus && tvStatus.expired && (
-                      <p className="text-xs text-negative">Your Tradovate session has expired. Please reconnect.</p>
-                    )}
-                    {saving && (
-                      <p className="text-xs text-text-secondary">Connecting to Tradovate...</p>
-                    )}
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        className={`flex-1 py-2 text-sm font-medium rounded-lg border transition-colors ${
-                          tvEnvironment === 'demo'
-                            ? 'bg-accent/10 border-accent text-accent'
-                            : 'bg-bg-input border-border text-text-secondary hover:text-text-primary'
-                        }`}
-                        onClick={() => setTvEnvironment('demo')}
-                      >
-                        Demo
-                      </button>
-                      <button
-                        type="button"
-                        className={`flex-1 py-2 text-sm font-medium rounded-lg border transition-colors ${
-                          tvEnvironment === 'live'
-                            ? 'bg-accent/10 border-accent text-accent'
-                            : 'bg-bg-input border-border text-text-secondary hover:text-text-primary'
-                        }`}
-                        onClick={() => setTvEnvironment('live')}
-                      >
-                        Live
-                      </button>
-                    </div>
-                    <button
-                      type="button"
-                      className="px-6 py-2.5 bg-accent text-accent-text text-sm font-semibold rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
-                      onClick={handleConnect}
-                      disabled={saving}
-                    >
-                      Connect with Tradovate
-                    </button>
-                  </div>
-                )}
+                <a
+                  href="/guides/tradovate-import"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-accent/10 text-accent text-sm font-medium rounded-lg hover:bg-accent/20 transition-colors"
+                >
+                  <Icons.FileText className="w-4 h-4" />
+                  How to Export from Tradovate (CSV)
+                </a>
               </div>
             )}
           </div>
 
-          {/* ProjectX */}
+          {/* ProjectX / Topstep */}
           <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
             <button
               onClick={() => toggleBroker('projectx')}
@@ -4274,7 +4495,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
               <div className="flex items-center gap-3">
                 <img src="/assets/img/topstep.png" alt="ProjectX" className="w-10 h-10 rounded-lg object-contain" />
                 <div className="text-left">
-                  <h3 className="text-text-primary font-semibold text-sm">ProjectX</h3>
+                  <h3 className="text-text-primary font-semibold text-sm">ProjectX / Topstep</h3>
                   <p className="text-text-tertiary text-xs">Futures trading platform</p>
                 </div>
               </div>
@@ -4288,30 +4509,18 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
 
             {expandedBroker === 'projectx' && (
               <div className="px-5 pb-5 border-t border-border pt-4">
-                <div className="bg-bg-page/50 rounded-lg p-3 mb-4">
+                <div className="bg-bg-page/50 rounded-lg p-3 mb-3">
                   <p className="text-xs text-text-secondary leading-relaxed">
-                    <strong className="text-text-primary">Setup:</strong> In ProjectX, go to{' '}
-                    <span className="font-mono text-accent">Settings &gt; API Keys</span> and generate a new API key. Copy both the API Key and Secret and paste them below. Make sure your API key has read access to your trade history. If you do not want to pay for ProjectX API, download the day's trades from the trades list and import as CSV.
+                    Direct API sync is coming soon. In the meantime, you can export your trades as a CSV from Topstep/ProjectX and import them into RR Metrics.
                   </p>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs text-text-secondary mb-1.5">API Key</label>
-                    <input type="text" disabled placeholder="API Key"
-                      className="w-full px-3 py-2.5 bg-bg-input border border-border rounded-lg text-text-primary text-sm placeholder-text-muted opacity-50 cursor-not-allowed" />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-text-secondary mb-1.5">API Secret</label>
-                    <input type="password" disabled placeholder="API Secret"
-                      className="w-full px-3 py-2.5 bg-bg-input border border-border rounded-lg text-text-primary text-sm placeholder-text-muted opacity-50 cursor-not-allowed" />
-                  </div>
-                </div>
-                <button
-                  disabled
-                  className="mt-4 px-6 py-2.5 bg-accent text-accent-text text-sm font-semibold rounded-lg opacity-50 cursor-not-allowed"
+                <a
+                  href="/guides/topstep-import"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-accent/10 text-accent text-sm font-medium rounded-lg hover:bg-accent/20 transition-colors"
                 >
-                  Connect ProjectX (Coming Soon)
-                </button>
+                  <Icons.FileText className="w-4 h-4" />
+                  How to Export from Topstep (CSV)
+                </a>
               </div>
             )}
           </div>
@@ -4339,35 +4548,18 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
 
             {expandedBroker === 'ninjatrader' && (
               <div className="px-5 pb-5 border-t border-border pt-4">
-                <div className="bg-bg-page/50 rounded-lg p-3 mb-4">
+                <div className="bg-bg-page/50 rounded-lg p-3 mb-3">
                   <p className="text-xs text-text-secondary leading-relaxed">
-                    <strong className="text-text-primary">Setup:</strong> In NinjaTrader, navigate to{' '}
-                    <span className="font-mono text-accent">Tools &gt; Options &gt; Sharing Services</span> and configure an API connection. You will need your NinjaTrader account credentials and your license key. Ensure the "Allow remote access" option is enabled.
+                    Direct API sync is coming soon. In the meantime, you can export your trades as a CSV and import them using the generic CSV format.
                   </p>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs text-text-secondary mb-1.5">Username</label>
-                    <input type="text" disabled placeholder="NinjaTrader username"
-                      className="w-full px-3 py-2.5 bg-bg-input border border-border rounded-lg text-text-primary text-sm placeholder-text-muted opacity-50 cursor-not-allowed" />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-text-secondary mb-1.5">Password</label>
-                    <input type="password" disabled placeholder="NinjaTrader password"
-                      className="w-full px-3 py-2.5 bg-bg-input border border-border rounded-lg text-text-primary text-sm placeholder-text-muted opacity-50 cursor-not-allowed" />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-text-secondary mb-1.5">License Key</label>
-                    <input type="text" disabled placeholder="License key"
-                      className="w-full px-3 py-2.5 bg-bg-input border border-border rounded-lg text-text-primary text-sm placeholder-text-muted opacity-50 cursor-not-allowed" />
-                  </div>
-                </div>
-                <button
-                  disabled
-                  className="mt-4 px-6 py-2.5 bg-accent text-accent-text text-sm font-semibold rounded-lg opacity-50 cursor-not-allowed"
+                <a
+                  href="/guides/generic-csv"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-accent/10 text-accent text-sm font-medium rounded-lg hover:bg-accent/20 transition-colors"
                 >
-                  Connect NinjaTrader (Coming Soon)
-                </button>
+                  <Icons.FileText className="w-4 h-4" />
+                  CSV Format Reference
+                </a>
               </div>
             )}
           </div>
@@ -4807,6 +4999,13 @@ const PreMarketPage = ({ subscriptionStatus, trades }) => {
   };
 
   const toggleItem = async (itemId) => {
+    // Optimistic update — immediately reflect in UI
+    const wasCompleted = completions.some(c => c.itemId === itemId);
+    if (wasCompleted) {
+      setCompletions(prev => prev.filter(c => c.itemId !== itemId));
+    } else {
+      setCompletions(prev => [...prev, { itemId, completedDate: todayDate }]);
+    }
     try {
       const resp = await authFetch('/api/premarket/checklist/toggle', {
         method: 'POST',
@@ -4814,15 +5013,22 @@ const PreMarketPage = ({ subscriptionStatus, trades }) => {
         body: JSON.stringify({ itemId, date: todayDate }),
       });
       const result = await resp.json();
-      if (!result.error) {
-        if (result.completed) {
-          setCompletions([...completions, { itemId, completedDate: todayDate }]);
+      if (result.error) {
+        // Revert on error
+        if (wasCompleted) {
+          setCompletions(prev => [...prev, { itemId, completedDate: todayDate }]);
         } else {
-          setCompletions(completions.filter(c => c.itemId !== itemId));
+          setCompletions(prev => prev.filter(c => c.itemId !== itemId));
         }
       }
     } catch (err) {
       console.error('Failed to toggle item:', err);
+      // Revert on error
+      if (wasCompleted) {
+        setCompletions(prev => [...prev, { itemId, completedDate: todayDate }]);
+      } else {
+        setCompletions(prev => prev.filter(c => c.itemId !== itemId));
+      }
     }
   };
 
@@ -4845,6 +5051,54 @@ const PreMarketPage = ({ subscriptionStatus, trades }) => {
   const isCompleted = (itemId) => completions.some(c => c.itemId === itemId);
   const completedCount = items.filter(i => isCompleted(i._id)).length;
   const progress = items.length > 0 ? Math.round((completedCount / items.length) * 100) : 0;
+
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth() };
+  });
+  const [selectedCalDate, setSelectedCalDate] = useState(null);
+
+  const toggleCalendarItem = async (itemId, date) => {
+    if (!date) return;
+    const completedIds = consistencyData?.[date] || [];
+    const wasCompleted = completedIds.includes(itemId);
+
+    // Optimistic update
+    setConsistencyData(prev => {
+      const updated = { ...prev };
+      if (wasCompleted) {
+        updated[date] = (updated[date] || []).filter(id => id !== itemId);
+      } else {
+        updated[date] = [...(updated[date] || []), itemId];
+      }
+      return updated;
+    });
+    if (date === todayDate) {
+      if (wasCompleted) {
+        setCompletions(prev => prev.filter(c => c.itemId !== itemId));
+      } else {
+        setCompletions(prev => [...prev, { itemId, completedDate: todayDate }]);
+      }
+    }
+
+    try {
+      const resp = await authFetch('/api/premarket/checklist/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemId, date }),
+      });
+      const result = await resp.json();
+      if (result.error) {
+        // Revert
+        await fetchConsistency();
+        if (date === todayDate) await fetchChecklist();
+      }
+    } catch (err) {
+      console.error('Failed to toggle item:', err);
+      await fetchConsistency();
+      if (date === todayDate) await fetchChecklist();
+    }
+  };
 
   const timezoneLabels = {
     'America/New_York': 'ET',
@@ -4989,12 +5243,9 @@ const PreMarketPage = ({ subscriptionStatus, trades }) => {
           {items.length > 0 && (
             <div className="w-full bg-bg-page rounded-full h-2">
               <div
-                className="h-2 rounded-full transition-all duration-300"
-                style={{
-                  width: `${progress}%`,
-                  backgroundColor: progress === 100 ? 'var(--positive)' : 'var(--accent)',
-                }}
-              ></div>
+                className={`h-2 rounded-full transition-all duration-500 ease-out bg-positive`}
+                style={{ width: `${progress}%` }}
+              />
             </div>
           )}
         </div>
@@ -5080,85 +5331,366 @@ const PreMarketPage = ({ subscriptionStatus, trades }) => {
         </div>
       </div>
 
-      {/* Consistency Analytics Section */}
-      <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-border">
-          <h2 className="text-sm font-semibold text-text-primary uppercase tracking-wider">Checklist Consistency</h2>
-          <p className="text-xs text-text-secondary mt-0.5">On days you traded (last 90 days)</p>
-        </div>
-
-        {consistencyLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
-          </div>
-        ) : tradingDaysCount === 0 ? (
-          <div className="px-5 py-8 text-center text-sm text-text-secondary">
-            No trading days found in the last 90 days
-          </div>
-        ) : items.length === 0 ? (
-          <div className="px-5 py-8 text-center text-sm text-text-secondary">
-            Add checklist items above to start tracking consistency
-          </div>
-        ) : (
-          <div className="px-5 py-4 space-y-4">
-            {/* Overall stat */}
-            <div className="flex items-center gap-4">
-              <div className="relative w-16 h-16 flex-shrink-0">
-                <svg className="w-16 h-16 -rotate-90" viewBox="0 0 64 64">
-                  <circle cx="32" cy="32" r="26" fill="none" stroke="var(--border)" strokeWidth="6" />
-                  <circle
-                    cx="32" cy="32" r="26" fill="none"
-                    stroke={overallPct >= 75 ? 'var(--positive)' : overallPct >= 40 ? 'var(--accent)' : 'var(--negative)'}
-                    strokeWidth="6"
-                    strokeLinecap="round"
-                    strokeDasharray={`${2 * Math.PI * 26}`}
-                    strokeDashoffset={`${2 * Math.PI * 26 * (1 - overallRate)}`}
-                  />
-                </svg>
-                <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-text-primary">
-                  {overallPct}%
+      {/* Calendar + Consistency — side by side */}
+      {items.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Prep Calendar (Mon-Fri only) */}
+          <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-text-primary uppercase tracking-wider">Prep Calendar</h2>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setCalendarMonth(prev => {
+                    const d = new Date(prev.year, prev.month - 1, 1);
+                    return { year: d.getFullYear(), month: d.getMonth() };
+                  })}
+                  className="p-1 rounded hover:bg-bg-input text-text-muted hover:text-text-primary transition-colors"
+                >
+                  <Icons.ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                <span className="text-xs font-medium text-text-primary min-w-[100px] text-center">
+                  {new Date(calendarMonth.year, calendarMonth.month).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
                 </span>
-              </div>
-              <div>
-                <div className="text-text-primary font-semibold text-base">Overall Adherence</div>
-                <div className="text-text-secondary text-xs mt-0.5">{tradingDaysCount} trading {tradingDaysCount === 1 ? 'day' : 'days'} analyzed</div>
+                <button
+                  onClick={() => setCalendarMonth(prev => {
+                    const d = new Date(prev.year, prev.month + 1, 1);
+                    return { year: d.getFullYear(), month: d.getMonth() };
+                  })}
+                  className="p-1 rounded hover:bg-bg-input text-text-muted hover:text-text-primary transition-colors"
+                >
+                  <Icons.ChevronRight className="w-3.5 h-3.5" />
+                </button>
               </div>
             </div>
+            <div className="p-4">
+              {(() => {
+                const { year, month } = calendarMonth;
+                const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-            {/* Per-item breakdown */}
-            <div className="space-y-2.5">
-              {itemConsistency.map(({ item, daysCompleted, rate }) => {
-                const pct = Math.round(rate * 100);
-                const isMostSkipped = rate < 0.5;
+                // Build rows: each row is Mon-Fri for one week
+                const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+                const weeks = [];
+                let currentWeek = [null, null, null, null, null]; // Mon-Fri slots
+
+                for (let d = 1; d <= daysInMonth; d++) {
+                  const date = new Date(year, month, d);
+                  const dow = date.getDay(); // 0=Sun, 6=Sat
+                  if (dow === 0 || dow === 6) continue; // skip weekends
+                  const slot = dow - 1; // Mon=0, Tue=1, ... Fri=4
+                  currentWeek[slot] = d;
+                  if (dow === 5 || d === daysInMonth) {
+                    weeks.push(currentWeek);
+                    currentWeek = [null, null, null, null, null];
+                  }
+                }
+
                 return (
-                  <div key={item._id}>
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <span className="text-sm text-text-primary truncate">{item.label}</span>
-                        {isMostSkipped && (
-                          <span className="text-xs text-negative font-medium flex-shrink-0">Most skipped</span>
-                        )}
-                      </div>
-                      <span className="text-xs text-text-secondary flex-shrink-0 ml-2">
-                        {daysCompleted}/{tradingDaysCount} — {pct}%
-                      </span>
+                  <div>
+                    <div className="grid grid-cols-5 gap-1 mb-1">
+                      {dayNames.map(d => (
+                        <div key={d} className="text-center text-[9px] font-medium text-text-muted py-0.5">{d}</div>
+                      ))}
                     </div>
-                    <div className="w-full bg-bg-page rounded-full h-1.5">
-                      <div
-                        className="h-1.5 rounded-full transition-all duration-300"
-                        style={{
-                          width: `${pct}%`,
-                          backgroundColor: pct >= 75 ? 'var(--positive)' : pct >= 40 ? 'var(--accent)' : 'var(--negative)',
-                        }}
-                      />
+                    <div className="space-y-1">
+                      {weeks.map((week, wi) => (
+                        <div key={wi} className="grid grid-cols-5 gap-1">
+                          {week.map((day, di) => {
+                            if (day === null) return <div key={`e-${di}`} />;
+
+                            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                            const isToday = dateStr === todayDate;
+                            const isFuture = dateStr > todayDate;
+                            const isSelected = dateStr === selectedCalDate;
+                            const completedIds = consistencyData?.[dateStr] || [];
+                            const done = completedIds.length;
+                            const total = items.length;
+                            const allDone = done >= total && total > 0;
+                            const someDone = done > 0 && done < total;
+
+                            return (
+                              <button
+                                key={day}
+                                onClick={() => !isFuture && setSelectedCalDate(isSelected ? null : dateStr)}
+                                className={`relative aspect-square rounded text-[11px] font-medium transition-all flex items-center justify-center ${
+                                  isFuture ? 'text-text-muted/30 cursor-default' :
+                                  allDone ? 'bg-positive/15 text-positive' :
+                                  someDone ? 'bg-yellow-500/10 text-yellow-600' :
+                                  'bg-bg-page text-text-muted hover:bg-bg-input'
+                                } ${isToday ? 'ring-2 ring-accent' : ''} ${isSelected ? 'ring-2 ring-text-primary' : ''}`}
+                              >
+                                {day}
+                                {allDone && (
+                                  <svg className="absolute bottom-0 right-0 w-2 h-2 text-positive" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="20 6 9 17 4 12" />
+                                  </svg>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Selected day task list */}
+                    {selectedCalDate && (
+                      <div className="mt-3 pt-3 border-t border-border">
+                        <p className="text-xs font-semibold text-text-primary mb-2">
+                          {new Date(selectedCalDate + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                        </p>
+                        <div className="space-y-1">
+                          {items.map(item => {
+                            const completedIds = consistencyData?.[selectedCalDate] || [];
+                            const isDone = completedIds.includes(item._id);
+                            return (
+                              <button
+                                key={item._id}
+                                onClick={() => toggleCalendarItem(item._id, selectedCalDate)}
+                                className="flex items-center gap-2 w-full text-left px-2 py-1.5 rounded hover:bg-bg-input/50 transition-colors"
+                              >
+                                <span className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                                  isDone ? 'bg-accent border-accent text-white' : 'border-border'
+                                }`}>
+                                  {isDone && (
+                                    <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                                      <polyline points="20 6 9 17 4 12" />
+                                    </svg>
+                                  )}
+                                </span>
+                                <span className={`text-xs ${isDone ? 'line-through text-text-secondary' : 'text-text-primary'}`}>{item.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Legend */}
+                    <div className="flex items-center gap-3 mt-3 text-[9px] text-text-muted">
+                      <div className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-positive/15 inline-block" /> Done</div>
+                      <div className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-yellow-500/10 inline-block" /> Partial</div>
+                      <div className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded bg-bg-page inline-block" /> None</div>
                     </div>
                   </div>
                 );
-              })}
+              })()}
             </div>
           </div>
-        )}
-      </div>
+
+          {/* Consistency Analytics */}
+          <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-border">
+              <h2 className="text-sm font-semibold text-text-primary uppercase tracking-wider">Checklist Consistency</h2>
+              <p className="text-xs text-text-secondary mt-0.5">On days you traded (last 90 days)</p>
+            </div>
+
+            {consistencyLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+              </div>
+            ) : tradingDaysCount === 0 ? (
+              <div className="px-4 py-8 text-center text-sm text-text-secondary">
+                No trading days found in the last 90 days
+              </div>
+            ) : (
+              <div className="px-4 py-4 space-y-4">
+                {/* Overall stat */}
+                <div className="flex items-center gap-4">
+                  <div className="relative w-14 h-14 flex-shrink-0">
+                    <svg className="w-14 h-14 -rotate-90" viewBox="0 0 64 64">
+                      <circle cx="32" cy="32" r="26" fill="none" className="stroke-border" strokeWidth="6" />
+                      <circle
+                        cx="32" cy="32" r="26" fill="none"
+                        className="stroke-positive"
+                        strokeWidth="6"
+                        strokeLinecap="round"
+                        strokeDasharray={`${2 * Math.PI * 26}`}
+                        strokeDashoffset={`${2 * Math.PI * 26 * (1 - overallRate)}`}
+                      />
+                    </svg>
+                    <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-text-primary">
+                      {overallPct}%
+                    </span>
+                  </div>
+                  <div>
+                    <div className="text-text-primary font-semibold text-sm">Overall Adherence</div>
+                    <div className="text-text-secondary text-xs mt-0.5">{tradingDaysCount} trading {tradingDaysCount === 1 ? 'day' : 'days'} analyzed</div>
+                  </div>
+                </div>
+
+                {/* Per-item breakdown */}
+                <div className="space-y-2">
+                  {itemConsistency.map(({ item, daysCompleted, rate }) => {
+                    const pct = Math.round(rate * 100);
+                    const isMostSkipped = rate < 0.5;
+                    return (
+                      <div key={item._id}>
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-xs text-text-primary truncate">{item.label}</span>
+                            {isMostSkipped && (
+                              <span className="text-[10px] text-negative font-medium flex-shrink-0">Most skipped</span>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-text-secondary flex-shrink-0 ml-2">
+                            {daysCompleted}/{tradingDaysCount} — {pct}%
+                          </span>
+                        </div>
+                        <div className="w-full bg-bg-page rounded-full h-1.5">
+                          <div
+                            className={`h-1.5 rounded-full transition-all duration-300 bg-positive`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* P&L vs Prep Completion Chart */}
+      {trades && trades.length > 0 && items.length > 0 && !consistencyLoading && (
+        <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
+          <div className="px-5 py-4 border-b border-border">
+            <h2 className="text-sm font-semibold text-text-primary uppercase tracking-wider">P&L vs Prep Completion</h2>
+            <p className="text-xs text-text-secondary mt-0.5">X-axis: tasks completed. Green = winning day, red = losing day.</p>
+          </div>
+          <div className="px-5 py-4">
+            {(() => {
+              // Group trades by date, compute daily P&L
+              const dailyPL = {};
+              trades.filter(t => t.exitTime).forEach(t => {
+                const e = toEST(t.exitTime);
+                const dateStr = `${e.year}-${String(e.month).padStart(2, '0')}-${String(e.day).padStart(2, '0')}`;
+                if (dateStr < start90Str || dateStr > now90Str) return;
+                if (!dailyPL[dateStr]) dailyPL[dateStr] = 0;
+                dailyPL[dateStr] += getTradePL(t);
+              });
+
+              const totalTasks = items.length;
+              const dataPoints = Object.entries(dailyPL).map(([date, pl]) => {
+                const completedIds = consistencyData?.[date] || [];
+                const tasksCompleted = completedIds.length;
+                return { date, pl, tasksCompleted };
+              });
+
+              if (dataPoints.length === 0) {
+                return <p className="text-text-muted text-sm text-center py-4">No trading days with P&L data in the last 90 days</p>;
+              }
+
+              const pls = dataPoints.map(d => d.pl);
+              const maxPL = Math.max(...pls, 0);
+              const minPL = Math.min(...pls, 0);
+              const range = Math.max(maxPL - minPL, 1);
+
+              const chartW = 600;
+              const chartH = 220;
+              const padL = 60;
+              const padR = 20;
+              const padT = 15;
+              const padB = 35;
+              const plotW = chartW - padL - padR;
+              const plotH = chartH - padT - padB;
+
+              const zeroY = padT + plotH * (maxPL / range);
+
+              return (
+                <div>
+                  <svg viewBox={`0 0 ${chartW} ${chartH}`} className="w-full" style={{ maxHeight: '260px' }}>
+                    {/* Zero line */}
+                    <line x1={padL} y1={zeroY} x2={chartW - padR} y2={zeroY} stroke="rgb(var(--border))" strokeWidth="1" strokeDasharray="4 2" />
+                    <text x={padL - 8} y={zeroY + 3} textAnchor="end" fill="rgb(var(--text-muted))" fontSize="9" fontFamily="monospace">$0</text>
+
+                    {/* Max line */}
+                    {maxPL > 0 && (
+                      <>
+                        <line x1={padL} y1={padT} x2={chartW - padR} y2={padT} stroke="rgb(var(--border))" strokeWidth="0.5" />
+                        <text x={padL - 8} y={padT + 3} textAnchor="end" fill="rgb(var(--text-muted))" fontSize="9" fontFamily="monospace">
+                          ${maxPL >= 1000 ? `${(maxPL / 1000).toFixed(1)}k` : maxPL.toFixed(0)}
+                        </text>
+                      </>
+                    )}
+
+                    {/* Min line */}
+                    {minPL < 0 && (
+                      <>
+                        <line x1={padL} y1={padT + plotH} x2={chartW - padR} y2={padT + plotH} stroke="rgb(var(--border))" strokeWidth="0.5" />
+                        <text x={padL - 8} y={padT + plotH + 3} textAnchor="end" fill="rgb(var(--text-muted))" fontSize="9" fontFamily="monospace">
+                          {minPL >= -1000 ? `-$${Math.abs(minPL).toFixed(0)}` : `-$${(Math.abs(minPL) / 1000).toFixed(1)}k`}
+                        </text>
+                      </>
+                    )}
+
+                    {/* X-axis labels (task count) */}
+                    {Array.from({ length: totalTasks + 1 }, (_, i) => {
+                      const x = padL + (i / totalTasks) * plotW;
+                      return (
+                        <g key={i}>
+                          <line x1={x} y1={padT + plotH} x2={x} y2={padT + plotH + 4} stroke="rgb(var(--border))" strokeWidth="0.5" />
+                          <text x={x} y={chartH - 8} textAnchor="middle" fill="rgb(var(--text-muted))" fontSize="9" fontFamily="monospace">{i}</text>
+                        </g>
+                      );
+                    })}
+                    <text x={padL + plotW / 2} y={chartH - 0} textAnchor="middle" fill="rgb(var(--text-muted))" fontSize="8">Tasks Completed</text>
+
+                    {/* Vertical grid lines */}
+                    {Array.from({ length: totalTasks + 1 }, (_, i) => {
+                      const x = padL + (i / totalTasks) * plotW;
+                      return <line key={i} x1={x} y1={padT} x2={x} y2={padT + plotH} stroke="rgb(var(--border))" strokeWidth="0.3" strokeDasharray="2 3" />;
+                    })}
+
+                    {/* Data points */}
+                    {dataPoints.map((d) => {
+                      const x = padL + (d.tasksCompleted / totalTasks) * plotW;
+                      const y = padT + plotH * ((maxPL - d.pl) / range);
+                      const isWin = d.pl > 0;
+                      return (
+                        <g key={d.date}>
+                          <circle
+                            cx={x} cy={y} r={5}
+                            fill={isWin ? 'rgb(var(--positive))' : 'rgb(var(--negative))'}
+                            fillOpacity={0.8}
+                            stroke={isWin ? 'rgb(var(--positive))' : 'rgb(var(--negative))'}
+                            strokeWidth={1.5}
+                          />
+                          <title>{`${d.date}: $${d.pl.toFixed(2)} (${d.tasksCompleted}/${totalTasks} tasks)`}</title>
+                        </g>
+                      );
+                    })}
+                  </svg>
+
+                  {/* Summary stats by task completion */}
+                  <div className="grid grid-cols-3 gap-3 mt-3">
+                    {[
+                      { label: 'All Done', filter: d => d.tasksCompleted >= totalTasks, color: 'text-positive' },
+                      { label: 'Partial', filter: d => d.tasksCompleted > 0 && d.tasksCompleted < totalTasks, color: 'text-yellow-500' },
+                      { label: 'No Prep', filter: d => d.tasksCompleted === 0, color: 'text-negative' },
+                    ].map(({ label, filter, color }) => {
+                      const pts = dataPoints.filter(filter);
+                      const avgPL = pts.length > 0 ? pts.reduce((s, d) => s + d.pl, 0) / pts.length : 0;
+                      const winRate = pts.length > 0 ? (pts.filter(d => d.pl > 0).length / pts.length) * 100 : 0;
+                      return (
+                        <div key={label} className="bg-bg-input rounded-lg p-3 text-center">
+                          <div className={`text-xs font-medium ${color} mb-1`}>{label}</div>
+                          <div className="text-text-primary font-mono font-semibold text-sm">
+                            {pts.length > 0 ? `$${avgPL.toFixed(0)}` : '—'}
+                          </div>
+                          <div className="text-text-muted text-xs">
+                            {pts.length > 0 ? `${winRate.toFixed(0)}% win · ${pts.length} days` : 'No data'}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -5181,7 +5713,7 @@ const UpgradePage = ({ pricing }) => {
       name: (planDefs.pro && planDefs.pro.name) || 'Pro',
       price: `$${(pricing && pricing.pro) || '19'}`,
       period: '/month',
-      features: (planDefs.pro && planDefs.pro.features) || ['Unlimited trades', 'Advanced analytics'],
+      features: (planDefs.pro && planDefs.pro.features) || ['Unlimited trades', 'Advanced analytics', '1 Backtesting session'],
       accent: true,
       popular: true,
     },
@@ -5189,7 +5721,7 @@ const UpgradePage = ({ pricing }) => {
       name: (planDefs.elite && planDefs.elite.name) || 'Elite',
       price: `$${(pricing && pricing.elite) || '24'}`,
       period: '/month',
-      features: (planDefs.elite && planDefs.elite.features) || ['Everything in Pro'],
+      features: (planDefs.elite && planDefs.elite.features) || ['Everything in Pro', 'Unlimited Backtesting'],
       accent: false,
       popular: false,
     },
@@ -5767,20 +6299,26 @@ const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, prefillD
     const quantity = e.target.querySelector('#quantity').value;
     const manualPL = e.target.querySelector('#manualPL').value;
     const comments = e.target.querySelector('#comments').value;
-    if (!ticker || !enterTimeRaw || !exitTimeRaw || !enterPrice || !exitPrice || !quantity) {
-      helper.handleError('Ticker, enter time, exit time, enter price, exit price, and quantity are required');
+    const hasPrices = enterPrice && exitPrice;
+    const hasPL = manualPL;
+    if (!ticker || !enterTimeRaw || !exitTimeRaw || !quantity) {
+      helper.handleError('Ticker, enter time, exit time, and quantity are required');
+      return;
+    }
+    if (!hasPrices && !hasPL) {
+      helper.handleError('Either enter/exit prices or a manual P/L is required');
       return;
     }
     const enterTime = enterTimeRaw + getESTOffset(new Date(enterTimeRaw));
     const exitTime = exitTimeRaw + getESTOffset(new Date(exitTimeRaw));
     const tradeData = {
       ticker, enterTime, exitTime,
-      enterPrice: parseFloat(enterPrice),
-      exitPrice: parseFloat(exitPrice),
+      enterPrice: enterPrice ? parseFloat(enterPrice) : 0,
+      exitPrice: exitPrice ? parseFloat(exitPrice) : 0,
       quantity: parseFloat(quantity),
       comments, isEval,
     };
-    if (manualPL) tradeData.manualPL = parseFloat(manualPL);
+    if (hasPL) tradeData.manualPL = parseFloat(manualPL);
     if (screenshot) tradeData.screenshot = screenshot;
     if (selectedTags.length > 0) tradeData.tags = selectedTags;
     try {
@@ -6357,7 +6895,7 @@ const StrategyPage = ({ subscriptionStatus, trades, evalFilter, setEvalFilter })
           {/* Trade Rules */}
           <div className="bg-bg-surface border border-border rounded-xl p-5">
             <h3 className="text-text-primary font-semibold text-sm mb-3">Trade Rules</h3>
-            <p className="text-text-tertiary text-xs mb-3">Check these off for each trade in the day detail panel</p>
+            <p className="text-text-tertiary text-xs mb-3">Check these off for each trade individually</p>
             {tradeRules.length === 0 ? (
               <p className="text-text-muted text-sm">No trade rules defined yet.</p>
             ) : (
@@ -6798,10 +7336,11 @@ const StrategyPage = ({ subscriptionStatus, trades, evalFilter, setEvalFilter })
 // =====================================================
 // Wrapper — handles subscription gate without conditionally calling hooks.
 const BacktestingPage = ({ subscriptionStatus }) => {
-  // Elite-only feature — show locked peek for everyone else
-  if (subscriptionStatus && !subscriptionStatus.isPremium) {
+  const plan = subscriptionStatus?.plan;
+  // Free and trial users see a blurred preview
+  if (plan !== 'pro' && plan !== 'elite') {
     return (
-      <div className="max-w-4xl">
+      <div>
         <h1 className="text-text-primary text-2xl font-bold mb-1">Backtesting</h1>
         <p className="text-text-muted text-sm mb-8">Track wins and losses across backtesting sessions</p>
 
@@ -6843,7 +7382,7 @@ const BacktestingPage = ({ subscriptionStatus }) => {
                   { label: 'Wins', value: '16' },
                   { label: 'Losses', value: '8' },
                   { label: 'Win Rate', value: '66.7%' },
-                  { label: 'Avg P/F', value: '2.14x' },
+                  { label: 'Avg RR', value: '2.14R' },
                 ].map(stat => (
                   <div key={stat.label} className="bg-bg-input rounded-lg p-3 text-center">
                     <div className="text-xl font-bold font-mono text-text-primary">{stat.value}</div>
@@ -6858,15 +7397,15 @@ const BacktestingPage = ({ subscriptionStatus }) => {
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="bg-bg-surface/95 backdrop-blur-sm border border-border rounded-xl p-8 text-center shadow-2xl max-w-sm mx-4">
               <Icons.FlaskConical className="w-10 h-10 text-yellow-400 mx-auto mb-3" />
-              <h2 className="text-text-primary font-semibold text-lg mb-2">Elite Feature</h2>
+              <h2 className="text-text-primary font-semibold text-lg mb-2">Pro & Elite Feature</h2>
               <p className="text-text-muted text-sm mb-5">
-                Backtesting is available exclusively on the Elite plan. Create sessions, log trades, and track your strategy performance over time.
+                Backtesting is available on the Pro and Elite plans. Create sessions, log trades, and track your strategy performance over time.
               </p>
               <button
-                className="px-6 py-2.5 bg-yellow-500 text-black text-sm font-semibold rounded-lg hover:brightness-110 transition-all"
+                className="px-6 py-2.5 bg-accent text-accent-text text-sm font-semibold rounded-lg hover:brightness-110 transition-all"
                 onClick={() => { window.location.href = '/upgrade'; }}
               >
-                Upgrade to Elite
+                Upgrade Now
               </button>
             </div>
           </div>
@@ -6875,14 +7414,17 @@ const BacktestingPage = ({ subscriptionStatus }) => {
     );
   }
 
-  return <BacktestingContent />;
+  return <BacktestingContent subscriptionStatus={subscriptionStatus} />;
 };
 
-const BacktestingContent = () => {
+const BacktestingContent = ({ subscriptionStatus }) => {
   const [sessions, setSessions] = useState([]);
   const [activeTrades, setActiveTrades] = useState([]);
+  const [allTrades, setAllTrades] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [statsFilter, setStatsFilter] = useState('all'); // 'last1' | 'last3' | 'last5' | 'all'
+  const isProUser = subscriptionStatus?.plan === 'pro';
+  const hasReachedSessionLimit = isProUser && sessions.length >= 1;
+  const [statsFilter, setStatsFilter] = useState('all'); // 'all' | session id
   const [showStartForm, setShowStartForm] = useState(false);
   const [showEndForm, setShowEndForm] = useState(false);
 
@@ -6902,16 +7444,21 @@ const BacktestingContent = () => {
 
   const activeSession = sessions.find(s => s.isActive) || null;
 
-  const load = async () => {
-    setLoading(true);
+  const load = async (showSpinner = true) => {
+    if (showSpinner) setLoading(true);
     try {
-      const res = await authFetch('/api/backtesting/sessions');
-      const data = await res.json();
-      setSessions(data.sessions || []);
+      const [sessRes, tradesRes] = await Promise.all([
+        authFetch('/api/backtesting/sessions'),
+        authFetch('/api/backtesting/trades'),
+      ]);
+      const sessData = await sessRes.json();
+      const tradesData = await tradesRes.json();
+      setSessions(sessData.sessions || []);
+      setAllTrades(tradesData.trades || []);
     } catch (err) {
       console.error('Failed to load sessions', err);
     } finally {
-      setLoading(false);
+      if (showSpinner) setLoading(false);
     }
   };
 
@@ -6943,7 +7490,7 @@ const BacktestingContent = () => {
       });
       setShowStartForm(false);
       setNewTicker(''); setNewName(''); setNewStartDate(new Date().toISOString().slice(0, 10));
-      await load();
+      await load(false);
     } catch (err) {
       console.error('Failed to start session', err);
     }
@@ -6960,7 +7507,7 @@ const BacktestingContent = () => {
       });
       setShowEndForm(false);
       setEndDate('');
-      await load();
+      await load(false);
     } catch (err) {
       console.error('Failed to end session', err);
     }
@@ -6969,7 +7516,7 @@ const BacktestingContent = () => {
   const handleContinueSession = async (sessionId) => {
     try {
       await authFetch(`/api/backtesting/sessions/${sessionId}/continue`, { method: 'POST' });
-      await load();
+      await load(false);
     } catch (err) {
       console.error('Failed to continue session', err);
     }
@@ -6979,7 +7526,7 @@ const BacktestingContent = () => {
     if (!window.confirm('Delete this session and all its trades?')) return;
     try {
       await authFetch(`/api/backtesting/sessions/${sessionId}`, { method: 'DELETE' });
-      await load();
+      await load(false);
     } catch (err) {
       console.error('Failed to delete session', err);
     }
@@ -6987,7 +7534,7 @@ const BacktestingContent = () => {
 
   const openEndForm = () => {
     if (!showEndForm && activeSession) {
-      setEndDate(activeSession.endDate || activeSession.startDate);
+      setEndDate(activeSession.endDate || new Date().toISOString().slice(0, 10));
     }
     setShowEndForm(!showEndForm);
   };
@@ -7009,7 +7556,7 @@ const BacktestingContent = () => {
       });
       setTradePF(''); setTradeTime(''); setTradeResult('win');
       await loadActiveTrades(activeSession._id);
-      await load(); // refresh stats
+      await load(false);
     } catch (err) {
       console.error('Failed to add trade', err);
     } finally {
@@ -7021,46 +7568,86 @@ const BacktestingContent = () => {
     try {
       await authFetch(`/api/backtesting/trades/${tradeId}`, { method: 'DELETE' });
       await loadActiveTrades(activeSession._id);
-      await load();
+      await load(false);
     } catch (err) {
       console.error('Failed to delete trade', err);
     }
   };
 
   // Compute aggregate stats from filtered sessions
-  const filteredSessions = (() => {
-    const completed = sessions.filter(s => !s.isActive);
-    if (statsFilter === 'last1') return completed.slice(0, 1);
-    if (statsFilter === 'last3') return completed.slice(0, 3);
-    if (statsFilter === 'last5') return completed.slice(0, 5);
-    return sessions; // 'all' includes active session
-  })();
+  const filteredSessions = statsFilter === 'all'
+    ? sessions
+    : sessions.filter(s => s._id === statsFilter);
+
+  const filteredTrades = statsFilter === 'all'
+    ? allTrades
+    : allTrades.filter(t => t.sessionId === statsFilter);
 
   const aggregateStats = (() => {
     const total = filteredSessions.reduce((s, x) => s + (x.tradeCount || 0), 0);
     const wins = filteredSessions.reduce((s, x) => s + (x.winCount || 0), 0);
     const losses = filteredSessions.reduce((s, x) => s + (x.lossCount || 0), 0);
-    const pfSum = filteredSessions.reduce((s, x) => s + (x.avgProfitFactor || 0) * (x.tradeCount || 0), 0);
+    const rrSum = filteredSessions.reduce((s, x) => s + (x.avgProfitFactor || 0) * (x.tradeCount || 0), 0);
     return {
       total,
       wins,
       losses,
       winRate: total > 0 ? (wins / total) * 100 : 0,
-      avgPF: total > 0 ? pfSum / total : 0,
+      avgRR: total > 0 ? rrSum / total : 0,
     };
+  })();
+
+  // R:R distribution analysis
+  const rrBuckets = (() => {
+    const buckets = [
+      { label: '0-1R', min: 0, max: 1, trades: [] },
+      { label: '1-2R', min: 1, max: 2, trades: [] },
+      { label: '2-3R', min: 2, max: 3, trades: [] },
+      { label: '3R+', min: 3, max: Infinity, trades: [] },
+    ];
+    filteredTrades.forEach(t => {
+      const rr = t.profitFactor;
+      const bucket = buckets.find(b => rr >= b.min && rr < b.max) || buckets[buckets.length - 1];
+      bucket.trades.push(t);
+    });
+    return buckets.map(b => ({
+      label: b.label,
+      count: b.trades.length,
+      wins: b.trades.filter(t => t.result === 'win').length,
+      losses: b.trades.filter(t => t.result === 'loss').length,
+      winRate: b.trades.length > 0 ? (b.trades.filter(t => t.result === 'win').length / b.trades.length) * 100 : 0,
+    }));
+  })();
+
+  // Time-of-day buckets
+  const timeBuckets = (() => {
+    const buckets = [
+      { label: 'Pre-Market', desc: 'Before 9:30', min: '00:00', max: '09:30', trades: [] },
+      { label: 'Open', desc: '9:30–10:30', min: '09:30', max: '10:30', trades: [] },
+      { label: 'Mid-Morning', desc: '10:30–12:00', min: '10:30', max: '12:00', trades: [] },
+      { label: 'Midday', desc: '12:00–14:00', min: '12:00', max: '14:00', trades: [] },
+      { label: 'Afternoon', desc: '14:00–16:00', min: '14:00', max: '16:00', trades: [] },
+      { label: 'After-Hours', desc: 'After 16:00', min: '16:00', max: '24:00', trades: [] },
+    ];
+    filteredTrades.forEach(t => {
+      const time = t.timeOfDay; // "HH:MM" format
+      const bucket = buckets.find(b => time >= b.min && time < b.max) || buckets[buckets.length - 1];
+      bucket.trades.push(t);
+    });
+    return buckets.map(b => ({
+      label: b.label,
+      desc: b.desc,
+      count: b.trades.length,
+      wins: b.trades.filter(t => t.result === 'win').length,
+      losses: b.trades.filter(t => t.result === 'loss').length,
+      winRate: b.trades.length > 0 ? (b.trades.filter(t => t.result === 'win').length / b.trades.length) * 100 : 0,
+    })).filter(b => b.count > 0);
   })();
 
   const inputClass = 'bg-bg-input border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder-text-muted focus:outline-none focus:border-accent w-full';
   const labelClass = 'block text-text-tertiary text-xs font-semibold uppercase tracking-wider mb-1';
   const btnPrimary = 'px-4 py-2 bg-accent text-accent-text text-sm font-semibold rounded-lg hover:brightness-110 transition-all';
   const btnSecondary = 'px-4 py-2 bg-bg-input border border-border text-text-secondary text-sm font-medium rounded-lg hover:text-text-primary transition-colors';
-
-  const FILTER_OPTIONS = [
-    { id: 'last1', label: 'Last Session' },
-    { id: 'last3', label: 'Last 3' },
-    { id: 'last5', label: 'Last 5' },
-    { id: 'all', label: 'All Time' },
-  ];
 
   if (loading) {
     return (
@@ -7071,18 +7658,29 @@ const BacktestingContent = () => {
   }
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-text-primary text-2xl font-bold">Backtesting</h1>
           <p className="text-text-muted text-sm mt-1">Track wins and losses across backtesting sessions</p>
         </div>
-        {!activeSession && !showStartForm && (
+        {!activeSession && !showStartForm && !hasReachedSessionLimit && (
           <button className={btnPrimary} onClick={() => setShowStartForm(true)}>
             + Start Session
           </button>
         )}
       </div>
+
+      {/* Pro session limit banner */}
+      {hasReachedSessionLimit && (
+        <div className="flex items-center gap-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-4 py-3">
+          <Icons.AlertCircle className="w-5 h-5 text-yellow-500 flex-shrink-0" />
+          <p className="text-text-primary text-sm font-medium">Upgrade to Elite to unlock Unlimited Backtesting Sessions</p>
+          <button className="ml-auto px-4 py-1.5 bg-yellow-500 text-black text-xs font-semibold rounded-lg hover:brightness-110 transition-all whitespace-nowrap" onClick={() => { window.location.href = '/upgrade'; }}>
+            Upgrade
+          </button>
+        </div>
+      )}
 
       {/* Start Session Form */}
       {showStartForm && (
@@ -7178,7 +7776,7 @@ const BacktestingContent = () => {
                     </div>
                   </div>
                   <div className="flex-1 min-w-[100px]">
-                    <label className={labelClass}>Profit Factor</label>
+                    <label className={labelClass}>Risk-Reward</label>
                     <input
                       type="number" step="0.01" min="0"
                       className={inputClass}
@@ -7227,7 +7825,7 @@ const BacktestingContent = () => {
                         <span className={`font-semibold w-3 ${t.result === 'win' ? 'text-positive' : 'text-negative'}`}>
                           {t.result === 'win' ? 'W' : 'L'}
                         </span>
-                        <span className="font-mono text-text-primary">{t.profitFactor.toFixed(2)}x</span>
+                        <span className="font-mono text-text-primary">{t.profitFactor.toFixed(2)}R</span>
                         <span className="text-text-muted">{t.timeOfDay}</span>
                       </div>
                       <button
@@ -7247,33 +7845,30 @@ const BacktestingContent = () => {
 
       {/* Stats Overview */}
       {sessions.length > 0 && (
-        <div className="bg-bg-surface border border-border rounded-xl p-5">
-          <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+        <div className="bg-bg-surface border border-border rounded-xl p-5 space-y-5">
+          <div className="flex items-center justify-between flex-wrap gap-3">
             <h2 className="text-text-primary font-semibold">Stats Overview</h2>
-            <div className="flex gap-1.5 flex-wrap">
-              {FILTER_OPTIONS.map(opt => (
-                <button
-                  key={opt.id}
-                  onClick={() => setStatsFilter(opt.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                    statsFilter === opt.id
-                      ? 'bg-accent text-accent-text'
-                      : 'bg-bg-input text-text-muted hover:text-text-primary border border-border'
-                  }`}
-                >
-                  {opt.label}
-                </button>
+            <select
+              value={statsFilter}
+              onChange={e => setStatsFilter(e.target.value)}
+              className="bg-bg-input border border-border rounded-lg px-3 py-1.5 text-xs font-medium text-text-primary"
+            >
+              <option value="all">All Sessions</option>
+              {sessions.map(s => (
+                <option key={s._id} value={s._id}>
+                  {s.name || s.ticker}{s.isActive ? ' (Active)' : ''} — {s.startDate}
+                </option>
               ))}
-            </div>
+            </select>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             {[
-              { label: 'Total Trades', value: aggregateStats.total, mono: true },
-              { label: 'Wins', value: aggregateStats.wins, color: 'text-positive', mono: true },
-              { label: 'Losses', value: aggregateStats.losses, color: 'text-negative', mono: true },
-              { label: 'Win Rate', value: `${aggregateStats.winRate.toFixed(1)}%`, color: aggregateStats.winRate >= 50 ? 'text-positive' : 'text-negative', mono: true },
-              { label: 'Avg P/F', value: `${aggregateStats.avgPF.toFixed(2)}x`, mono: true },
+              { label: 'Total Trades', value: aggregateStats.total },
+              { label: 'Wins', value: aggregateStats.wins, color: 'text-positive' },
+              { label: 'Losses', value: aggregateStats.losses, color: 'text-negative' },
+              { label: 'Win Rate', value: `${aggregateStats.winRate.toFixed(1)}%`, color: aggregateStats.winRate >= 50 ? 'text-positive' : 'text-negative' },
+              { label: 'Avg RR', value: aggregateStats.avgRR.toFixed(2)},
             ].map(stat => (
               <div key={stat.label} className="bg-bg-input rounded-lg p-3 text-center">
                 <div className={`text-xl font-bold font-mono ${stat.color || 'text-text-primary'}`}>{stat.value}</div>
@@ -7281,6 +7876,79 @@ const BacktestingContent = () => {
               </div>
             ))}
           </div>
+
+          {/* Win Rate by R:R Range */}
+          {filteredTrades.length > 0 && (
+            <div>
+              <h3 className="text-text-secondary text-xs font-semibold uppercase tracking-wider mb-3">Win Rate by Risk-Reward</h3>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {rrBuckets.map(b => (
+                  <div key={b.label} className="bg-bg-input rounded-lg p-3">
+                    <div className="text-text-muted text-xs font-medium mb-1">{b.label}</div>
+                    <div className={`text-lg font-bold font-mono ${b.count > 0 ? (b.winRate >= 50 ? 'text-positive' : 'text-negative') : 'text-text-muted'}`}>
+                      {b.count > 0 ? `${b.winRate.toFixed(1)}%` : '—'}
+                    </div>
+                    <div className="text-text-muted text-xs mt-0.5">
+                      {b.count > 0 ? `${b.wins}W / ${b.losses}L (${b.count})` : 'No trades'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* R:R Distribution Bar */}
+          {filteredTrades.length > 0 && (
+            <div>
+              <h3 className="text-text-secondary text-xs font-semibold uppercase tracking-wider mb-3">R:R Distribution</h3>
+              <div className="space-y-2">
+                {rrBuckets.map(b => {
+                  const pct = filteredTrades.length > 0 ? (b.count / filteredTrades.length) * 100 : 0;
+                  return (
+                    <div key={b.label} className="flex items-center gap-3">
+                      <span className="text-xs text-text-secondary w-10 text-right font-mono">{b.label}</span>
+                      <div className="flex-1 bg-bg-input rounded-full h-4 overflow-hidden flex">
+                        {b.wins > 0 && (
+                          <div
+                            className="h-full bg-positive/70"
+                            style={{ width: `${(b.wins / filteredTrades.length) * 100}%` }}
+                          />
+                        )}
+                        {b.losses > 0 && (
+                          <div
+                            className="h-full bg-negative/70"
+                            style={{ width: `${(b.losses / filteredTrades.length) * 100}%` }}
+                          />
+                        )}
+                      </div>
+                      <span className="text-xs text-text-muted w-10 font-mono">{pct.toFixed(0)}%</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Win Rate by Time of Day */}
+          {timeBuckets.length > 0 && (
+            <div>
+              <h3 className="text-text-secondary text-xs font-semibold uppercase tracking-wider mb-3">Win Rate by Time of Day</h3>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                {timeBuckets.map(b => (
+                  <div key={b.label} className="bg-bg-input rounded-lg p-3">
+                    <div className="text-text-muted text-[10px] font-medium">{b.label}</div>
+                    <div className="text-text-muted text-[9px] mb-1">{b.desc}</div>
+                    <div className={`text-lg font-bold font-mono ${b.winRate >= 50 ? 'text-positive' : 'text-negative'}`}>
+                      {b.winRate.toFixed(1)}%
+                    </div>
+                    <div className="text-text-muted text-xs mt-0.5">
+                      {b.wins}W / {b.losses}L ({b.count})
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -7288,7 +7956,7 @@ const BacktestingContent = () => {
       <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
         <div className="px-5 py-4 border-b border-border flex items-center justify-between">
           <h2 className="text-text-primary font-semibold">Sessions</h2>
-          {!activeSession && !showStartForm && (
+          {!activeSession && !showStartForm && !hasReachedSessionLimit && (
             <button className={btnPrimary} onClick={() => setShowStartForm(true)}>+ Start Session</button>
           )}
         </div>
@@ -7335,8 +8003,8 @@ const BacktestingContent = () => {
                     <div className="text-text-muted text-xs">win rate</div>
                   </div>
                   <div className="text-center">
-                    <div className="font-mono font-semibold text-text-primary">{(session.avgProfitFactor || 0).toFixed(2)}x</div>
-                    <div className="text-text-muted text-xs">avg P/F</div>
+                    <div className="font-mono font-semibold text-text-primary">{(session.avgProfitFactor || 0).toFixed(2)}R</div>
+                    <div className="text-text-muted text-xs">avg R:R</div>
                   </div>
                 </div>
 
@@ -7422,6 +8090,7 @@ const App = () => {
   const [toast, setToast] = useState(null);
   const [subscriptionStatus, setSubscriptionStatus] = useState(null);
   const [syncNotification, setSyncNotification] = useState(null);
+  const [showWelcome, setShowWelcome] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
   const [customColors, setCustomColors] = useState(() => {
     try { return JSON.parse(localStorage.getItem('customColors')) || {}; } catch { return {}; }
@@ -7518,9 +8187,17 @@ const App = () => {
       const response = await authFetch('/api/getTrades');
       const data = await response.json();
       setTrades(data.trades);
+      if (data.trades && data.trades.length === 0 && !localStorage.getItem('rrmetrics_onboarded')) {
+        setShowWelcome(true);
+      }
     };
     loadTradesFromServer();
   }, [reloadTrades]);
+
+  const dismissWelcome = () => {
+    setShowWelcome(false);
+    localStorage.setItem('rrmetrics_onboarded', '1');
+  };
 
   useEffect(() => {
     const loadTags = async () => {
@@ -7696,6 +8373,25 @@ const App = () => {
       />
       <CSVImportModal isOpen={csvImportOpen} onClose={() => setCsvImportOpen(false)} triggerReload={triggerReload} onDuplicatesSkipped={(n) => setToast({ message: `${n} trade${n !== 1 ? 's were' : ' was'} already in your journal and ${n !== 1 ? 'were' : 'was'} not added again.` })} />
       <Toast toast={toast} onClose={() => setToast(null)} />
+
+      {showWelcome && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={dismissWelcome}>
+          <div className="bg-bg-surface border border-border rounded-xl shadow-2xl max-w-sm w-full mx-4 px-6 py-5 text-center" onClick={e => e.stopPropagation()}>
+            <h3 className="text-text-primary text-base font-semibold mb-2">Welcome to RR Metrics!</h3>
+            <p className="text-text-secondary text-sm mb-4">New here? Check out our quick start guide to get up and running.</p>
+            <a
+              href="/guides/getting-started"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-accent text-black text-sm font-medium rounded-lg hover:opacity-90 transition-opacity no-underline"
+            >
+              <Icons.BookOpen className="w-4 h-4" />
+              Quick Start Guide
+            </a>
+            <button onClick={dismissWelcome} className="text-text-muted text-xs hover:text-text-secondary transition-colors mt-4 cursor-pointer block mx-auto">Dismiss</button>
+          </div>
+        </div>
+      )}
     </div>
     </SidePanelContext.Provider>
   );

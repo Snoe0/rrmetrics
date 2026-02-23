@@ -27,34 +27,41 @@ trade.get('/api/getTrades', requiresLogin, async (c) => {
 const makeTradeHandler = async (c: any) => {
   const user = c.get('user');
   const supabase = c.get('supabase');
+  const profile = c.get('profile');
   const body = await c.req.json();
 
-  if (
-    !body.ticker ||
-    !body.enterTime ||
-    !body.exitTime ||
-    !body.enterPrice ||
-    !body.exitPrice ||
-    !body.quantity
-  ) {
-    return c.json(
-      { error: 'Ticker, enter time, exit time, enter price, exit price, and quantity are required!' },
-      400,
-    );
+  // Enforce 50 trade limit for trial and free users
+  const plan = profile?.subscription_plan || 'free';
+  if (plan !== 'pro' && plan !== 'elite') {
+    const count = await tradesDb.countTrades(supabase, user.id);
+    if (count >= 50) {
+      return c.json({ error: 'Trade limit reached (50). Upgrade to Pro for unlimited trades.' }, 402);
+    }
+  }
+
+  const hasPrices = body.enterPrice != null && body.enterPrice !== '' && body.exitPrice != null && body.exitPrice !== '';
+  const hasPL = body.manualPL != null && body.manualPL !== '';
+
+  if (!body.ticker || !body.enterTime || !body.exitTime || !body.quantity) {
+    return c.json({ error: 'Ticker, enter time, exit time, and quantity are required!' }, 400);
+  }
+  if (!hasPrices && !hasPL) {
+    return c.json({ error: 'Either enter/exit prices or a manual P/L is required!' }, 400);
   }
 
   try {
     const newTrade = await tradesDb.createTrade(supabase, user.id, {
-      ticker: body.ticker,
+      ticker: String(body.ticker).toUpperCase().trim(),
       enterTime: body.enterTime,
       exitTime: body.exitTime,
-      enterPrice: body.enterPrice,
-      exitPrice: body.exitPrice,
+      enterPrice: hasPrices ? body.enterPrice : 0,
+      exitPrice: hasPrices ? body.exitPrice : 0,
       quantity: body.quantity,
       manualPL: body.manualPL || null,
       imageAttachments: body.imageAttachments || [],
       screenshot: body.screenshot || null,
       comments: body.comments || '',
+      isEval: body.isEval || false,
       tags: body.tags || [],
     });
 
@@ -96,32 +103,29 @@ trade.post('/api/updateTrade', requiresLogin, async (c) => {
     return c.json({ error: 'Trade ID is required to update!' }, 400);
   }
 
-  if (
-    !body.ticker ||
-    !body.enterTime ||
-    !body.exitTime ||
-    !body.enterPrice ||
-    !body.exitPrice ||
-    !body.quantity
-  ) {
-    return c.json(
-      { error: 'Ticker, enter time, exit time, enter price, exit price, and quantity are required!' },
-      400,
-    );
+  const hasPricesU = body.enterPrice != null && body.enterPrice !== '' && body.exitPrice != null && body.exitPrice !== '';
+  const hasPLU = body.manualPL != null && body.manualPL !== '';
+
+  if (!body.ticker || !body.enterTime || !body.exitTime || !body.quantity) {
+    return c.json({ error: 'Ticker, enter time, exit time, and quantity are required!' }, 400);
+  }
+  if (!hasPricesU && !hasPLU) {
+    return c.json({ error: 'Either enter/exit prices or a manual P/L is required!' }, 400);
   }
 
   try {
     const updated = await tradesDb.updateTrade(supabase, user.id, {
       _id: body._id,
-      ticker: body.ticker,
+      ticker: String(body.ticker).toUpperCase().trim(),
       enterTime: body.enterTime,
       exitTime: body.exitTime,
-      enterPrice: body.enterPrice,
-      exitPrice: body.exitPrice,
+      enterPrice: hasPricesU ? body.enterPrice : 0,
+      exitPrice: hasPricesU ? body.exitPrice : 0,
       quantity: body.quantity,
       manualPL: body.manualPL || null,
       screenshot: body.screenshot || null,
       comments: body.comments || '',
+      isEval: body.isEval || false,
       tags: body.tags || [],
     });
 
@@ -136,6 +140,7 @@ trade.post('/api/updateTrade', requiresLogin, async (c) => {
 trade.post('/api/importTrades', requiresLogin, async (c) => {
   const user = c.get('user');
   const supabase = c.get('supabase');
+  const profile = c.get('profile');
   const body = await c.req.json();
 
   if (!body.trades || !Array.isArray(body.trades)) {
@@ -144,6 +149,19 @@ trade.post('/api/importTrades', requiresLogin, async (c) => {
 
   if (body.trades.length > 500) {
     return c.json({ error: 'Maximum 500 trades per import!' }, 400);
+  }
+
+  // Enforce 50 trade limit for trial and free users
+  const plan = profile?.subscription_plan || 'free';
+  if (plan !== 'pro' && plan !== 'elite') {
+    const currentCount = await tradesDb.countTrades(supabase, user.id);
+    const remaining = 50 - currentCount;
+    if (remaining <= 0) {
+      return c.json({ error: 'Trade limit reached (50). Upgrade to Pro for unlimited trades.' }, 402);
+    }
+    if (body.trades.length > remaining) {
+      return c.json({ error: `Import would exceed your 50 trade limit. You can import ${remaining} more trade(s).` }, 402);
+    }
   }
 
   const required = ['ticker', 'enterTime', 'exitTime', 'enterPrice', 'exitPrice', 'quantity'];
@@ -167,7 +185,7 @@ trade.post('/api/importTrades', requiresLogin, async (c) => {
       enterPrice: parseFloat(t.enterPrice),
       exitPrice: parseFloat(t.exitPrice),
       quantity: parseFloat(t.quantity),
-      manualPL: t.manualPL ? parseFloat(t.manualPL) : null,
+      manualPL: t.manualPL != null ? parseFloat(t.manualPL) : null,
       comments: t.comments || '',
       tags: t.tags || [],
     }));
@@ -177,6 +195,61 @@ trade.post('/api/importTrades', requiresLogin, async (c) => {
   } catch (err) {
     console.error('importTrades error:', err);
     return c.json({ error: 'An error occurred during import' }, 500);
+  }
+});
+
+// POST /api/bulkUpdateTrades
+trade.post('/api/bulkUpdateTrades', requiresLogin, async (c) => {
+  const user = c.get('user');
+  const supabase = c.get('supabase');
+  const body = await c.req.json();
+
+  if (!body.tradeIds || !Array.isArray(body.tradeIds) || body.tradeIds.length === 0) {
+    return c.json({ error: 'tradeIds array is required!' }, 400);
+  }
+  if (!body.action) {
+    return c.json({ error: 'action is required!' }, 400);
+  }
+
+  try {
+    if (body.action === 'markEval') {
+      const count = await tradesDb.bulkUpdateEval(supabase, user.id, body.tradeIds, true);
+      return c.json({ message: `${count} trade(s) marked as eval.` });
+    }
+    if (body.action === 'unmarkEval') {
+      const count = await tradesDb.bulkUpdateEval(supabase, user.id, body.tradeIds, false);
+      return c.json({ message: `${count} trade(s) unmarked as eval.` });
+    }
+    if (body.action === 'addTags') {
+      if (!body.tags || !Array.isArray(body.tags) || body.tags.length === 0) {
+        return c.json({ error: 'tags array is required for addTags action!' }, 400);
+      }
+      const count = await tradesDb.bulkAddTags(supabase, user.id, body.tradeIds, body.tags);
+      return c.json({ message: `${count} tag assignment(s) added.` });
+    }
+    return c.json({ error: 'Invalid action. Use markEval, unmarkEval, or addTags.' }, 400);
+  } catch (err: any) {
+    console.error('bulkUpdateTrades error:', err);
+    return c.json({ error: err.message || 'An error occurred during bulk update.' }, 500);
+  }
+});
+
+// POST /api/bulkDeleteTrades
+trade.post('/api/bulkDeleteTrades', requiresLogin, async (c) => {
+  const user = c.get('user');
+  const supabase = c.get('supabase');
+  const body = await c.req.json();
+
+  if (!body.tradeIds || !Array.isArray(body.tradeIds) || body.tradeIds.length === 0) {
+    return c.json({ error: 'tradeIds array is required!' }, 400);
+  }
+
+  try {
+    const count = await tradesDb.bulkDeleteTrades(supabase, user.id, body.tradeIds);
+    return c.json({ message: `${count} trade(s) deleted.` });
+  } catch (err: any) {
+    console.error('bulkDeleteTrades error:', err);
+    return c.json({ error: err.message || 'An error occurred during bulk delete.' }, 500);
   }
 });
 
