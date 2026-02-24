@@ -1,15 +1,19 @@
 import { createMiddleware } from 'hono/factory';
 import type { Env, AuthContext } from '../bindings';
 
+export type EffectivePlan = 'trial' | 'free' | 'pro' | 'elite';
+
 interface SubscriptionStatus {
   isPremium: boolean;
-  isTrialActive: boolean;
-  trialDaysRemaining: number;
+  effectivePlan: EffectivePlan;
+  hasTradeLimit: boolean;
 }
 
 /**
- * Computes subscription/trial status from the user's profile data.
- * Sets `subscriptionStatus` on the context variables.
+ * Computes subscription status from the user's profile.
+ * - trial: free plan AND account age < TRIAL_DAYS (all Pro features, 50 trade cap)
+ * - free: free plan AND trial period expired (limited features, 50 trade cap)
+ * - pro / elite: paid subscription (unlimited trades, full features)
  */
 export const checkSubscriptionStatus = createMiddleware<{
   Bindings: Env;
@@ -20,29 +24,59 @@ export const checkSubscriptionStatus = createMiddleware<{
     return next();
   }
 
-  if ((profile.subscription_plan || 'trial') !== 'trial') {
-    c.set('subscriptionStatus', {
-      isPremium: true,
-      isTrialActive: false,
-      trialDaysRemaining: 0,
-    });
-    return next();
+  const plan = profile.subscription_plan || 'free';
+  const isPaidPlan = plan === 'pro' || plan === 'elite';
+
+  let effectivePlan: EffectivePlan;
+
+  if (isPaidPlan) {
+    effectivePlan = plan as 'pro' | 'elite';
+  } else {
+    const trialDays = parseInt(c.env.TRIAL_DAYS || '14', 10);
+    const createdAt = new Date(profile.created_at);
+    const trialExpiry = new Date(createdAt.getTime() + trialDays * 24 * 60 * 60 * 1000);
+    const inTrialPeriod = new Date() < trialExpiry;
+    effectivePlan = inTrialPeriod ? 'trial' : 'free';
   }
 
-  const TRIAL_DAYS = parseInt(c.env.TRIAL_DAYS || '14', 10);
-  const accountCreated = new Date(profile.created_at);
-  const now = new Date();
-  const daysSinceCreation = Math.floor(
-    (now.getTime() - accountCreated.getTime()) / (1000 * 60 * 60 * 24),
-  );
-  const trialDaysRemaining = Math.max(0, TRIAL_DAYS - daysSinceCreation);
-  const isTrialActive = trialDaysRemaining > 0;
-
   c.set('subscriptionStatus', {
-    isPremium: false,
-    isTrialActive,
-    trialDaysRemaining,
+    isPremium: effectivePlan === 'trial' || effectivePlan === 'pro' || effectivePlan === 'elite',
+    effectivePlan,
+    hasTradeLimit: !isPaidPlan,
   });
+
+  return next();
+});
+
+/** Broker connection limits by plan. */
+export const BROKER_ACCOUNT_LIMITS: Record<EffectivePlan, number> = {
+  trial: 0,
+  free: 0,
+  pro: 3,
+  elite: Infinity,
+};
+
+/**
+ * Requires a Pro or Elite subscription for broker sync features.
+ * Must be chained AFTER checkSubscriptionStatus.
+ * Returns 402 with upgrade prompt for free/trial users.
+ */
+export const requiresBrokerSync = createMiddleware<{
+  Bindings: Env;
+  Variables: AuthContext & { subscriptionStatus: SubscriptionStatus };
+}>(async (c, next) => {
+  const status = c.get('subscriptionStatus' as any) as SubscriptionStatus | undefined;
+  if (!status) {
+    return c.json({ error: 'Subscription status not available' }, 500);
+  }
+
+  const plan = status.effectivePlan;
+  if (plan !== 'pro' && plan !== 'elite') {
+    return c.json(
+      { error: 'Broker sync requires a Pro or Elite subscription.', upgrade: true },
+      402,
+    );
+  }
 
   return next();
 });

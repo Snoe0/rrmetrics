@@ -6,6 +6,7 @@ import * as projectxDb from '../db/projectx';
 import { encrypt, decrypt } from '../utils/crypto';
 import { ProjectXAPI } from '../services/ProjectXAPI';
 import { requiresLogin } from '../middleware/supabase-auth';
+import { checkSubscriptionStatus, requiresBrokerSync, BROKER_ACCOUNT_LIMITS } from '../middleware/subscription';
 import { createServiceClient } from '../lib/supabase';
 
 type HonoEnv = {
@@ -19,7 +20,7 @@ const projectx = new Hono<HonoEnv>();
  * POST /api/projectx/connect
  * Verify credentials, authenticate, fetch accounts, store encrypted keys.
  */
-projectx.post('/api/projectx/connect', requiresLogin, async (c) => {
+projectx.post('/api/projectx/connect', requiresLogin, checkSubscriptionStatus, requiresBrokerSync, async (c) => {
   const user = c.get('user');
   const body = await c.req.json();
   const { username, apiKey } = body as { username?: string; apiKey?: string };
@@ -56,7 +57,7 @@ projectx.post('/api/projectx/connect', requiresLogin, async (c) => {
  * GET /api/projectx/status
  * Return connection status, selected accounts, copytrade config, and account list.
  */
-projectx.get('/api/projectx/status', requiresLogin, async (c) => {
+projectx.get('/api/projectx/status', requiresLogin, checkSubscriptionStatus, async (c) => {
   const user = c.get('user');
 
   try {
@@ -96,6 +97,10 @@ projectx.get('/api/projectx/status', requiresLogin, async (c) => {
       }
     }
 
+    const subStatus = c.get('subscriptionStatus' as any) as { effectivePlan: string } | undefined;
+    const userPlan = (subStatus?.effectivePlan || 'free') as keyof typeof BROKER_ACCOUNT_LIMITS;
+    const canUseBrokerSync = userPlan === 'pro' || userPlan === 'elite';
+
     return c.json({
       configured,
       expired: hasToken && tokenExpired,
@@ -107,6 +112,9 @@ projectx.get('/api/projectx/status', requiresLogin, async (c) => {
         : null,
       lastSyncTime: profile.projectx_last_sync_time || null,
       accounts,
+      plan: userPlan,
+      canUseBrokerSync,
+      accountLimit: BROKER_ACCOUNT_LIMITS[userPlan],
     });
   } catch (err: any) {
     console.error('ProjectX status error:', err.message);
@@ -118,7 +126,7 @@ projectx.get('/api/projectx/status', requiresLogin, async (c) => {
  * POST /api/projectx/accounts
  * Save selected accounts and copytrade configuration.
  */
-projectx.post('/api/projectx/accounts', requiresLogin, async (c) => {
+projectx.post('/api/projectx/accounts', requiresLogin, checkSubscriptionStatus, requiresBrokerSync, async (c) => {
   const user = c.get('user');
   const body = await c.req.json();
   const { selectedAccounts, copytradeConfig } = body as {
@@ -128,6 +136,17 @@ projectx.post('/api/projectx/accounts', requiresLogin, async (c) => {
 
   if (!selectedAccounts || !Array.isArray(selectedAccounts) || selectedAccounts.length === 0) {
     return c.json({ error: 'Select at least one account' }, 400);
+  }
+
+  // Enforce account limit based on subscription plan
+  const status = c.get('subscriptionStatus' as any) as { effectivePlan: string } | undefined;
+  const plan = (status?.effectivePlan || 'free') as keyof typeof BROKER_ACCOUNT_LIMITS;
+  const limit = BROKER_ACCOUNT_LIMITS[plan];
+  if (selectedAccounts.length > limit) {
+    return c.json(
+      { error: `Your ${plan} plan allows up to ${limit} broker account${limit !== 1 ? 's' : ''}. Upgrade to Elite for unlimited.`, upgrade: true },
+      402,
+    );
   }
 
   // Validate copytrade config if provided
@@ -158,7 +177,7 @@ projectx.post('/api/projectx/accounts', requiresLogin, async (c) => {
  * POST /api/projectx/sync
  * Incremental trade sync from ProjectX.
  */
-projectx.post('/api/projectx/sync', requiresLogin, async (c) => {
+projectx.post('/api/projectx/sync', requiresLogin, checkSubscriptionStatus, requiresBrokerSync, async (c) => {
   const user = c.get('user');
   const supabase = c.get('supabase');
 

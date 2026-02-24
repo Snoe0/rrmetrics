@@ -4649,7 +4649,18 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
 
             {expandedBroker === 'projectx' && (
               <div className="px-5 pb-5 border-t border-border pt-4 space-y-4">
-                {!pxStatus?.configured ? (
+                {pxStatus && !pxStatus.canUseBrokerSync ? (
+                  <div className="bg-accent/5 border border-accent/20 rounded-lg p-4 text-center">
+                    <p className="text-sm text-text-primary font-medium mb-1">Pro or Elite plan required</p>
+                    <p className="text-xs text-text-secondary mb-3">Broker sync is available on Pro (up to 3 accounts) and Elite (unlimited) plans.</p>
+                    <button
+                      onClick={() => window.location.href = '/upgrade'}
+                      className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-accent/90 transition-colors"
+                    >
+                      Upgrade Now
+                    </button>
+                  </div>
+                ) : !pxStatus?.configured ? (
                   <>
                     <div className="bg-bg-page/50 rounded-lg p-3">
                       <p className="text-xs text-text-secondary leading-relaxed">
@@ -4700,7 +4711,14 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                     {/* Account Selection */}
                     {pxAccounts.length > 0 && (
                       <div>
-                        <h4 className="text-sm font-medium text-text-primary mb-2">Accounts</h4>
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="text-sm font-medium text-text-primary">Accounts</h4>
+                          {pxStatus?.accountLimit !== Infinity && (
+                            <span className="text-xs text-text-muted">
+                              {pxSelectedAccounts.length} / {pxStatus?.accountLimit || 0} accounts
+                            </span>
+                          )}
+                        </div>
                         <div className="space-y-2">
                           {pxAccounts.map(account => (
                             <label key={account.id} className="flex items-center gap-3 p-2.5 bg-bg-page/50 rounded-lg cursor-pointer hover:bg-bg-page transition-colors">
@@ -4708,7 +4726,8 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                                 type="checkbox"
                                 checked={pxSelectedAccounts.includes(account.id)}
                                 onChange={() => togglePxAccount(account.id)}
-                                className="w-4 h-4 rounded border-border text-accent focus:ring-accent"
+                                disabled={!pxSelectedAccounts.includes(account.id) && pxStatus?.accountLimit !== Infinity && pxSelectedAccounts.length >= (pxStatus?.accountLimit || 0)}
+                                className="w-4 h-4 rounded border-border text-accent focus:ring-accent disabled:opacity-40"
                               />
                               <div className="flex-1">
                                 <span className="text-sm text-text-primary font-medium">{account.name}</span>
