@@ -33,6 +33,9 @@ module.exports = {
             filename: '[name].css',
         }),
     ],
+    resolve: {
+        extensions: ['.js', '.jsx'],
+    },
     mode: 'production',
     watchOptions: {
         aggregateTimeout: 200,
