@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>RR Metrics - Guides</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/img/logo.svg"/>
+  <link rel="shortcut icon" href="/assets/img/favicon.png"/>
+  <link rel="stylesheet" type="text/css" href="/assets/landing.css"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script>document.documentElement.setAttribute('data-theme','dark')</script>
+</head>
+<body class="bg-bg-page text-text-primary font-sans min-h-screen">
+
+  <!-- Nav -->
+  <nav class="border-b border-border px-6 py-4">
+    <div class="max-w-5xl mx-auto flex items-center justify-between">
+      <a href="/" class="flex items-center gap-2 text-text-primary no-underline hover:opacity-80 transition-opacity">
+        <img src="/assets/img/logo.svg" alt="RR Metrics" class="w-7 h-7" />
+        <span class="font-bold text-lg">RR Metrics</span>
+      </a>
+      <a href="/trades" class="text-sm text-accent hover:underline">Back to Journal</a>
+    </div>
+  </nav>
+
+  <!-- Header -->
+  <div class="border-b border-border">
+    <div class="max-w-5xl mx-auto px-6 py-12">
+      <p class="text-accent text-sm font-semibold uppercase tracking-widest mb-3">Documentation</p>
+      <h1 class="text-4xl font-bold mb-4">Guides &amp; Tutorials</h1>
+      <p class="text-text-secondary text-base max-w-2xl">Step-by-step guides for getting the most out of RR Metrics — from connecting your broker API to analyzing your trading performance.</p>
+    </div>
+  </div>
+
+  <!-- Content -->
+  <main class="max-w-5xl mx-auto px-6 py-12">
+
+    <!-- Getting Started -->
+    <section class="mb-14">
+      <h2 class="text-xs font-semibold uppercase tracking-widest text-text-muted mb-6">Getting Started</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+        <a href="/guides/getting-started" class="group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors">
+          <div class="flex items-start gap-4">
+            <div class="w-10 h-10 bg-bg-input border border-border rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+              <svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+              </svg>
+            </div>
+            <div>
+              <h3 class="text-text-primary font-semibold mb-1 group-hover:text-accent transition-colors">Quick Start: Your First Trade</h3>
+              <p class="text-text-secondary text-sm leading-relaxed">Log your first trade manually and explore the dashboard. Learn the basics of the journal in under 5 minutes.</p>
+              <span class="inline-block mt-3 text-xs text-text-muted">5 min read</span>
+            </div>
+          </div>
+        </a>
+
+        <a href="/guides/dashboard-walkthrough" class="group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors">
+          <div class="flex items-start gap-4">
+            <div class="w-10 h-10 bg-bg-input border border-border rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+              <svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="7" height="7"></rect>
+                <rect x="14" y="3" width="7" height="7"></rect>
+                <rect x="3" y="14" width="7" height="7"></rect>
+                <rect x="14" y="14" width="7" height="7"></rect>
+              </svg>
+            </div>
+            <div>
+              <h3 class="text-text-primary font-semibold mb-1 group-hover:text-accent transition-colors">Full Dashboard Walkthrough</h3>
+              <p class="text-text-secondary text-sm leading-relaxed">A complete tour of every page in RR Metrics — the sidebar, dashboard metrics, trade table, analytics, strategy, pre-market planner, and settings.</p>
+              <span class="inline-block mt-3 text-xs text-text-muted">10 min read</span>
+            </div>
+          </div>
+        </a>
+
+      </div>
+    </section>
+
+    <!-- Broker Integrations -->
+    <section class="mb-14">
+      <h2 class="text-xs font-semibold uppercase tracking-widest text-text-muted mb-6">Broker Integrations</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+        <a href="/guides/tradovate-import" class="group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors">
+          <div class="flex items-start gap-4">
+            <div class="w-10 h-10 bg-bg-input border border-border rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+              <svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline>
+                <polyline points="16 7 22 7 22 13"></polyline>
+              </svg>
+            </div>
+            <div>
+              <h3 class="text-text-primary font-semibold mb-1 group-hover:text-accent transition-colors">Importing Tradovate Trades</h3>
+              <p class="text-text-secondary text-sm leading-relaxed">Export your Tradovate trade history as a CSV and import it into RR Metrics. Both Tradovate export formats are auto-detected — no column mapping required.</p>
+              <div class="flex items-center gap-3 mt-3">
+                <span class="text-xs text-text-muted">8 min read</span>
+                <span class="text-xs bg-bg-input border border-border text-text-secondary px-2 py-0.5 rounded-full">CSV import</span>
+              </div>
+            </div>
+          </div>
+        </a>
+
+        <a href="/guides/topstep-import" class="group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors">
+          <div class="flex items-start gap-4">
+            <div class="w-10 h-10 bg-bg-input border border-border rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+              <svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline>
+                <polyline points="16 7 22 7 22 13"></polyline>
+              </svg>
+            </div>
+            <div>
+              <h3 class="text-text-primary font-semibold mb-1 group-hover:text-accent transition-colors">Importing Topstep Trades</h3>
+              <p class="text-text-secondary text-sm leading-relaxed">Export your Topstep funded account trade history and import it into RR Metrics. Step-by-step walkthrough of the Topstep dashboard export and CSV mapping.</p>
+              <div class="flex items-center gap-3 mt-3">
+                <span class="text-xs text-text-muted">7 min read</span>
+                <span class="text-xs bg-bg-input border border-border text-text-secondary px-2 py-0.5 rounded-full">CSV import</span>
+              </div>
+            </div>
+          </div>
+        </a>
+
+        <a href="/guides/ninjatrader-api" class="group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors">
+          <div class="flex items-start gap-4">
+            <div class="w-10 h-10 bg-bg-input border border-border rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+              <svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
+                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+              </svg>
+            </div>
+            <div>
+              <h3 class="text-text-primary font-semibold mb-1 group-hover:text-accent transition-colors">Connecting NinjaTrader</h3>
+              <p class="text-text-secondary text-sm leading-relaxed">Configure the NinjaTrader API connection in Settings. Enable remote access, obtain your license key, and start syncing executions from NT8.</p>
+              <div class="flex items-center gap-3 mt-3">
+                <span class="text-xs text-text-muted">12 min read</span>
+                <span class="text-xs bg-bg-input border border-border text-text-secondary px-2 py-0.5 rounded-full">Auto-sync</span>
+              </div>
+            </div>
+          </div>
+        </a>
+
+        <a href="/guides/generic-csv" class="group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors">
+          <div class="flex items-start gap-4">
+            <div class="w-10 h-10 bg-bg-input border border-border rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+              <svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line>
+                <line x1="16" y1="17" x2="8" y2="17"></line>
+                <polyline points="10 9 9 9 8 9"></polyline>
+              </svg>
+            </div>
+            <div>
+              <h3 class="text-text-primary font-semibold mb-1 group-hover:text-accent transition-colors">Any Broker: CSV Format Reference</h3>
+              <p class="text-text-secondary text-sm leading-relaxed">A full reference of the RR Metrics CSV column format. Use this to prepare exports from any broker or platform not directly supported.</p>
+              <div class="flex items-center gap-3 mt-3">
+                <span class="text-xs text-text-muted">6 min read</span>
+                <span class="text-xs bg-bg-input border border-border text-text-secondary px-2 py-0.5 rounded-full">Reference</span>
+              </div>
+            </div>
+          </div>
+        </a>
+
+        <a href="/guides/copytrading" class="group block bg-bg-surface border border-border rounded-xl p-5 no-underline hover:border-accent transition-colors">
+          <span class="text-xs text-accent font-semibold uppercase tracking-wider">Broker Integrations</span>
+          <h4 class="text-text-primary font-semibold mt-1 mb-1 group-hover:text-accent transition-colors">Copytrading / Tradesyncing</h4>
+          <p class="text-text-secondary text-xs leading-relaxed">Learn how to set up RR Metrics if you are copytrading across multiple Topstep accounts.</p>
+        </a>
+
+      </div>
+    </section>
+
+    <!-- Features & Workflow -->
+    <section class="mb-14">
+      <h2 class="text-xs font-semibold uppercase tracking-widest text-text-muted mb-6">Features &amp; Workflow</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+        <a href="/guides/tags" class="group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors">
+          <div class="flex items-start gap-4">
+            <div class="w-10 h-10 bg-bg-input border border-border rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+              <svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+                <line x1="7" y1="7" x2="7.01" y2="7"></line>
+              </svg>
+            </div>
+            <div>
+              <h3 class="text-text-primary font-semibold mb-1 group-hover:text-accent transition-colors">Using Tags to Categorize Trades</h3>
+              <p class="text-text-secondary text-sm leading-relaxed">Create custom tags for setups, mistakes, and conditions. Filter and compare performance across tag groups to find your edge.</p>
+              <span class="inline-block mt-3 text-xs text-text-muted">6 min read</span>
+            </div>
+          </div>
+        </a>
+
+        <a href="/guides/analytics" class="group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors">
+          <div class="flex items-start gap-4">
+            <div class="w-10 h-10 bg-bg-input border border-border rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+              <svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="20" x2="18" y2="10"></line>
+                <line x1="12" y1="20" x2="12" y2="4"></line>
+                <line x1="6" y1="20" x2="6" y2="14"></line>
+              </svg>
+            </div>
+            <div>
+              <h3 class="text-text-primary font-semibold mb-1 group-hover:text-accent transition-colors">Understanding Your Analytics</h3>
+              <p class="text-text-secondary text-sm leading-relaxed">A guide to every chart and metric on the Analytics page — win rate, R-multiple distribution, equity curve, time-of-day performance, and more.</p>
+              <span class="inline-block mt-3 text-xs text-text-muted">9 min read</span>
+            </div>
+          </div>
+        </a>
+
+        <a href="/guides/premarket" class="group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors">
+          <div class="flex items-start gap-4">
+            <div class="w-10 h-10 bg-bg-input border border-border rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+              <svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M17 18a5 5 0 0 0-10 0"></path>
+                <line x1="12" y1="2" x2="12" y2="9"></line>
+                <line x1="4.22" y1="10.22" x2="5.64" y2="11.64"></line>
+                <line x1="1" y1="18" x2="3" y2="18"></line>
+                <line x1="21" y1="18" x2="23" y2="18"></line>
+                <line x1="18.36" y1="11.64" x2="19.78" y2="10.22"></line>
+                <line x1="23" y1="22" x2="1" y2="22"></line>
+                <polyline points="8 6 12 2 16 6"></polyline>
+              </svg>
+            </div>
+            <div>
+              <h3 class="text-text-primary font-semibold mb-1 group-hover:text-accent transition-colors">Using the Pre-Market Planner</h3>
+              <p class="text-text-secondary text-sm leading-relaxed">Build a daily game plan before the market opens. Log key levels, bias, and watchlist items — then review them alongside your actual results at end of day.</p>
+              <span class="inline-block mt-3 text-xs text-text-muted">5 min read</span>
+            </div>
+          </div>
+        </a>
+
+        <a href="/guides/strategy" class="group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors">
+          <div class="flex items-start gap-4">
+            <div class="w-10 h-10 bg-bg-input border border-border rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+              <svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <circle cx="12" cy="12" r="6"></circle>
+                <circle cx="12" cy="12" r="2"></circle>
+              </svg>
+            </div>
+            <div>
+              <h3 class="text-text-primary font-semibold mb-1 group-hover:text-accent transition-colors">Building a Strategy Playbook</h3>
+              <p class="text-text-secondary text-sm leading-relaxed">Define and document your trading strategies. Attach strategies to trades and compare performance by setup type over time.</p>
+              <span class="inline-block mt-3 text-xs text-text-muted">7 min read</span>
+            </div>
+          </div>
+        </a>
+
+      </div>
+    </section>
+
+    <!-- Account & Billing -->
+    <section class="mb-14">
+      <h2 class="text-xs font-semibold uppercase tracking-widest text-text-muted mb-6">Account &amp; Billing</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+        <a href="/guides/subscription" class="group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors">
+          <div class="flex items-start gap-4">
+            <div class="w-10 h-10 bg-bg-input border border-border rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+              <svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+              </svg>
+            </div>
+            <div>
+              <h3 class="text-text-primary font-semibold mb-1 group-hover:text-accent transition-colors">Plans, Upgrades &amp; Billing</h3>
+              <p class="text-text-secondary text-sm leading-relaxed">What's included in each plan, how to upgrade to Pro or Elite, manage billing, and request a refund.</p>
+              <span class="inline-block mt-3 text-xs text-text-muted">4 min read</span>
+            </div>
+          </div>
+        </a>
+
+        <a href="/guides/data-export" class="group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors">
+          <div class="flex items-start gap-4">
+            <div class="w-10 h-10 bg-bg-input border border-border rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+              <svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+            </div>
+            <div>
+              <h3 class="text-text-primary font-semibold mb-1 group-hover:text-accent transition-colors">Exporting Your Data</h3>
+              <p class="text-text-secondary text-sm leading-relaxed">Download your full trade history as a CSV at any time. Understand what's included in the export and how to use it with external tools.</p>
+              <span class="inline-block mt-3 text-xs text-text-muted">3 min read</span>
+            </div>
+          </div>
+        </a>
+
+      </div>
+    </section>
+
+    <!-- Help footer -->
+    <div class="border border-border rounded-xl p-6 bg-bg-surface flex flex-col sm:flex-row items-start sm:items-center gap-4 justify-between">
+      <div>
+        <p class="text-text-primary font-semibold mb-1">Can't find what you're looking for?</p>
+        <p class="text-text-secondary text-sm">Send us a message and we'll get back to you as soon as possible.</p>
+      </div>
+      <a href="mailto:info.rrmetrics@gmail.com" class="flex-shrink-0 px-5 py-2.5 bg-accent text-accent-text text-sm font-semibold rounded-lg hover:brightness-110 transition-all no-underline">
+        Contact Support
+      </a>
+    </div>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-border py-8 px-6 mt-12">
+    <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+      <p class="text-text-muted text-xs">&copy; 2026 RR Metrics. All rights reserved.</p>
+      <div class="flex items-center gap-6">
+        <a href="/privacy" class="text-text-tertiary hover:text-text-secondary text-xs transition-colors">Privacy Policy</a>
+        <a href="/terms" class="text-text-tertiary hover:text-text-secondary text-xs transition-colors">Terms of Service</a>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
