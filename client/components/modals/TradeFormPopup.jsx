@@ -9,25 +9,8 @@ const RuleChecklist = require('../shared/RuleChecklist');
 const { resizeImage } = require('../../utils/imageUtils');
 const { toEST, getESTOffset } = require('../../utils/dateUtils');
 const { SidePanelContext } = require('../../utils/contexts');
-
-// =====================================================
-// LOCAL HOOKS & CONSTANTS
-// =====================================================
-
-const useWindowWidth = () => {
-  const [width, setWidth] = useState(() => window.innerWidth);
-  useEffect(() => {
-    const handler = () => setWidth(window.innerWidth);
-    window.addEventListener('resize', handler);
-    return () => window.removeEventListener('resize', handler);
-  }, []);
-  return width;
-};
-
-const TAG_COLOR_PRESETS = [
-  '#EF4444', '#F59E0B', '#10B981', '#3B82F6',
-  '#8B5CF6', '#EC4899', '#6B7280', '#F97316',
-];
+const { useWindowWidth } = require('../../utils/hooks');
+const { TAG_COLOR_PRESETS } = require('../../utils/tagConstants');
 
 // =====================================================
 // TRADE FORM POPUP
