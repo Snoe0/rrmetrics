@@ -736,6 +736,15 @@ const Icons = {
       <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
     </svg>
   ),
+  FileText: (props) => (
+    <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+      <polyline points="14 2 14 8 20 8"></polyline>
+      <line x1="16" y1="13" x2="8" y2="13"></line>
+      <line x1="16" y1="17" x2="8" y2="17"></line>
+      <polyline points="10 9 9 9 8 9"></polyline>
+    </svg>
+  ),
   Menu: (props) => (
     <svg className={props.className || "w-6 h-6"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <line x1="3" y1="12" x2="21" y2="12"></line>
@@ -1116,6 +1125,10 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus }) => {
             </button>
             {accountOpen && (
               <div className="absolute bottom-full left-0 right-0 mb-1 bg-bg-surface border border-border rounded-lg overflow-hidden shadow-lg">
+                <a href="/upgrade" className="flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:bg-bg-input hover:text-text-primary transition-colors no-underline">
+                  <Icons.Zap className="w-4 h-4" />
+                  Manage Subscription
+                </a>
                 <a href="/changePass" className="flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:bg-bg-input hover:text-text-primary transition-colors no-underline">
                   <Icons.Lock className="w-4 h-4" />
                   Change Password
@@ -4655,7 +4668,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                     <p className="text-xs text-text-secondary mb-3">Broker sync is available on Pro (up to 3 accounts) and Elite (unlimited) plans.</p>
                     <button
                       onClick={() => window.location.href = '/upgrade'}
-                      className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-accent/90 transition-colors"
+                      className="px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all"
                     >
                       Upgrade Now
                     </button>
@@ -4691,7 +4704,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                       <button
                         onClick={handlePxConnect}
                         disabled={pxConnecting}
-                        className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-accent/90 transition-colors disabled:opacity-50"
+                        className="px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
                       >
                         {pxConnecting ? 'Connecting...' : 'Connect'}
                       </button>
@@ -4805,7 +4818,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                     <div className="flex flex-wrap items-center gap-3">
                       <button
                         onClick={handlePxSaveAccounts}
-                        className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-accent/90 transition-colors"
+                        className="px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all"
                       >
                         Save Settings
                       </button>
