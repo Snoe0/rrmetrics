@@ -8,6 +8,7 @@ export interface Env {
   ENCRYPTION_KEY: string;
   RESEND_API_KEY: string;
   RESEND_FROM_EMAIL: string;
+  STRIPE_PUBLISHABLE_KEY: string;
   STRIPE_SECRET_KEY: string;
   STRIPE_WEBHOOK_SECRET: string;
   STRIPE_PRICE_PRO: string;
@@ -17,7 +18,8 @@ export interface Env {
   PRICE_ELITE: string;
   TRIAL_DAYS: string;
   GOOGLE_CLIENT_ID?: string;
-  FRED_API_KEY?: string;
+  TRADOVATE_CLIENT_ID?: string;
+  TRADOVATE_CLIENT_SECRET?: string;
 }
 
 export interface ProfileRow {
@@ -34,12 +36,18 @@ export interface ProfileRow {
   custom_colors_accent: string | null;
   custom_colors_positive: string | null;
   custom_colors_negative: string | null;
-  tradovate_username: string | null;
-  tradovate_password: string | null;
-  tradovate_cid: string | null;
-  tradovate_secret: string | null;
+  tradovate_access_token: string | null;
+  tradovate_token_expires_at: string | null;
   tradovate_environment: string;
   tradovate_last_sync_time: string | null;
+  projectx_username: string | null;
+  projectx_api_key: string | null;
+  projectx_token: string | null;
+  projectx_token_expires_at: string | null;
+  projectx_selected_accounts: string | null;
+  projectx_copytrade_config: string | null;
+  projectx_last_sync_time: string | null;
+  registration_ip: string | null;
   created_at: string;
 }
 
@@ -62,7 +70,15 @@ export interface AccountAPI {
   hasPassword: boolean;
   tradovate: {
     configured: boolean;
+    expired: boolean;
     environment: string;
+    lastSyncTime: string | null;
+  };
+  projectx: {
+    configured: boolean;
+    expired: boolean;
+    selectedAccounts: number[];
+    copytradeConfig: { leadAccountId: number; multiplier: number } | null;
     lastSyncTime: string | null;
   };
 }
@@ -82,6 +98,8 @@ export interface TradeRow {
   comments: string;
   tradovate_order_id: string | null;
   tradovate_source: string;
+  projectx_trade_id: string | null;
+  projectx_source: string | null;
   created_date: string;
 }
 
