@@ -2,6 +2,46 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Project Memory Vault
+
+This project has an Obsidian vault at `.claude/RR-Metrics/`. **Read it at the start of every session and write to it as you work.**
+
+### Vault structure
+```
+.claude/RR-Metrics/
+├── Index.md              ← Start here — project overview and all links
+├── Architecture.md       ← System design, component map, data flow
+├── Database.md           ← All tables, columns, RLS, query patterns
+├── Auth.md               ← Supabase JWT flow, middleware chain
+├── Infrastructure.md     ← Build scripts, env vars, secrets reference
+├── Decisions.md          ← Architectural decisions with rationale
+├── Progress.md           ← Session log — append here after every session
+├── Features/             ← One file per feature (Trades, TradovateSync, etc.)
+├── API/                  ← One file per route group with endpoint reference
+└── Client/               ← Client architecture and component breakdowns
+```
+
+### When to read
+- **Start of session:** Read `Index.md` first, then any files relevant to the task.
+- **Before touching a feature:** Read the corresponding `Features/*.md` and `API/*.md`.
+- **Before touching auth/DB/middleware:** Read `Auth.md` and `Database.md`.
+
+### When to write
+| Trigger | Action |
+|---------|--------|
+| Architectural choice made | Append to `Decisions.md` |
+| Feature added or significantly changed | Update the relevant `Features/*.md` |
+| New API endpoint added | Update `API/Routes.md` and the relevant `API/*.md` |
+| Schema change | Update `Database.md` |
+| Bug or non-obvious gotcha found | Note in `Progress.md` with `#bug` |
+| End of session | Append a session entry to `Progress.md` |
+
+### Vault notes format
+- Use `[[WikiLinks]]` to link related notes
+- Use YAML frontmatter on every note (`tags:`, `last-updated:`)
+- Keep `last-updated` accurate when editing a file
+- `Progress.md` entries: `## Session: YYYY-MM-DD` with "What was done", "Bugs & Gotchas", "Next Steps"
+
 ## Build & Development Commands
 
 ### Express/MongoDB (legacy - `server/`)
