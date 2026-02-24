@@ -2,7 +2,7 @@ const React = require('react');
 const { useState, useEffect } = React;
 const { authFetch, supabase } = require('../../helper.js');
 const { TAG_COLOR_PRESETS } = require('../../utils/tagConstants');
-const { Icons } = require('../shared/Icons');
+const Icons = require('../shared/Icons');
 
 const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, customColors, tags, triggerReload, subscriptionStatus }) => {
   const [activeTab, setActiveTab] = useState('brokers');
