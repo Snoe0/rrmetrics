@@ -1,6 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ProfileRow, AccountAPI } from '../bindings';
 
+function isTokenExpired(expiresAt: string | null): boolean {
+  if (!expiresAt) return false;
+  return new Date(expiresAt) < new Date();
+}
+
 /** Maps a profile row to the client-compatible API shape (id -> _id) */
 export function toAPI(row: ProfileRow): AccountAPI {
   return {
@@ -21,9 +26,17 @@ export function toAPI(row: ProfileRow): AccountAPI {
     createdDate: row.created_at,
     hasPassword: true,
     tradovate: {
-      configured: !!row.tradovate_username,
+      configured: !!row.tradovate_access_token && !isTokenExpired(row.tradovate_token_expires_at),
+      expired: !!row.tradovate_access_token && isTokenExpired(row.tradovate_token_expires_at),
       environment: row.tradovate_environment || 'demo',
       lastSyncTime: row.tradovate_last_sync_time || null,
+    },
+    projectx: {
+      configured: !!row.projectx_token && !isTokenExpired(row.projectx_token_expires_at),
+      expired: !!row.projectx_token && isTokenExpired(row.projectx_token_expires_at),
+      selectedAccounts: row.projectx_selected_accounts ? JSON.parse(row.projectx_selected_accounts) : [],
+      copytradeConfig: row.projectx_copytrade_config ? JSON.parse(row.projectx_copytrade_config) : null,
+      lastSyncTime: row.projectx_last_sync_time || null,
     },
   };
 }
@@ -60,12 +73,18 @@ export async function updateById(
     subscriptionPlan: 'subscription_plan',
     subscriptionStatus: 'subscription_status',
     theme: 'theme',
-    tradovateUsername: 'tradovate_username',
-    tradovatePassword: 'tradovate_password',
-    tradovateCid: 'tradovate_cid',
-    tradovateSecret: 'tradovate_secret',
+    tradovateAccessToken: 'tradovate_access_token',
+    tradovateTokenExpiresAt: 'tradovate_token_expires_at',
     tradovateEnvironment: 'tradovate_environment',
     tradovateLastSyncTime: 'tradovate_last_sync_time',
+    projectxUsername: 'projectx_username',
+    projectxApiKey: 'projectx_api_key',
+    projectxToken: 'projectx_token',
+    projectxTokenExpiresAt: 'projectx_token_expires_at',
+    projectxSelectedAccounts: 'projectx_selected_accounts',
+    projectxCopytradeConfig: 'projectx_copytrade_config',
+    projectxLastSyncTime: 'projectx_last_sync_time',
+    registrationIp: 'registration_ip',
     customColorsBgPage: 'custom_colors_bg_page',
     customColorsBgSurface: 'custom_colors_bg_surface',
     customColorsTextPrimary: 'custom_colors_text_primary',
