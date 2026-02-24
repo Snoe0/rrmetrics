@@ -4234,13 +4234,23 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState(null);
+  const [pxStatus, setPxStatus] = useState(null);
+  const [pxAccounts, setPxAccounts] = useState([]);
+  const [pxUsername, setPxUsername] = useState('');
+  const [pxApiKey, setPxApiKey] = useState('');
+  const [pxSelectedAccounts, setPxSelectedAccounts] = useState([]);
+  const [pxCopytradeEnabled, setPxCopytradeEnabled] = useState(false);
+  const [pxLeadAccount, setPxLeadAccount] = useState(null);
+  const [pxMultiplier, setPxMultiplier] = useState(1);
+  const [pxConnecting, setPxConnecting] = useState(false);
+  const [pxSyncing, setPxSyncing] = useState(false);
   const [newTagName, setNewTagName] = useState('');
   const [newTagColor, setNewTagColor] = useState(TAG_COLOR_PRESETS[0]);
   const [editingTagId, setEditingTagId] = useState(null);
   const [editTagName, setEditTagName] = useState('');
   const [editTagColor, setEditTagColor] = useState('');
 
-  useEffect(() => { fetchStatus(); }, []);
+  useEffect(() => { fetchStatus(); fetchPxStatus(); }, []);
 
   // Handle OAuth callback: exchange code when redirected back from Tradovate
   useEffect(() => {
@@ -4336,6 +4346,130 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
     } catch (err) {
       setMessage({ type: 'error', text: 'Failed to delete credentials' });
     }
+  };
+
+  const fetchPxStatus = async () => {
+    try {
+      const response = await authFetch('/api/projectx/status');
+      const data = await response.json();
+      setPxStatus(data);
+      if (data.accounts) setPxAccounts(data.accounts);
+      if (data.selectedAccounts) setPxSelectedAccounts(data.selectedAccounts);
+      if (data.copytradeConfig) {
+        setPxCopytradeEnabled(true);
+        setPxLeadAccount(data.copytradeConfig.leadAccountId);
+        setPxMultiplier(data.copytradeConfig.multiplier);
+      }
+    } catch (err) {
+      console.error('Failed to fetch ProjectX status:', err);
+    }
+  };
+
+  const handlePxConnect = async () => {
+    if (!pxUsername.trim() || !pxApiKey.trim()) {
+      setMessage({ type: 'error', text: 'Username and API key are required' });
+      return;
+    }
+    setPxConnecting(true);
+    setMessage(null);
+    try {
+      const response = await authFetch('/api/projectx/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: pxUsername.trim(), apiKey: pxApiKey.trim() }),
+      });
+      const data = await response.json();
+      if (data.error) {
+        setMessage({ type: 'error', text: data.error });
+      } else {
+        setMessage({ type: 'success', text: 'Connected to ProjectX!' });
+        setPxAccounts(data.accounts || []);
+        setPxApiKey('');
+        fetchPxStatus();
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to connect to ProjectX' });
+    }
+    setPxConnecting(false);
+  };
+
+  const handlePxSaveAccounts = async () => {
+    if (pxSelectedAccounts.length === 0) {
+      setMessage({ type: 'error', text: 'Select at least one account' });
+      return;
+    }
+    setMessage(null);
+    try {
+      const copytradeConfig = pxCopytradeEnabled && pxLeadAccount
+        ? { leadAccountId: pxLeadAccount, multiplier: pxMultiplier }
+        : null;
+      const response = await authFetch('/api/projectx/accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ selectedAccounts: pxSelectedAccounts, copytradeConfig }),
+      });
+      const data = await response.json();
+      if (data.error) {
+        setMessage({ type: 'error', text: data.error });
+      } else {
+        setMessage({ type: 'success', text: 'Account settings saved' });
+        fetchPxStatus();
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to save settings' });
+    }
+  };
+
+  const handlePxSync = async () => {
+    setPxSyncing(true);
+    setMessage(null);
+    try {
+      const response = await authFetch('/api/projectx/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await response.json();
+      if (data.error) {
+        setMessage({ type: 'error', text: data.error });
+      } else {
+        setMessage({ type: 'success', text: data.message });
+        fetchPxStatus();
+        if (onSyncComplete) onSyncComplete();
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Sync failed' });
+    }
+    setPxSyncing(false);
+  };
+
+  const handlePxDisconnect = async () => {
+    setMessage(null);
+    try {
+      const response = await authFetch('/api/projectx/credentials', { method: 'DELETE' });
+      const data = await response.json();
+      if (data.error) {
+        setMessage({ type: 'error', text: data.error });
+      } else {
+        setMessage({ type: 'success', text: data.message });
+        setPxStatus(null);
+        setPxAccounts([]);
+        setPxSelectedAccounts([]);
+        setPxCopytradeEnabled(false);
+        setPxLeadAccount(null);
+        setPxMultiplier(1);
+        fetchPxStatus();
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to disconnect' });
+    }
+  };
+
+  const togglePxAccount = (accountId) => {
+    setPxSelectedAccounts(prev =>
+      prev.includes(accountId)
+        ? prev.filter(id => id !== accountId)
+        : [...prev, accountId]
+    );
   };
 
   const handleCreateTag = async () => {
@@ -4500,27 +4634,186 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-warning/10 text-warning">
-                  Coming Soon
-                </div>
+                {pxStatus?.configured ? (
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-positive/10 text-positive">
+                    Connected
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-text-secondary/10 text-text-secondary">
+                    Not Connected
+                  </div>
+                )}
                 {expandedBroker === 'projectx' ? <Icons.ChevronUp className="w-4 h-4 text-text-secondary" /> : <Icons.ChevronDown className="w-4 h-4 text-text-secondary" />}
               </div>
             </button>
 
             {expandedBroker === 'projectx' && (
-              <div className="px-5 pb-5 border-t border-border pt-4">
-                <div className="bg-bg-page/50 rounded-lg p-3 mb-3">
-                  <p className="text-xs text-text-secondary leading-relaxed">
-                    Direct API sync is coming soon. In the meantime, you can export your trades as a CSV from Topstep/ProjectX and import them into RR Metrics.
-                  </p>
-                </div>
-                <a
-                  href="/guides/topstep-import"
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-accent/10 text-accent text-sm font-medium rounded-lg hover:bg-accent/20 transition-colors"
-                >
-                  <Icons.FileText className="w-4 h-4" />
-                  How to Export from Topstep (CSV)
-                </a>
+              <div className="px-5 pb-5 border-t border-border pt-4 space-y-4">
+                {!pxStatus?.configured ? (
+                  <>
+                    <div className="bg-bg-page/50 rounded-lg p-3">
+                      <p className="text-xs text-text-secondary leading-relaxed">
+                        Connect your Topstep account via the ProjectX API to automatically sync trades. You'll need a paid API subscription from Topstep ($29/month).
+                      </p>
+                    </div>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-xs font-medium text-text-secondary mb-1">Username</label>
+                        <input
+                          type="text"
+                          value={pxUsername}
+                          onChange={(e) => setPxUsername(e.target.value)}
+                          placeholder="Your Topstep username"
+                          className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-text-secondary mb-1">API Key</label>
+                        <input
+                          type="password"
+                          value={pxApiKey}
+                          onChange={(e) => setPxApiKey(e.target.value)}
+                          placeholder="Your ProjectX API key"
+                          className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent"
+                        />
+                      </div>
+                      <button
+                        onClick={handlePxConnect}
+                        disabled={pxConnecting}
+                        className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-accent/90 transition-colors disabled:opacity-50"
+                      >
+                        {pxConnecting ? 'Connecting...' : 'Connect'}
+                      </button>
+                    </div>
+                    <a
+                      href="https://help.topstep.com/en/articles/11187768-topstepx-api-access"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 text-accent text-xs hover:underline"
+                    >
+                      <Icons.FileText className="w-3.5 h-3.5" />
+                      How to get your API key
+                    </a>
+                  </>
+                ) : (
+                  <>
+                    {/* Account Selection */}
+                    {pxAccounts.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-medium text-text-primary mb-2">Accounts</h4>
+                        <div className="space-y-2">
+                          {pxAccounts.map(account => (
+                            <label key={account.id} className="flex items-center gap-3 p-2.5 bg-bg-page/50 rounded-lg cursor-pointer hover:bg-bg-page transition-colors">
+                              <input
+                                type="checkbox"
+                                checked={pxSelectedAccounts.includes(account.id)}
+                                onChange={() => togglePxAccount(account.id)}
+                                className="w-4 h-4 rounded border-border text-accent focus:ring-accent"
+                              />
+                              <div className="flex-1">
+                                <span className="text-sm text-text-primary font-medium">{account.name}</span>
+                                <span className="text-xs text-text-secondary ml-2">${account.balance?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                              </div>
+                              {account.canTrade && (
+                                <span className="text-xs text-positive bg-positive/10 px-2 py-0.5 rounded-full">Active</span>
+                              )}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Copytrading Toggle */}
+                    <div className="border border-border rounded-lg p-4 space-y-3">
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={pxCopytradeEnabled}
+                          onChange={(e) => {
+                            setPxCopytradeEnabled(e.target.checked);
+                            if (!e.target.checked) {
+                              setPxLeadAccount(null);
+                              setPxMultiplier(1);
+                            }
+                          }}
+                          className="w-4 h-4 rounded border-border text-accent focus:ring-accent"
+                        />
+                        <div>
+                          <span className="text-sm text-text-primary font-medium">I am copytrading / tradesyncing</span>
+                          <p className="text-xs text-text-secondary mt-0.5">Only sync from a lead account and multiply quantity and P&L</p>
+                        </div>
+                      </label>
+
+                      {pxCopytradeEnabled && (
+                        <div className="pl-7 space-y-3">
+                          <div>
+                            <label className="block text-xs font-medium text-text-secondary mb-1">Lead Account</label>
+                            <select
+                              value={pxLeadAccount || ''}
+                              onChange={(e) => setPxLeadAccount(Number(e.target.value))}
+                              className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-accent"
+                            >
+                              <option value="">Select lead account</option>
+                              {pxAccounts.filter(a => pxSelectedAccounts.includes(a.id)).map(account => (
+                                <option key={account.id} value={account.id}>{account.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-text-secondary mb-1">Total Accounts (multiplier)</label>
+                            <input
+                              type="number"
+                              min="1"
+                              max="50"
+                              value={pxMultiplier}
+                              onChange={(e) => setPxMultiplier(Math.max(1, parseInt(e.target.value) || 1))}
+                              className="w-24 px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-accent"
+                            />
+                            <p className="text-xs text-text-muted mt-1">Quantity and P&L will be multiplied by this number</p>
+                          </div>
+                          <a
+                            href="/guides/copytrading"
+                            className="inline-flex items-center gap-1.5 text-accent text-xs hover:underline"
+                          >
+                            <Icons.FileText className="w-3.5 h-3.5" />
+                            Learn more about copytrading setup
+                          </a>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button
+                        onClick={handlePxSaveAccounts}
+                        className="px-4 py-2 bg-accent text-white text-sm font-medium rounded-lg hover:bg-accent/90 transition-colors"
+                      >
+                        Save Settings
+                      </button>
+                      <button
+                        onClick={handlePxSync}
+                        disabled={pxSyncing || pxSelectedAccounts.length === 0}
+                        className="px-4 py-2 bg-bg-page border border-border text-text-primary text-sm font-medium rounded-lg hover:bg-bg-input transition-colors disabled:opacity-50 flex items-center gap-2"
+                      >
+                        <Icons.RefreshCw className={`w-4 h-4 ${pxSyncing ? 'animate-spin' : ''}`} />
+                        {pxSyncing ? 'Syncing...' : 'Sync Now'}
+                      </button>
+                      <button
+                        onClick={handlePxDisconnect}
+                        className="px-4 py-2 text-negative text-sm font-medium hover:bg-negative/10 rounded-lg transition-colors"
+                      >
+                        Disconnect
+                      </button>
+                    </div>
+
+                    {/* Last Sync Time */}
+                    {pxStatus?.lastSyncTime && (
+                      <p className="text-xs text-text-muted">
+                        Last synced: {new Date(pxStatus.lastSyncTime).toLocaleString()}
+                      </p>
+                    )}
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -8298,6 +8591,29 @@ const App = () => {
         }
       } catch (err) {
         console.error('Auto-sync failed:', err);
+      }
+
+      // Auto-sync ProjectX
+      try {
+        const pxStatusRes = await authFetch('/api/projectx/status');
+        const pxStat = await pxStatusRes.json();
+        if (pxStat.configured && pxStat.selectedAccounts?.length > 0) {
+          setSyncNotification('Syncing trades from Topstep...');
+          const pxSyncRes = await authFetch('/api/projectx/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+          });
+          const pxSyncData = await pxSyncRes.json();
+          if (pxSyncData.synced > 0) {
+            setSyncNotification(`Synced ${pxSyncData.synced} new trade${pxSyncData.synced !== 1 ? 's' : ''} from Topstep`);
+            triggerReload();
+          } else {
+            setSyncNotification(null);
+          }
+          setTimeout(() => setSyncNotification(null), 4000);
+        }
+      } catch (err) {
+        console.error('ProjectX auto-sync failed:', err);
       }
     };
     autoSync();
