@@ -57,4 +57,10 @@ const groupTradesByDate = (trades) => {
   return grouped;
 };
 
-module.exports = { getTradePL, calculateAnalytics, groupTradesByDate };
+const applyEvalFilter = (trades, evalFilter) => {
+  if (evalFilter === 'exclude') return trades.filter(t => !t.isEval);
+  if (evalFilter === 'only') return trades.filter(t => t.isEval);
+  return trades;
+};
+
+module.exports = { getTradePL, calculateAnalytics, groupTradesByDate, applyEvalFilter };
