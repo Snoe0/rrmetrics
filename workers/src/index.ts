@@ -13,6 +13,8 @@ import premarketRoutes from './routes/premarket';
 import strategyRoutes from './routes/strategy';
 import referralRoutes from './routes/referral';
 import backtestingRoutes from './routes/backtesting';
+import adminRoutes from './routes/admin';
+import announcementRoutes from './routes/announcement';
 import pageRoutes from './routes/pages';
 
 type HonoEnv = {
@@ -41,6 +43,8 @@ app.route('/', premarketRoutes);
 app.route('/', strategyRoutes);
 app.route('/', referralRoutes);
 app.route('/', backtestingRoutes);
+app.route('/', adminRoutes);
+app.route('/', announcementRoutes);
 
 // Page routes (HTML serving)
 app.route('/', pageRoutes);

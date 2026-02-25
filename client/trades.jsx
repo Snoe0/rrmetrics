@@ -31,6 +31,27 @@ const BacktestingPage = require('./components/pages/BacktestingPage');
 const UpgradePage = require('./components/pages/UpgradePage');
 const ReferralPage = require('./components/pages/ReferralPage');
 
+const AnnouncementBanner = ({ announcement, onDismiss }) => {
+  if (!announcement) return null;
+  const typeStyles = {
+    info: 'bg-info/15 border-info/30 text-info',
+    warning: 'bg-warning/15 border-warning/30 text-warning',
+    success: 'bg-positive/15 border-positive/30 text-positive',
+  };
+  const style = typeStyles[announcement.type] || typeStyles.info;
+  return (
+    <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 max-w-lg w-full mx-4 border rounded-xl p-4 shadow-lg ${style}`}>
+      <div className="flex items-start gap-3">
+        <div className="flex-1">
+          <div className="font-semibold text-sm">{announcement.title}</div>
+          <div className="text-sm mt-0.5 opacity-90">{announcement.body}</div>
+        </div>
+        <button type="button" onClick={onDismiss} className="opacity-60 hover:opacity-100 text-lg leading-none">&times;</button>
+      </div>
+    </div>
+  );
+};
+
 const App = () => {
   const [currentPage, setCurrentPage] = useState(() => {
     const params = new URLSearchParams(window.location.search);
@@ -55,6 +76,7 @@ const App = () => {
   const [pricing, setPricing] = useState({ pro: '12', elite: '18' });
   const [strategyRules, setStrategyRules] = useState([]);
   const [sidePanelOffset, setSidePanelOffset] = useState(0);
+  const [announcement, setAnnouncement] = useState(null);
   const [evalFilter, setEvalFilterState] = useState(() => {
     const stored = localStorage.getItem('evalFilter');
     return ['all', 'exclude', 'only'].includes(stored) ? stored : 'exclude';
@@ -155,6 +177,13 @@ const App = () => {
     localStorage.setItem('rrmetrics_onboarded', '1');
   };
 
+  const handleDismissAnnouncement = () => {
+    if (announcement) {
+      localStorage.setItem(`announcement-dismissed-${announcement.id}`, '1');
+    }
+    setAnnouncement(null);
+  };
+
   useEffect(() => {
     const loadTags = async () => {
       try {
@@ -184,6 +213,16 @@ const App = () => {
       .then(r => r.json())
       .then(data => { if (data.rules) setStrategyRules(data.rules); })
       .catch(() => {});
+    // Fetch active announcement (non-blocking — never prevent app load)
+    fetch('/api/announcement/active')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.announcement) {
+          const dismissed = localStorage.getItem(`announcement-dismissed-${data.announcement.id}`);
+          if (!dismissed) setAnnouncement(data.announcement);
+        }
+      })
+      .catch(() => {}); // silently ignore
   }, []);
 
   useEffect(() => {
@@ -324,6 +363,7 @@ const App = () => {
 
   return (
     <SidePanelContext.Provider value={setSidePanelOffset}>
+    <AnnouncementBanner announcement={announcement} onDismiss={handleDismissAnnouncement} />
     <div className="flex min-h-screen">
       <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} subscriptionStatus={subscriptionStatus} />
       <main className="flex-1 lg:ml-60 min-h-screen transition-[padding] duration-300" style={{ paddingRight: sidePanelOffset }}>
