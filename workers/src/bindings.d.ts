@@ -18,6 +18,7 @@ export interface Env {
   PRICE_ELITE: string;
   TRIAL_DAYS: string;
   GOOGLE_CLIENT_ID?: string;
+  ADMIN_SECRET?: string;
   TRADOVATE_CLIENT_ID?: string;
   TRADOVATE_CLIENT_SECRET?: string;
 }

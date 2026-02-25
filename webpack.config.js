@@ -8,6 +8,7 @@ module.exports = {
         changepass: './client/changepass.jsx',
         landing: './client/landing.jsx',
         upgrade: './client/upgrade.jsx',
+        admin: './client/admin.jsx',
     },
     module: {
         rules: [

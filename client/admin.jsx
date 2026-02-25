@@ -1,0 +1,556 @@
+const React = require('react');
+const { useState, useEffect, useCallback } = React;
+const { createRoot } = require('react-dom/client');
+require('./styles/globals.css');
+
+// ─── API helpers ─────────────────────────────────────────────────────────────
+
+const adminFetch = (token, path, options = {}) => {
+  return fetch(path, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      ...(options.headers || {}),
+    },
+  });
+};
+
+// ─── Login screen ────────────────────────────────────────────────────────────
+
+const LoginScreen = ({ onLogin }) => {
+  const [secret, setSecret] = useState('');
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    try {
+      const res = await adminFetch(secret, '/api/admin/stats');
+      if (res.status === 401 || res.status === 503) {
+        setError('Invalid admin secret.');
+        setLoading(false);
+        return;
+      }
+      if (!res.ok) {
+        setError('Server error. Check worker logs.');
+        setLoading(false);
+        return;
+      }
+      sessionStorage.setItem('adminToken', secret);
+      onLogin(secret);
+    } catch {
+      setError('Network error.');
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-bg-page">
+      <form onSubmit={handleSubmit} className="bg-bg-surface border border-border rounded-xl p-8 w-full max-w-sm">
+        <h1 className="text-xl font-bold text-text-primary mb-6">Admin Login</h1>
+        {error && <p className="text-negative text-sm mb-4">{error}</p>}
+        <label className="block text-sm text-text-secondary mb-2">Admin Secret</label>
+        <input
+          type="password"
+          value={secret}
+          onChange={(e) => setSecret(e.target.value)}
+          className="w-full px-4 py-3 bg-bg-input border border-border rounded-lg text-text-primary focus:outline-none focus:border-accent mb-4"
+          placeholder="Enter admin secret"
+        />
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full py-3 bg-accent text-accent-text font-semibold rounded-lg hover:brightness-110 disabled:opacity-50"
+        >
+          {loading ? 'Verifying...' : 'Enter'}
+        </button>
+      </form>
+    </div>
+  );
+};
+
+// ─── Nav ──────────────────────────────────────────────────────────────────────
+
+const NAV_ITEMS = [
+  { key: 'stats', label: 'Stats' },
+  { key: 'users', label: 'Users' },
+  { key: 'suspicious', label: 'Suspicious IPs' },
+  { key: 'announcements', label: 'Announcements' },
+  { key: 'email', label: 'Mass Email' },
+];
+
+const Nav = ({ view, setView, onLogout }) => (
+  <nav className="w-52 min-h-screen bg-bg-surface border-r border-border flex flex-col p-4 gap-1">
+    <div className="text-text-primary font-bold text-sm tracking-widest uppercase mb-6 px-3">RR Admin</div>
+    {NAV_ITEMS.map((item) => (
+      <button
+        key={item.key}
+        type="button"
+        onClick={() => setView(item.key)}
+        className={`text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+          view === item.key
+            ? 'bg-accent text-accent-text'
+            : 'text-text-secondary hover:text-text-primary hover:bg-bg-input'
+        }`}
+      >
+        {item.label}
+      </button>
+    ))}
+    <button
+      type="button"
+      onClick={onLogout}
+      className="mt-auto px-3 py-2 text-left text-sm text-negative hover:bg-bg-input rounded-lg"
+    >
+      Logout
+    </button>
+  </nav>
+);
+
+// ─── Stats view ───────────────────────────────────────────────────────────────
+
+const StatsView = ({ token }) => {
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    adminFetch(token, '/api/admin/stats')
+      .then((r) => r.json())
+      .then((data) => { setStats(data); setLoading(false); })
+      .catch(() => { setError('Failed to load stats'); setLoading(false); });
+  }, [token]);
+
+  if (loading) return <div className="p-8 text-text-secondary">Loading...</div>;
+  if (error) return <div className="p-8 text-negative">{error}</div>;
+
+  const cards = [
+    { label: 'Total Users', value: stats.totalUsers },
+    { label: 'Pro', value: stats.proUsers },
+    { label: 'Elite', value: stats.eliteUsers },
+    { label: 'Free', value: stats.freeUsers },
+    { label: 'Trial', value: stats.trialUsers },
+    { label: 'New (7d)', value: stats.newUsersLast7Days },
+    { label: 'New (30d)', value: stats.newUsersLast30Days },
+  ];
+
+  return (
+    <div className="p-8">
+      <h2 className="text-lg font-bold text-text-primary mb-6">Customer Stats</h2>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+        {cards.map((c) => (
+          <div key={c.label} className="bg-bg-surface border border-border rounded-xl p-5">
+            <div className="text-text-secondary text-xs uppercase tracking-wider mb-1">{c.label}</div>
+            <div className="text-text-primary font-mono text-3xl font-bold">{c.value}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ─── Users view ───────────────────────────────────────────────────────────────
+
+const UsersView = ({ token }) => {
+  const [data, setData] = useState(null);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback((p) => {
+    setLoading(true);
+    adminFetch(token, `/api/admin/users?page=${p}&pageSize=50`)
+      .then((r) => r.json())
+      .then((d) => { setData(d); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [token]);
+
+  useEffect(() => { load(page); }, [page, load]);
+
+  const planBadge = (plan) => {
+    const colors = { pro: 'text-info', elite: 'text-accent', free: 'text-text-muted', trial: 'text-warning' };
+    return <span className={`font-mono text-xs ${colors[plan] || 'text-text-secondary'}`}>{plan}</span>;
+  };
+
+  return (
+    <div className="p-8">
+      <h2 className="text-lg font-bold text-text-primary mb-4">Users {data && `(${data.total} total)`}</h2>
+      {loading && <div className="text-text-secondary">Loading...</div>}
+      {data && (
+        <>
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="text-left text-text-muted border-b border-border">
+                <th className="pb-2 font-medium">Email</th>
+                <th className="pb-2 font-medium">Plan</th>
+                <th className="pb-2 font-medium">Joined</th>
+                <th className="pb-2 font-medium">IP</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.users.map((u) => (
+                <tr key={u.id} className="border-b border-border/50 hover:bg-bg-surface/50">
+                  <td className="py-2 text-text-primary">{u.email}</td>
+                  <td className="py-2">{planBadge(u.plan)}</td>
+                  <td className="py-2 text-text-secondary font-mono text-xs">{new Date(u.createdAt).toLocaleDateString()}</td>
+                  <td className="py-2 text-text-muted font-mono text-xs">{u.registrationIp || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="flex gap-3 mt-4">
+            <button
+              type="button"
+              disabled={page === 1}
+              onClick={() => setPage(page - 1)}
+              className="px-4 py-2 text-sm bg-bg-surface border border-border rounded-lg text-text-secondary disabled:opacity-40"
+            >
+              Previous
+            </button>
+            <span className="px-4 py-2 text-sm text-text-muted">Page {page}</span>
+            <button
+              type="button"
+              disabled={data.users.length < 50}
+              onClick={() => setPage(page + 1)}
+              className="px-4 py-2 text-sm bg-bg-surface border border-border rounded-lg text-text-secondary disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+// ─── Suspicious IPs view ──────────────────────────────────────────────────────
+
+const SuspiciousView = ({ token }) => {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    adminFetch(token, '/api/admin/suspicious')
+      .then((r) => r.json())
+      .then((d) => { setData(d); setLoading(false); });
+  }, [token]);
+
+  if (loading) return <div className="p-8 text-text-secondary">Loading...</div>;
+
+  return (
+    <div className="p-8">
+      <h2 className="text-lg font-bold text-text-primary mb-2">Suspicious Accounts</h2>
+      <p className="text-text-secondary text-sm mb-6">Multiple accounts registered from the same IP address.</p>
+      {data.groups.length === 0 && <div className="text-text-muted">No suspicious groups found.</div>}
+      {data.groups.map((g) => (
+        <div key={g.ip} className="mb-6 bg-bg-surface border border-warning/40 rounded-xl p-5">
+          <div className="flex items-center gap-3 mb-3">
+            <span className="font-mono text-warning text-sm">{g.ip}</span>
+            <span className="text-text-muted text-xs">{g.count} accounts</span>
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-text-muted border-b border-border">
+                <th className="pb-2 font-medium">Email</th>
+                <th className="pb-2 font-medium">Plan</th>
+                <th className="pb-2 font-medium">Joined</th>
+              </tr>
+            </thead>
+            <tbody>
+              {g.accounts.map((a) => (
+                <tr key={a.id} className="border-b border-border/30">
+                  <td className="py-2 text-text-primary">{a.email}</td>
+                  <td className="py-2 text-text-secondary font-mono text-xs">{a.plan}</td>
+                  <td className="py-2 text-text-muted font-mono text-xs">{new Date(a.createdAt).toLocaleDateString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// ─── Announcements view ───────────────────────────────────────────────────────
+
+const AnnouncementsView = ({ token }) => {
+  const [announcements, setAnnouncements] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({ title: '', body: '', type: 'info', active: false });
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  const load = useCallback(() => {
+    adminFetch(token, '/api/admin/announcements')
+      .then((r) => r.json())
+      .then((d) => { setAnnouncements(d.announcements); setLoading(false); });
+  }, [token]);
+
+  useEffect(load, [load]);
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setMsg(null);
+    const res = await adminFetch(token, '/api/admin/announcements', {
+      method: 'POST',
+      body: JSON.stringify(form),
+    });
+    const data = await res.json();
+    setSaving(false);
+    if (data.announcement) {
+      setMsg('Created!');
+      setForm({ title: '', body: '', type: 'info', active: false });
+      load();
+    } else {
+      setMsg(data.error || 'Error');
+    }
+  };
+
+  const toggleActive = async (a) => {
+    await adminFetch(token, `/api/admin/announcements/${a.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ active: !a.active }),
+    });
+    load();
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Delete this announcement?')) return;
+    await adminFetch(token, `/api/admin/announcements/${id}`, { method: 'DELETE' });
+    load();
+  };
+
+  return (
+    <div className="p-8 max-w-2xl">
+      <h2 className="text-lg font-bold text-text-primary mb-6">Announcements</h2>
+
+      <form onSubmit={handleCreate} className="bg-bg-surface border border-border rounded-xl p-5 mb-8">
+        <h3 className="text-text-primary font-semibold mb-4 text-sm">New Announcement</h3>
+        {msg && <p className="text-sm text-accent mb-3">{msg}</p>}
+        <div className="space-y-3">
+          <input
+            type="text"
+            placeholder="Title"
+            value={form.title}
+            onChange={(e) => setForm({ ...form, title: e.target.value })}
+            className="w-full px-4 py-3 bg-bg-input border border-border rounded-lg text-text-primary text-sm"
+            required
+          />
+          <textarea
+            placeholder="Body (plain text or HTML)"
+            value={form.body}
+            onChange={(e) => setForm({ ...form, body: e.target.value })}
+            rows={3}
+            className="w-full px-4 py-3 bg-bg-input border border-border rounded-lg text-text-primary text-sm resize-y"
+            required
+          />
+          <div className="flex gap-3 items-center">
+            <select
+              value={form.type}
+              onChange={(e) => setForm({ ...form, type: e.target.value })}
+              className="px-3 py-2 bg-bg-input border border-border rounded-lg text-text-primary text-sm"
+            >
+              <option value="info">Info</option>
+              <option value="warning">Warning</option>
+              <option value="success">Success</option>
+            </select>
+            <label className="flex items-center gap-2 text-text-secondary text-sm">
+              <input
+                type="checkbox"
+                checked={form.active}
+                onChange={(e) => setForm({ ...form, active: e.target.checked })}
+              />
+              Publish immediately
+            </label>
+          </div>
+        </div>
+        <button
+          type="submit"
+          disabled={saving}
+          className="mt-4 px-6 py-2 bg-accent text-accent-text text-sm font-semibold rounded-lg disabled:opacity-50"
+        >
+          {saving ? 'Saving...' : 'Create'}
+        </button>
+      </form>
+
+      {loading && <div className="text-text-secondary">Loading...</div>}
+      <div className="space-y-3">
+        {announcements.map((a) => (
+          <div key={a.id} className={`bg-bg-surface border rounded-xl p-4 ${a.active ? 'border-positive' : 'border-border'}`}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="font-medium text-text-primary text-sm">{a.title}</div>
+                <div className="text-text-secondary text-xs mt-1 line-clamp-2">{a.body}</div>
+                <div className="flex gap-2 mt-2">
+                  <span className={`text-xs font-mono ${a.active ? 'text-positive' : 'text-text-muted'}`}>
+                    {a.active ? 'ACTIVE' : 'inactive'}
+                  </span>
+                  <span className="text-xs text-text-muted">· {a.type}</span>
+                </div>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => toggleActive(a)}
+                  className="text-xs px-3 py-1.5 border border-border rounded-lg text-text-secondary hover:text-text-primary"
+                >
+                  {a.active ? 'Deactivate' : 'Activate'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(a.id)}
+                  className="text-xs px-3 py-1.5 border border-negative/40 rounded-lg text-negative hover:bg-negative/10"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ─── Mass email view ──────────────────────────────────────────────────────────
+
+const EmailView = ({ token }) => {
+  const [form, setForm] = useState({ subject: '', text: '', html: '', planFilter: 'all' });
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState(null);
+
+  const handleSend = async (e) => {
+    e.preventDefault();
+    if (!window.confirm(`Send email to ALL users matching filter "${form.planFilter}"? This cannot be undone.`)) return;
+    setSending(true);
+    setResult(null);
+    const res = await adminFetch(token, '/api/admin/email/send', {
+      method: 'POST',
+      body: JSON.stringify(form),
+    });
+    const data = await res.json();
+    setSending(false);
+    setResult(data);
+  };
+
+  return (
+    <div className="p-8 max-w-2xl">
+      <h2 className="text-lg font-bold text-text-primary mb-2">Mass Email</h2>
+      <p className="text-text-secondary text-sm mb-6">Sends via Resend. One email per user, sequentially.</p>
+
+      {result && (
+        <div className={`mb-6 p-4 rounded-xl border ${result.error ? 'border-negative/40 bg-negative/10' : 'border-positive/40 bg-positive/10'}`}>
+          {result.error
+            ? <p className="text-negative text-sm">{result.error}</p>
+            : <p className="text-positive text-sm">Sent {result.sent}/{result.total} emails. {result.errors?.length > 0 && `${result.errors.length} failed.`}</p>
+          }
+        </div>
+      )}
+
+      <form onSubmit={handleSend} className="bg-bg-surface border border-border rounded-xl p-5 space-y-4">
+        <div>
+          <label className="block text-sm text-text-secondary mb-2">Send to</label>
+          <select
+            value={form.planFilter}
+            onChange={(e) => setForm({ ...form, planFilter: e.target.value })}
+            className="px-3 py-2 bg-bg-input border border-border rounded-lg text-text-primary text-sm"
+          >
+            <option value="all">All users</option>
+            <option value="pro">Pro only</option>
+            <option value="elite">Elite only</option>
+            <option value="free">Free only</option>
+            <option value="trial">Trial only</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm text-text-secondary mb-2">Subject</label>
+          <input
+            type="text"
+            value={form.subject}
+            onChange={(e) => setForm({ ...form, subject: e.target.value })}
+            className="w-full px-4 py-3 bg-bg-input border border-border rounded-lg text-text-primary text-sm"
+            required
+          />
+        </div>
+        <div>
+          <label className="block text-sm text-text-secondary mb-2">Plain text body</label>
+          <textarea
+            value={form.text}
+            onChange={(e) => setForm({ ...form, text: e.target.value })}
+            rows={4}
+            className="w-full px-4 py-3 bg-bg-input border border-border rounded-lg text-text-primary text-sm resize-y font-mono"
+            required
+          />
+        </div>
+        <div>
+          <label className="block text-sm text-text-secondary mb-2">HTML body</label>
+          <textarea
+            value={form.html}
+            onChange={(e) => setForm({ ...form, html: e.target.value })}
+            rows={6}
+            className="w-full px-4 py-3 bg-bg-input border border-border rounded-lg text-text-primary text-sm resize-y font-mono"
+            required
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={sending}
+          className="px-6 py-3 bg-negative text-white font-semibold rounded-lg text-sm disabled:opacity-50 hover:brightness-110"
+        >
+          {sending ? 'Sending...' : 'Send to All Matching Users'}
+        </button>
+      </form>
+    </div>
+  );
+};
+
+// ─── Dashboard shell ──────────────────────────────────────────────────────────
+
+const Dashboard = ({ token, onLogout }) => {
+  const [view, setView] = useState('stats');
+
+  const renderView = () => {
+    switch (view) {
+      case 'stats': return <StatsView token={token} />;
+      case 'users': return <UsersView token={token} />;
+      case 'suspicious': return <SuspiciousView token={token} />;
+      case 'announcements': return <AnnouncementsView token={token} />;
+      case 'email': return <EmailView token={token} />;
+      default: return null;
+    }
+  };
+
+  return (
+    <div className="flex min-h-screen">
+      <Nav view={view} setView={setView} onLogout={onLogout} />
+      <main className="flex-1 overflow-auto bg-bg-page">
+        {renderView()}
+      </main>
+    </div>
+  );
+};
+
+// ─── App root ─────────────────────────────────────────────────────────────────
+
+const App = () => {
+  const [token, setToken] = useState(() => sessionStorage.getItem('adminToken') || null);
+
+  const handleLogin = (t) => setToken(t);
+  const handleLogout = () => {
+    sessionStorage.removeItem('adminToken');
+    setToken(null);
+  };
+
+  if (!token) return <LoginScreen onLogin={handleLogin} />;
+  return <Dashboard token={token} onLogout={handleLogout} />;
+};
+
+const init = () => {
+  const root = createRoot(document.getElementById('content'));
+  root.render(<App />);
+};
+
+window.onload = init;
