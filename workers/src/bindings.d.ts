@@ -13,6 +13,10 @@ export interface Env {
   STRIPE_WEBHOOK_SECRET: string;
   STRIPE_PRICE_PRO: string;
   STRIPE_PRICE_ELITE: string;
+  STRIPE_PRICE_PRO_YEARLY: string;
+  STRIPE_PRICE_ELITE_YEARLY: string;
+  PRICE_PRO_YEARLY: string;
+  PRICE_ELITE_YEARLY: string;
   APP_URL: string;
   PRICE_PRO: string;
   PRICE_ELITE: string;

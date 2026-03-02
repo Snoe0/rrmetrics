@@ -9,23 +9,29 @@ assets = { directory = "public" }
 # Environment variables (secrets set via wrangler secret put)
 [vars]
 APP_URL = "https://rrmetrics.com"
-PRICE_PRO = "15"
-PRICE_ELITE = "22"
+STRIPE_PUBLISHABLE_KEY = "pk_live_51T1c3yAF2fVRMn7KMi387JuuvseUQDsYdvaKSqj1hnW2HxxutrFsyKUhQ1kMWn0J9VGCBCE413eKSraIvGxt439V00LGfg14ls"
+PRICE_PRO = "12"
+PRICE_ELITE = "18"
+PRICE_PRO_YEARLY = "120"
+PRICE_ELITE_YEARLY = "180"
 TRIAL_DAYS = "14"
 SUPABASE_URL = "https://pmvrsprcwolttzdvuuyp.supabase.co"
-
-# Migrations to delete old Durable Object classes
-[[migrations]]
-tag = "v1"
-new_classes = ["SessionDO"]
-
-[[migrations]]
-tag = "v2"
-new_sqlite_classes = ["UserDataDO"]
-
-[[migrations]]
-tag = "v3"
-deleted_classes = ["SessionDO", "UserDataDO"]
+# Tradovate OAuth — set the secrets via: wrangler secret put TRADOVATE_CLIENT_ID
+#                                          wrangler secret put TRADOVATE_CLIENT_SECRET
 
 [triggers]
 crons = ["0 * * * *", "0 5 * * *"]
+
+# ─── Dev environment ───────────────────────────────────
+# Deploy:   npm run deploy:dev
+# Secrets:  wrangler secret put SECRET_NAME --env dev
+# URL:      https://tradingjournal-dev.<your-subdomain>.workers.dev
+[env.dev]
+name = "tradingjournal-dev"
+[env.dev.vars]
+APP_URL = "https://tradingjournal-dev.<your-subdomain>.workers.dev"
+STRIPE_PUBLISHABLE_KEY = "pk_live_51T1c3yAF2fVRMn7KMi387JuuvseUQDsYdvaKSqj1hnW2HxxutrFsyKUhQ1kMWn0J9VGCBCE413eKSraIvGxt439V00LGfg14ls"
+PRICE_PRO = "12"
+PRICE_ELITE = "18"
+TRIAL_DAYS = "14"
+SUPABASE_URL = "https://pmvrsprcwolttzdvuuyp.supabase.co"
