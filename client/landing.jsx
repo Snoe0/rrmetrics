@@ -541,7 +541,7 @@ const PricingSection = () => {
       name: (planDefs.pro && planDefs.pro.name) || 'Pro',
       price: billing === 'yearly' ? `$${pricing.proYearly}` : `$${pricing.pro}`,
       period: billing === 'yearly' ? '/year' : '/month',
-      features: (planDefs.pro && planDefs.pro.features) || ['Unlimited trades', '3 Broker connections', 'CSV Import/Export', 'Strategy & rule tracking', 'Premarket prep', '1 Backtesting session'],
+      features: (planDefs.pro && planDefs.pro.features) || ['Unlimited trades', '2 broker connections', 'CSV Import/Export', 'Strategy & rule tracking', 'Premarket prep', '1 Backtesting session'],
       accent: true,
       popular: true,
     },

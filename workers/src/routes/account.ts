@@ -148,7 +148,7 @@ account.get('/api/pricing', async (c) => {
         name: 'Pro',
         features: [
           'Unlimited trades',
-          '3 Broker connections',
+          '2 broker connections',
           'CSV Import/Export',
           'Strategy & rule tracking',
           'Premarket prep',
