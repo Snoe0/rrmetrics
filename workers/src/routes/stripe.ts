@@ -17,8 +17,51 @@ function getStripe(env: Env): Stripe | null {
   return new Stripe(env.STRIPE_SECRET_KEY);
 }
 
-// POST /api/stripe/create-checkout-session
-stripeRoutes.post('/api/stripe/create-checkout-session', requiresLogin, async (c) => {
+// GET /api/stripe/config (public — publishable key is safe to expose)
+stripeRoutes.get('/api/stripe/config', (c) => {
+  return c.json({ publishableKey: c.env.STRIPE_PUBLISHABLE_KEY || '' });
+});
+
+// GET /api/stripe/validate-coupon?code=XXX
+stripeRoutes.get('/api/stripe/validate-coupon', requiresLogin, async (c) => {
+  const stripe = getStripe(c.env);
+  if (!stripe) return c.json({ error: 'Stripe not configured.' }, 503);
+
+  const code = c.req.query('code');
+  if (!code) return c.json({ error: 'No code provided.' }, 400);
+
+  try {
+    const promoCodes = await stripe.promotionCodes.list({
+      code: code.trim().toUpperCase(),
+      active: true,
+      limit: 1,
+    });
+
+    if (promoCodes.data.length === 0) {
+      return c.json({ error: 'Invalid or expired coupon code.' }, 404);
+    }
+
+    const promo = promoCodes.data[0];
+    const coupon = promo.coupon;
+
+    let display = '';
+    if (coupon.percent_off) display = `${coupon.percent_off}% off`;
+    else if (coupon.amount_off) display = `$${(coupon.amount_off / 100).toFixed(2)} off`;
+
+    if (coupon.duration === 'once') display += ' (first month)';
+    else if (coupon.duration === 'repeating' && coupon.duration_in_months) {
+      display += ` for ${coupon.duration_in_months} month${coupon.duration_in_months > 1 ? 's' : ''}`;
+    }
+
+    return c.json({ id: promo.id, display, percentOff: coupon.percent_off, amountOff: coupon.amount_off });
+  } catch (err) {
+    console.error('Coupon validation error:', err);
+    return c.json({ error: 'Failed to validate coupon.' }, 500);
+  }
+});
+
+// POST /api/stripe/create-subscription
+stripeRoutes.post('/api/stripe/create-subscription', requiresLogin, async (c) => {
   const stripe = getStripe(c.env);
   if (!stripe) {
     return c.json({ error: 'Stripe is not configured. Set STRIPE_SECRET_KEY in environment.' }, 503);
@@ -27,16 +70,18 @@ stripeRoutes.post('/api/stripe/create-checkout-session', requiresLogin, async (c
   const user = c.get('user');
   const profile = c.get('profile');
   const body = await c.req.json();
-  const { plan } = body;
+  const { plan, promoCodeId, hasReferral } = body;
 
   const priceMap: Record<string, string | undefined> = {
     pro: c.env.STRIPE_PRICE_PRO,
     elite: c.env.STRIPE_PRICE_ELITE,
+    pro_yearly: c.env.STRIPE_PRICE_PRO_YEARLY,
+    elite_yearly: c.env.STRIPE_PRICE_ELITE_YEARLY,
   };
 
   const priceId = priceMap[plan];
   if (!priceId) {
-    return c.json({ error: 'Invalid plan. Must be "pro" or "elite".' }, 400);
+    return c.json({ error: 'Invalid plan. Must be "pro", "elite", "pro_yearly", or "elite_yearly".' }, 400);
   }
 
   try {
@@ -45,26 +90,60 @@ stripeRoutes.post('/api/stripe/create-checkout-session', requiresLogin, async (c
     let customerId = profile.stripe_customer_id;
     if (!customerId) {
       const customer = await stripe.customers.create({
-        metadata: { accountId: user.id, email: profile.email },
+        email: profile.email,
+        metadata: { accountId: user.id },
       });
       customerId = customer.id;
       await profilesDb.updateById(serviceClient, user.id, { stripeCustomerId: customerId });
     }
 
-    const checkoutSession = await stripe.checkout.sessions.create({
-      customer: customerId,
-      payment_method_types: ['card'],
-      line_items: [{ price: priceId, quantity: 1 }],
-      mode: 'subscription',
-      success_url: `${c.env.APP_URL}/upgrade?success=true`,
-      cancel_url: `${c.env.APP_URL}/upgrade?canceled=true`,
-      metadata: { accountId: user.id, plan },
-    });
+    // Resolve the discount: explicit coupon code takes priority, otherwise
+    // fall back to the referral promo code if the user has an applied referral.
+    // Yearly plans never receive discounts.
+    let discountPromoId: string | null = null;
+    if (!plan.endsWith('_yearly')) {
+      discountPromoId = promoCodeId || null;
+      if (!discountPromoId && hasReferral) {
+        const referralPromos = await stripe.promotionCodes.list({
+          code: 'REFERREDBYTHEHOMIE123',
+          active: true,
+          limit: 1,
+        });
+        if (referralPromos.data.length > 0) {
+          discountPromoId = referralPromos.data[0].id;
+        }
+      }
+    }
 
-    return c.json({ url: checkoutSession.url });
+    const subscriptionParams: Stripe.SubscriptionCreateParams = {
+      customer: customerId,
+      items: [{ price: priceId }],
+      payment_behavior: 'default_incomplete',
+      payment_settings: { save_default_payment_method: 'on_subscription' },
+      expand: ['latest_invoice.payment_intent'],
+      metadata: { accountId: user.id, plan: plan.replace('_yearly', '') },
+    };
+
+    if (discountPromoId) {
+      subscriptionParams.discounts = [{ promotion_code: discountPromoId }];
+    }
+
+    const subscription = await stripe.subscriptions.create(subscriptionParams);
+
+    const invoice = subscription.latest_invoice as Stripe.Invoice;
+    const paymentIntent = invoice.payment_intent as Stripe.PaymentIntent;
+
+    if (!paymentIntent?.client_secret) {
+      return c.json({ error: 'Failed to initialize payment.' }, 500);
+    }
+
+    return c.json({
+      subscriptionId: subscription.id,
+      clientSecret: paymentIntent.client_secret,
+    });
   } catch (err) {
-    console.error('Stripe checkout error:', err);
-    return c.json({ error: 'Failed to create checkout session.' }, 500);
+    console.error('Stripe subscription error:', err);
+    return c.json({ error: 'Failed to create subscription.' }, 500);
   }
 });
 
@@ -93,19 +172,6 @@ stripeRoutes.post('/api/stripe/webhook', async (c) => {
 
   try {
     switch (event.type) {
-      case 'checkout.session.completed': {
-        const checkoutSession = event.data.object as Stripe.Checkout.Session;
-        const accountId = checkoutSession.metadata?.accountId;
-        const plan = checkoutSession.metadata?.plan;
-        if (accountId) {
-          await profilesDb.updateById(serviceClient, accountId, {
-            stripeSubscriptionId: checkoutSession.subscription as string,
-            subscriptionPlan: plan || 'pro',
-            subscriptionStatus: 'active',
-          });
-        }
-        break;
-      }
       case 'customer.subscription.updated': {
         const subscription = event.data.object as Stripe.Subscription;
         const account = await profilesDb.findByStripeCustomerId(
@@ -114,9 +180,12 @@ stripeRoutes.post('/api/stripe/webhook', async (c) => {
         );
         if (account) {
           const isActive = ['active', 'trialing'].includes(subscription.status);
+          // Prefer plan from subscription metadata, fall back to existing account plan
+          const plan = subscription.metadata?.plan || account.subscription_plan || 'pro';
           await profilesDb.updateById(serviceClient, account.id, {
+            stripeSubscriptionId: subscription.id,
             subscriptionStatus: subscription.status,
-            subscriptionPlan: isActive ? (account.subscription_plan || 'pro') : 'trial',
+            subscriptionPlan: isActive ? plan : 'free',
           });
         }
         break;
@@ -129,7 +198,7 @@ stripeRoutes.post('/api/stripe/webhook', async (c) => {
         );
         if (account) {
           await profilesDb.updateById(serviceClient, account.id, {
-            subscriptionPlan: 'trial',
+            subscriptionPlan: 'free',
             subscriptionStatus: 'canceled',
           });
         }
