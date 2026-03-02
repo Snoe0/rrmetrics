@@ -11,8 +11,9 @@
     "pretest": "eslint ./server --fix",
     "test": "echo \"Tests complete\"",
     "heroku-postbuild": "webpack",
-    "dev:worker": "cd workers && wrangler dev",
+    "dev": "cd workers && wrangler dev",
     "deploy": "npm run webpack && cd workers && wrangler deploy",
+    "deploy:dev": "npm run webpack && cd workers && wrangler deploy --env dev",
     "d1:migrate": "cd workers && wrangler d1 execute tradingjournal-db --file=schema.sql",
     "d1:migrate:local": "cd workers && wrangler d1 execute tradingjournal-db --local --file=schema.sql"
   },
@@ -31,6 +32,7 @@
     "express": "^5.1.0",
     "express-handlebars": "^8.0.1",
     "express-session": "^1.18.2",
+    "framer-motion": "^12.34.3",
     "helmet": "^8.1.0",
     "mongoose": "^8.19.3",
     "nodemailer": "^8.0.1",
