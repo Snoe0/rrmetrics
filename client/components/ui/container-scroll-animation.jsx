@@ -4,7 +4,10 @@ const { useScroll, useTransform, motion } = require('framer-motion');
 
 const ContainerScroll = ({ titleComponent, children }) => {
   const containerRef = useRef(null);
-  const { scrollYProgress } = useScroll({ target: containerRef });
+  const { scrollYProgress } = useScroll({
+    target: containerRef,
+    offset: ['start start', 'end start'],
+  });
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
@@ -14,10 +17,10 @@ const ContainerScroll = ({ titleComponent, children }) => {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  const scaleDimensions = () => (isMobile ? [0.7, 0.9] : [1.05, 1]);
+  const scaleRange = isMobile ? [0.7, 0.9] : [1.05, 1];
 
   const rotate = useTransform(scrollYProgress, [0, 1], [20, 0]);
-  const scale = useTransform(scrollYProgress, [0, 1], scaleDimensions());
+  const scale = useTransform(scrollYProgress, [0, 1], scaleRange);
   const translate = useTransform(scrollYProgress, [0, 1], [0, -100]);
 
   return (
