@@ -663,7 +663,7 @@ const App = () => {
     if (hasPaidSubscription) {
       const label = actionLoading === 'billing'
         ? 'Redirecting...'
-        : plan.id === 'elite' && normalizedPlan === 'pro'
+        : plan.id.replace('_yearly', '') === 'elite' && normalizedPlan === 'pro'
           ? 'Upgrade to Elite'
           : 'Switch Plan';
       return { label, disabled: actionLoading !== null, action: handleManageBilling };
@@ -793,7 +793,7 @@ const App = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {plans.map(plan => {
-              const isCurrent = plan.id === normalizedPlan;
+              const isCurrent = plan.id.replace('_yearly', '') === normalizedPlan;
               const isElite = plan.style === 'elite';
               const isAccent = plan.style === 'accent';
               const btn = getButtonProps(plan);
