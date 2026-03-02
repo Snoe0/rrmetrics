@@ -520,7 +520,7 @@ const HowItWorks = () => {
 // PRICING SECTION
 // =====================================================
 const PricingSection = () => {
-  const [pricing, setPricing] = useState({ pro: '15', elite: '22', trialDays: '14' });
+  const [pricing, setPricing] = useState({ pro: '12', elite: '18', proYearly: '120', eliteYearly: '180', trialDays: '14' });
   const [billing, setBilling] = useState('monthly');
 
   useEffect(() => {
