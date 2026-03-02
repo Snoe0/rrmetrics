@@ -284,7 +284,7 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
               </div>
               <div className="text-right">
                 <span className="text-text-primary font-mono font-bold text-2xl">{plan.price}</span>
-                <span className="text-text-tertiary text-xs">/mo</span>
+                <span className="text-text-tertiary text-xs">{plan.id.endsWith('_yearly') ? '/yr' : '/mo'}</span>
               </div>
             </div>
           </div>
@@ -579,7 +579,7 @@ const App = () => {
 
   const handleCheckoutSuccess = (planId) => {
     setCheckoutPlan(null);
-    setCurrentPlan(planId);
+    setCurrentPlan(planId.replace('_yearly', ''));
     setSuccess(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
