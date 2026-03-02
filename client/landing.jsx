@@ -588,7 +588,7 @@ const PricingSection = () => {
           >
             Yearly
             <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${
-              billing === 'yearly' ? 'bg-white/20 text-white' : 'bg-positive/15 text-positive'
+              billing === 'yearly' ? 'bg-black/15 text-accent-text' : 'bg-positive/15 text-positive'
             }`}>
               Save 2 months
             </span>
