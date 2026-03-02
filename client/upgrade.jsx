@@ -641,7 +641,7 @@ const App = () => {
   ];
 
   const getButtonProps = (plan) => {
-    const isCurrent = plan.id === normalizedPlan;
+    const isCurrent = plan.id.replace('_yearly', '') === normalizedPlan;
 
     if (statusLoading) return { label: '...', disabled: true, action: null };
 
