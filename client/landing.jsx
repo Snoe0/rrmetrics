@@ -275,7 +275,7 @@ const HeroSection = () => (
         <img
           src="/assets/img/dashboard-preview.png"
           alt="RR Metrics Dashboard"
-          className="w-full flex-1 object-cover object-top"
+          className="w-full flex-1 object-contain object-top"
         />
       </div>
     </ContainerScroll>
@@ -521,6 +521,7 @@ const HowItWorks = () => {
 // =====================================================
 const PricingSection = () => {
   const [pricing, setPricing] = useState({ pro: '15', elite: '22', trialDays: '14' });
+  const [billing, setBilling] = useState('monthly');
 
   useEffect(() => {
     fetch('/api/pricing').then(r => r.json()).then(setPricing).catch(() => {});
@@ -538,16 +539,16 @@ const PricingSection = () => {
     },
     {
       name: (planDefs.pro && planDefs.pro.name) || 'Pro',
-      price: `$${pricing.pro}`,
-      period: '/month',
+      price: billing === 'yearly' ? `$${pricing.proYearly}` : `$${pricing.pro}`,
+      period: billing === 'yearly' ? '/year' : '/month',
       features: (planDefs.pro && planDefs.pro.features) || ['Unlimited trades', '3 Broker connections', 'CSV Import/Export', 'Strategy & rule tracking', 'Premarket prep', '1 Backtesting session'],
       accent: true,
       popular: true,
     },
     {
       name: (planDefs.elite && planDefs.elite.name) || 'Elite',
-      price: `$${pricing.elite}`,
-      period: '/month',
+      price: billing === 'yearly' ? `$${pricing.eliteYearly}` : `$${pricing.elite}`,
+      period: billing === 'yearly' ? '/year' : '/month',
       features: (planDefs.elite && planDefs.elite.features) || ['Everything in Pro', 'Attach and annotate screenshots', 'Unlimited broker connections', 'Custom themes', 'Unlimited Backtesting'],
       accent: false,
       popular: false,
@@ -564,6 +565,34 @@ const PricingSection = () => {
           <p className="text-accent text-sm font-semibold uppercase tracking-wider mb-3">Pricing</p>
           <h2 className="text-3xl sm:text-4xl font-bold text-text-primary mb-4">Improving Shouldn't Be Expensive</h2>
           <p className="text-text-secondary text-lg max-w-lg mx-auto">Start with a free trial. Upgrade when you're ready.</p>
+        </div>
+        {/* Billing toggle */}
+        <div className="flex items-center justify-center gap-3 mb-8">
+          <button
+            onClick={() => setBilling('monthly')}
+            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              billing === 'monthly'
+                ? 'bg-accent text-accent-text'
+                : 'text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            Monthly
+          </button>
+          <button
+            onClick={() => setBilling('yearly')}
+            className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              billing === 'yearly'
+                ? 'bg-accent text-accent-text'
+                : 'text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            Yearly
+            <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${
+              billing === 'yearly' ? 'bg-white/20 text-white' : 'bg-positive/15 text-positive'
+            }`}>
+              Save 2 months
+            </span>
+          </button>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
           {plans.map((plan, i) => (
