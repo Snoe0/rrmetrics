@@ -229,7 +229,7 @@ const HeroSection = () => (
         <div className="pt-20 px-6">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-accent/10 border border-accent/20 mb-8">
             <span className="w-2 h-2 bg-accent rounded-full animate-pulse"></span>
-            <span className="text-accent text-sm font-medium">Built for futures &amp; stock traders</span>
+            <span className="text-accent text-sm font-medium">Built for futures & stock traders</span>
           </div>
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-text-primary leading-[1.1] mb-6">
             Your Trading Edge{' '}
