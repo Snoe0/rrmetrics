@@ -3,8 +3,83 @@ const { useState, useEffect, useRef } = React;
 const { createRoot } = require('react-dom/client');
 const { supabase } = require('./supabase.js');
 require('./styles/globals.css');
+const { ContainerScroll } = require('./components/ui/container-scroll-animation');
 
 const APP_URL = '';
+
+// =====================================================
+// SCROLL REVEAL HOOK + COMPONENT
+// =====================================================
+const useScrollReveal = (options = {}) => {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.classList.add('scroll-reveal');
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          el.classList.add('revealed');
+          observer.unobserve(el);
+        }
+      },
+      { threshold: options.threshold || 0.15 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  return ref;
+};
+
+const ScrollReveal = ({ children, className = '', delay = '' }) => {
+  const ref = useScrollReveal();
+  return (
+    <div ref={ref} className={`${className} ${delay}`}>
+      {children}
+    </div>
+  );
+};
+
+// =====================================================
+// COUNT-UP HOOK
+// =====================================================
+const useCountUp = (target, suffix = '') => {
+  const [display, setDisplay] = useState(`0${suffix}`);
+  const ref = useRef(null);
+  const hasRun = useRef(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && !hasRun.current) {
+          hasRun.current = true;
+          observer.unobserve(el);
+          const duration = 1200;
+          const start = performance.now();
+          const step = (now) => {
+            const progress = Math.min((now - start) / duration, 1);
+            const eased = 1 - Math.pow(1 - progress, 3);
+            const value = Math.round(eased * target);
+            setDisplay(`${value.toLocaleString()}${suffix}`);
+            if (progress < 1) requestAnimationFrame(step);
+          };
+          requestAnimationFrame(step);
+        }
+      },
+      { threshold: 0.3 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [target, suffix]);
+
+  return { ref, display };
+};
 
 // =====================================================
 // LOCAL ICONS
@@ -71,6 +146,13 @@ const Icons = {
     <svg className={props.className || "w-6 h-6"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
       <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+    </svg>
+  ),
+  FlaskConical: (props) => (
+    <svg className={props.className || "w-6 h-6"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"></path>
+      <path d="M8.5 2h7"></path>
+      <path d="M7 16h10"></path>
     </svg>
   ),
   Calendar: (props) => (
@@ -141,90 +223,93 @@ const Navbar = () => {
 // HERO SECTION
 // =====================================================
 const HeroSection = () => (
-  <section className="pt-28 pb-4 px-6 overflow-hidden">
-    <div className="max-w-6xl mx-auto">
-      <div className="text-center max-w-3xl mx-auto mb-12">
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-accent/10 border border-accent/20 mb-8">
-          <span className="w-2 h-2 bg-accent rounded-full animate-pulse"></span>
-          <span className="text-accent text-sm font-medium">Built for futures & stock traders</span>
+  <section className="overflow-hidden">
+    <ContainerScroll
+      titleComponent={
+        <div className="pt-20 px-6">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-accent/10 border border-accent/20 mb-8">
+            <span className="w-2 h-2 bg-accent rounded-full animate-pulse"></span>
+            <span className="text-accent text-sm font-medium">Built for futures &amp; stock traders</span>
+          </div>
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-text-primary leading-[1.1] mb-6">
+            Your Trading Edge{' '}
+            <span className="bg-gradient-to-r from-accent to-[#8b5cf6] bg-clip-text text-transparent">
+              Starts Before the Bell
+            </span>
+          </h1>
+          <p className="text-text-secondary text-lg sm:text-xl max-w-2xl mx-auto mb-10 leading-relaxed">
+            The all-in-one trading journal with pre-market preparation, auto broker sync, advanced analytics, and daily performance tracking. Build consistency. Find your edge.
+          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <a
+              href={`${APP_URL}/login?signup`}
+              className="bg-accent text-accent-text font-semibold px-8 py-3.5 rounded-lg hover:brightness-110 transition-all text-base flex items-center gap-2 shadow-lg shadow-accent/20"
+            >
+              Start Free Trial
+              <Icons.ArrowRight className="w-4 h-4" />
+            </a>
+            <a
+              href="#features"
+              className="text-text-secondary hover:text-text-primary font-medium px-8 py-3.5 rounded-lg border border-border hover:border-accent/50 transition-all text-base"
+            >
+              See Features
+            </a>
+          </div>
+          <p className="text-text-muted text-sm mt-4">No credit card required</p>
         </div>
-        <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-text-primary leading-[1.1] mb-6">
-          Your Trading Edge{' '}
-          <span className="bg-gradient-to-r from-accent to-[#8b5cf6] bg-clip-text text-transparent">
-            Starts Before the Bell
-          </span>
-        </h1>
-        <p className="text-text-secondary text-lg sm:text-xl max-w-2xl mx-auto mb-10 leading-relaxed">
-          The all-in-one trading journal with pre-market preparation, auto broker sync, advanced analytics, and daily performance tracking. Build consistency. Find your edge.
-        </p>
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-          <a href={`${APP_URL}/login?signup`} className="bg-accent text-accent-text font-semibold px-8 py-3.5 rounded-lg hover:brightness-110 transition-all text-base flex items-center gap-2 shadow-lg shadow-accent/20">
-            Start Free Trial
-            <Icons.ArrowRight className="w-4 h-4" />
-          </a>
-          <a href="#features" className="text-text-secondary hover:text-text-primary font-medium px-8 py-3.5 rounded-lg border border-border hover:border-accent/50 transition-all text-base">
-            See Features
-          </a>
-        </div>
-        <p className="text-text-muted text-sm mt-4">No credit card required</p>
-      </div>
-
-      {/* Dashboard Screenshot Placeholder */}
-      <div className="relative max-w-5xl mx-auto">
-        <div className="absolute inset-0 bg-gradient-to-t from-bg-page via-transparent to-transparent z-10 pointer-events-none"></div>
-        <div className="bg-bg-surface border border-border rounded-xl overflow-hidden shadow-2xl shadow-black/30">
-          {/* Browser Chrome */}
-          <div className="bg-bg-input border-b border-border px-4 py-3 flex items-center gap-2">
-            <div className="flex gap-1.5">
-              <div className="w-3 h-3 rounded-full bg-[#ff5f57]"></div>
-              <div className="w-3 h-3 rounded-full bg-[#febc2e]"></div>
-              <div className="w-3 h-3 rounded-full bg-[#28c840]"></div>
-            </div>
-            <div className="flex-1 ml-4">
-              <div className="bg-bg-page rounded-md px-4 py-1.5 text-text-muted text-xs font-mono max-w-xs">rrmetrics.com/trades</div>
+      }
+    >
+      <div className="bg-bg-surface border border-border rounded-xl overflow-hidden shadow-2xl shadow-black/30 h-full flex flex-col">
+        <div className="bg-bg-input border-b border-border px-4 py-3 flex items-center gap-2 flex-shrink-0">
+          <div className="flex gap-1.5">
+            <div className="w-3 h-3 rounded-full bg-[#ff5f57]"></div>
+            <div className="w-3 h-3 rounded-full bg-[#febc2e]"></div>
+            <div className="w-3 h-3 rounded-full bg-[#28c840]"></div>
+          </div>
+          <div className="flex-1 ml-4">
+            <div className="bg-bg-page rounded-md px-4 py-1.5 text-text-muted text-xs font-mono max-w-xs">
+              rrmetrics.com/trades
             </div>
           </div>
-          {/* Screenshot area - replace src with actual dashboard screenshot */}
-          <div className="aspect-[16/9] bg-bg-page flex items-center justify-center">
-            <img
-              src="/assets/img/dashboard-preview.png"
-              alt="RR Metrics Dashboard"
-              className="w-full h-full object-cover object-top"
-              onError={(e) => {
-                e.target.style.display = 'none';
-                e.target.parentNode.innerHTML = '<div class="flex flex-col items-center gap-4 text-text-muted"><svg class="w-16 h-16 opacity-30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="9" x2="9" y2="21"/></svg><span class="text-sm">Dashboard screenshot — add /assets/img/dashboard-preview.png</span></div>';
-              }}
-            />
-          </div>
         </div>
+        <img
+          src="/assets/img/dashboard-preview.png"
+          alt="RR Metrics Dashboard"
+          className="w-full flex-1 object-cover object-top"
+        />
       </div>
-    </div>
+    </ContainerScroll>
   </section>
 );
 
 // =====================================================
 // SOCIAL PROOF BAR
 // =====================================================
-const SocialProofBar = () => (
-  <section className="py-16 px-6">
-    <div className="max-w-4xl mx-auto">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-        <div>
-          <div className="text-accent font-mono text-3xl font-bold">12K+</div>
-          <div className="text-text-muted text-sm mt-1">Trades Logged</div>
-        </div>
-        <div>
-          <div className="text-accent font-mono text-3xl font-bold">500+</div>
-          <div className="text-text-muted text-sm mt-1">Active Traders</div>
-        </div>
-        <div>
-          <div className="text-accent font-mono text-3xl font-bold">99%</div>
-          <div className="text-text-muted text-sm mt-1">Uptime</div>
+const CountUpStat = ({ value, suffix, label, className }) => {
+  const { ref, display } = useCountUp(value, suffix);
+  return (
+    <div ref={ref} className={className}>
+      <div className="text-accent font-mono text-3xl font-bold">{display}</div>
+      <div className="text-text-muted text-sm mt-1">{label}</div>
+    </div>
+  );
+};
+
+const SocialProofBar = () => {
+  const sectionRef = useScrollReveal();
+  return (
+    <section ref={sectionRef} className="py-16 px-6">
+      <div className="max-w-4xl mx-auto">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+          <CountUpStat value={12} suffix="K+" label="Trades Logged" />
+          <CountUpStat value={500} suffix="+" label="Active Traders" />
+          <CountUpStat value={99} suffix="%" label="Uptime" />
+          <CountUpStat value={100} suffix="%" label="Secure" />
         </div>
       </div>
-    </div>
-  </section>
-);
+    </section>
+  );
+};
 
 // =====================================================
 // FEATURES GRID
@@ -257,29 +342,32 @@ const FeaturesGrid = () => {
       description: 'See your P&L day by day. Spot winning streaks, losing patterns, and seasonal trends.',
     },
     {
-      icon: <Icons.Bell className="w-5 h-5" />,
-      title: 'Discord Notifications',
-      description: 'Get daily economic calendar alerts sent to your Discord at your preferred time.',
+      icon: <Icons.FlaskConical className="w-5 h-5" />,
+      title: 'Backtesting Analysis',
+      description: 'Track and analyze your backtesting wins and losses all in one tool.',
     },
   ];
+
+  const headerRef = useScrollReveal();
+  const delays = ['', 'delay-100', 'delay-200', 'delay-300', 'delay-400', 'delay-500'];
 
   return (
     <section id="features" className="py-20 px-6">
       <div className="max-w-6xl mx-auto">
-        <div className="text-center mb-14">
+        <div ref={headerRef} className="text-center mb-14">
           <p className="text-accent text-sm font-semibold uppercase tracking-wider mb-3">Features</p>
           <h2 className="text-3xl sm:text-4xl font-bold text-text-primary mb-4">Everything a Trader Needs</h2>
           <p className="text-text-secondary text-lg max-w-xl mx-auto">Powerful tools designed for futures and stock traders who are serious about improving.</p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {features.map(feature => (
-            <div key={feature.title} className="bg-bg-surface rounded-xl p-6 border border-border hover:border-accent/30 transition-all group">
+          {features.map((feature, i) => (
+            <ScrollReveal key={feature.title} className="bg-bg-surface rounded-xl p-6 border border-border hover:border-accent/30 transition-all group" delay={delays[i] || ''}>
               <div className="w-10 h-10 bg-accent/10 rounded-lg flex items-center justify-center mb-4 text-accent group-hover:bg-accent/20 transition-colors">
                 {feature.icon}
               </div>
               <h3 className="text-text-primary font-semibold mb-2">{feature.title}</h3>
               <p className="text-text-secondary text-sm leading-relaxed">{feature.description}</p>
-            </div>
+            </ScrollReveal>
           ))}
         </div>
       </div>
@@ -290,57 +378,37 @@ const FeaturesGrid = () => {
 // =====================================================
 // FEATURE DEEP DIVES (alternating layout)
 // =====================================================
-const FeatureDeepDive = ({ label, title, description, bullets, imageSrc, imageAlt, reversed }) => (
-  <div className={`flex flex-col ${reversed ? 'lg:flex-row-reverse' : 'lg:flex-row'} items-center gap-12 lg:gap-16`}>
-    {/* Text */}
-    <div className="flex-1 max-w-lg">
-      <p className="text-accent text-sm font-semibold uppercase tracking-wider mb-3">{label}</p>
-      <h3 className="text-2xl sm:text-3xl font-bold text-text-primary mb-4 leading-tight">{title}</h3>
-      <p className="text-text-secondary text-base leading-relaxed mb-6">{description}</p>
-      <ul className="space-y-3">
-        {bullets.map(b => (
-          <li key={b} className="flex items-start gap-3 text-sm text-text-secondary">
-            <Icons.Check className="w-4 h-4 text-accent flex-shrink-0 mt-0.5" />
-            <span>{b}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
-    {/* Image placeholder */}
-    <div className="flex-1 w-full">
-      <div className="bg-bg-surface border border-border rounded-xl overflow-hidden shadow-lg">
-        <div className="aspect-[4/3] bg-bg-page flex items-center justify-center">
-          <img
-            src={imageSrc}
-            alt={imageAlt}
-            className="w-full h-full object-cover"
-            onError={(e) => {
-              e.target.style.display = 'none';
-              e.target.parentNode.innerHTML = `<div class="flex flex-col items-center gap-3 text-text-muted p-8"><svg class="w-12 h-12 opacity-30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><span class="text-xs text-center">${imageAlt}</span></div>`;
-            }}
-          />
+const FeatureDeepDive = ({ label, title, description, bullets, imageSrc, imageAlt, reversed }) => {
+  const textRef = useScrollReveal();
+  const imageRef = useScrollReveal();
+
+  return (
+    <div className={`flex flex-col ${reversed ? 'lg:flex-row-reverse' : 'lg:flex-row'} items-center gap-12 lg:gap-16`}>
+      {/* Text */}
+      <div ref={textRef} className="flex-1 max-w-lg">
+        <p className="text-accent text-sm font-semibold uppercase tracking-wider mb-3">{label}</p>
+        <h3 className="text-2xl sm:text-3xl font-bold text-text-primary mb-4 leading-tight">{title}</h3>
+        <p className="text-text-secondary text-base leading-relaxed mb-6">{description}</p>
+        <ul className="space-y-3">
+          {bullets.map(b => (
+            <li key={b} className="flex items-start gap-3 text-sm text-text-secondary">
+              <Icons.Check className="w-4 h-4 text-accent flex-shrink-0 mt-0.5" />
+              <span>{b}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div ref={imageRef} className="flex-1 w-full delay-200">
+        <div className="bg-bg-surface border border-border rounded-xl overflow-hidden shadow-lg">
+          <img src={imageSrc} alt={imageAlt} className="w-full object-cover" />
         </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 const FeatureDeepDives = () => {
   const sections = [
-    {
-      label: 'Pre-Market Preparation',
-      title: 'Start Every Trading Day with a Plan',
-      description: 'Build a custom pre-market checklist that resets daily at your chosen time. See the day\'s economic releases at a glance so you\'re never caught off-guard by a major report.',
-      bullets: [
-        'Custom checklist items that auto-reset daily',
-        'Configurable reset time and timezone',
-        'Federal Reserve economic calendar built in',
-        'Discord webhook sends your daily brief automatically',
-      ],
-      imageSrc: '/assets/img/feature-premarket.png',
-      imageAlt: 'Pre-market preparation screenshot',
-      reversed: false,
-    },
     {
       label: 'Trade Management',
       title: 'Log, Tag, and Analyze Every Trade',
@@ -354,7 +422,7 @@ const FeatureDeepDives = () => {
       ],
       imageSrc: '/assets/img/feature-trades.png',
       imageAlt: 'Trade management screenshot',
-      reversed: true,
+      reversed: false,
     },
     {
       label: 'Analytics & Insights',
@@ -369,21 +437,33 @@ const FeatureDeepDives = () => {
       ],
       imageSrc: '/assets/img/feature-analytics.png',
       imageAlt: 'Analytics dashboard screenshot',
+      reversed: true,
+    },
+    {
+      label: 'Backtesting',
+      title: 'Practice Your Strategy',
+      description: 'Track your statistics as you backtest, all in one dashboard. Track your average risk-reward, winrate, and more as you backtest. Receive in-depth statistics based on your backtesting history to truly understand your trading.',
+      bullets: [
+        'Multiple backtesting sessions',
+        'Simple trade tracking',
+        'Historical performance analysis',
+        'In-depth backtesting feedback',
+      ],
+      imageSrc: '/assets/img/feature-backtest.png',
+      imageAlt: 'Backtesting screenshot',
       reversed: false,
     },
     {
-      label: 'Broker Connections',
-      title: 'Sync Trades Automatically',
-      description: 'Connect your brokerage account and let RR Metrics pull in your trades automatically. No copy-pasting, no spreadsheets. Support for the most popular futures and stock brokers.',
+      label: 'Pre-Market Preparation',
+      title: 'Start Every Trading Day with a Plan',
+      description: 'Build a custom pre-market checklist that resets daily at your chosen time. See the day\'s economic releases at a glance so you\'re never caught off-guard by a major report.',
       bullets: [
-        'Tradovate integration (live & demo)',
-        'ProjectX and NinjaTrader support coming soon',
-        'Auto-sync on schedule or on demand',
-        'Encrypted credential storage',
-        'CSV import/export as backup',
+        'Custom checklist items that auto-reset daily',
+        'Configurable reset time and timezone',
+        'Pre-market preparation statistics and tracking',
       ],
-      imageSrc: '/assets/img/feature-brokers.png',
-      imageAlt: 'Broker connections screenshot',
+      imageSrc: '/assets/img/feature-premarket.png',
+      imageAlt: 'Pre-market preparation screenshot',
       reversed: true,
     },
   ];
@@ -410,22 +490,25 @@ const HowItWorks = () => {
     { num: '04', title: 'Review & Improve', desc: 'Use analytics to spot patterns, fix mistakes, and grow your edge over time.' },
   ];
 
+  const headerRef = useScrollReveal();
+  const delays = ['', 'delay-100', 'delay-200', 'delay-300'];
+
   return (
     <section id="how-it-works" className="py-20 px-6">
       <div className="max-w-5xl mx-auto">
-        <div className="text-center mb-14">
+        <div ref={headerRef} className="text-center mb-14">
           <p className="text-accent text-sm font-semibold uppercase tracking-wider mb-3">How It Works</p>
           <h2 className="text-3xl sm:text-4xl font-bold text-text-primary mb-4">Get Started in Minutes</h2>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-          {steps.map(step => (
-            <div key={step.num} className="text-center">
+          {steps.map((step, i) => (
+            <ScrollReveal key={step.num} className="text-center" delay={delays[i]}>
               <div className="w-12 h-12 bg-accent/10 rounded-full flex items-center justify-center mx-auto mb-4">
                 <span className="text-accent font-mono font-bold text-sm">{step.num}</span>
               </div>
               <h3 className="text-text-primary font-semibold mb-2">{step.title}</h3>
               <p className="text-text-secondary text-sm leading-relaxed">{step.desc}</p>
-            </div>
+            </ScrollReveal>
           ))}
         </div>
       </div>
@@ -449,7 +532,7 @@ const PricingSection = () => {
       name: (planDefs.trial && planDefs.trial.name) || 'Trial',
       price: '$0',
       period: `${pricing.trialDays} days`,
-      features: (planDefs.trial && planDefs.trial.features) || ['Up to 50 trades', 'Advanced analytics', 'Manual trade entry'],
+      features: (planDefs.trial && planDefs.trial.features) || ['Most Pro features for 14 days', 'Up to 50 trades'],
       accent: false,
       popular: false,
     },
@@ -457,7 +540,7 @@ const PricingSection = () => {
       name: (planDefs.pro && planDefs.pro.name) || 'Pro',
       price: `$${pricing.pro}`,
       period: '/month',
-      features: (planDefs.pro && planDefs.pro.features) || ['Everything in Trial', 'Unlimited trades', 'Broker connections'],
+      features: (planDefs.pro && planDefs.pro.features) || ['Unlimited trades', '3 Broker connections', 'CSV Import/Export', 'Strategy & rule tracking', 'Premarket prep', '1 Backtesting session'],
       accent: true,
       popular: true,
     },
@@ -465,27 +548,31 @@ const PricingSection = () => {
       name: (planDefs.elite && planDefs.elite.name) || 'Elite',
       price: `$${pricing.elite}`,
       period: '/month',
-      features: (planDefs.elite && planDefs.elite.features) || ['Everything in Pro', 'Discord alerts', 'Unlimited brokers'],
+      features: (planDefs.elite && planDefs.elite.features) || ['Everything in Pro', 'Attach and annotate screenshots', 'Unlimited broker connections', 'Custom themes', 'Unlimited Backtesting'],
       accent: false,
       popular: false,
     },
   ];
 
+  const headerRef = useScrollReveal();
+  const delays = ['', 'delay-100', 'delay-200'];
+
   return (
     <section id="pricing" className="py-20 px-6">
       <div className="max-w-6xl mx-auto">
-        <div className="text-center mb-14">
+        <div ref={headerRef} className="text-center mb-14">
           <p className="text-accent text-sm font-semibold uppercase tracking-wider mb-3">Pricing</p>
-          <h2 className="text-3xl sm:text-4xl font-bold text-text-primary mb-4">Simple, Transparent Pricing</h2>
+          <h2 className="text-3xl sm:text-4xl font-bold text-text-primary mb-4">Improving Shouldn't Be Expensive</h2>
           <p className="text-text-secondary text-lg max-w-lg mx-auto">Start with a free trial. Upgrade when you're ready.</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-          {plans.map(plan => (
-            <div
+          {plans.map((plan, i) => (
+            <ScrollReveal
               key={plan.name}
               className={`relative bg-bg-surface rounded-xl p-6 flex flex-col ${
                 plan.accent ? 'border-2 border-accent shadow-lg shadow-accent/10' : 'border border-border'
               }`}
+              delay={delays[i]}
             >
               {plan.popular && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-accent text-accent-text text-xs font-bold rounded-full">
@@ -515,7 +602,7 @@ const PricingSection = () => {
               >
                 Get Started
               </a>
-            </div>
+            </ScrollReveal>
           ))}
         </div>
         <p className="text-center text-text-muted text-xs mt-8">Cancel anytime. Remaining balance refunded.</p>
@@ -576,10 +663,12 @@ const FAQSection = () => {
     },
   ];
 
+  const headerRef = useScrollReveal();
+
   return (
     <section id="faq" className="py-20 px-6">
       <div className="max-w-3xl mx-auto">
-        <div className="text-center mb-14">
+        <div ref={headerRef} className="text-center mb-14">
           <p className="text-accent text-sm font-semibold uppercase tracking-wider mb-3">FAQ</p>
           <h2 className="text-3xl sm:text-4xl font-bold text-text-primary mb-4">Frequently Asked Questions</h2>
         </div>
@@ -596,26 +685,29 @@ const FAQSection = () => {
 // =====================================================
 // FINAL CTA
 // =====================================================
-const FinalCTA = () => (
-  <section className="py-20 px-6">
-    <div className="max-w-3xl mx-auto text-center">
-      <div className="bg-bg-surface rounded-2xl p-10 sm:p-14 border border-border relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-accent/5 to-transparent pointer-events-none"></div>
-        <div className="relative">
-          <h2 className="text-3xl sm:text-4xl font-bold text-text-primary mb-4">Ready to Trade Smarter?</h2>
-          <p className="text-text-secondary text-lg mb-8 max-w-lg mx-auto">
-            Join traders who use RR Metrics to prepare, track, and improve every single day.
-          </p>
-          <a href={`${APP_URL}/login?signup`} className="inline-flex items-center gap-2 bg-accent text-accent-text font-semibold px-8 py-3.5 rounded-lg hover:brightness-110 transition-all text-base shadow-lg shadow-accent/20">
-            Start Free Trial
-            <Icons.ArrowRight className="w-4 h-4" />
-          </a>
-          <p className="text-text-muted text-sm mt-4">No credit card required</p>
+const FinalCTA = () => {
+  const ref = useScrollReveal();
+  return (
+    <section className="py-20 px-6">
+      <div ref={ref} className="max-w-3xl mx-auto text-center">
+        <div className="bg-bg-surface rounded-2xl p-10 sm:p-14 border border-border relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-accent/5 to-transparent pointer-events-none"></div>
+          <div className="relative">
+            <h2 className="text-3xl sm:text-4xl font-bold text-text-primary mb-4">Ready to Trade Smarter?</h2>
+            <p className="text-text-secondary text-lg mb-8 max-w-lg mx-auto">
+              Join traders who use RR Metrics to prepare, track, and improve every single day.
+            </p>
+            <a href={`${APP_URL}/login?signup`} className="inline-flex items-center gap-2 bg-accent text-accent-text font-semibold px-8 py-3.5 rounded-lg hover:brightness-110 transition-all text-base shadow-lg shadow-accent/20">
+              Start Free Trial
+              <Icons.ArrowRight className="w-4 h-4" />
+            </a>
+            <p className="text-text-muted text-sm mt-4">No credit card required</p>
+          </div>
         </div>
       </div>
-    </div>
-  </section>
-);
+    </section>
+  );
+};
 
 // =====================================================
 // FOOTER
