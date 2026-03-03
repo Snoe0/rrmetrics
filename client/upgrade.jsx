@@ -538,7 +538,7 @@ const App = () => {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
   const [canceled, setCanceled] = useState(false);
-  const [billing, setBilling] = useState('monthly');
+  const [billing, setBilling] = useState('yearly');
   const [pricing, setPricing] = useState({ pro: '12', elite: '18', proYearly: '120', eliteYearly: '180', plans: {} });
   const [currentPlan, setCurrentPlan] = useState(null);
   const [statusLoading, setStatusLoading] = useState(true);
@@ -624,6 +624,8 @@ const App = () => {
       id: billing === 'yearly' ? 'pro_yearly' : 'pro',
       name: (planDefs.pro && planDefs.pro.name) || 'Pro',
       price: billing === 'yearly' ? `$${pricing.proYearly}` : `$${pricing.pro}`,
+      monthlyEquiv: billing === 'yearly' ? `$${Math.round(pricing.proYearly / 12)}` : null,
+      originalMonthly: billing === 'yearly' ? `$${pricing.pro}` : null,
       period: billing === 'yearly' ? '/year' : '/month',
       features: (planDefs.pro && planDefs.pro.features) || ['Unlimited trades', '2 broker connections', 'CSV Import/Export', 'Strategy & rule tracking', 'Premarket prep', '1 Backtesting session'],
       style: 'accent',
@@ -633,6 +635,8 @@ const App = () => {
       id: billing === 'yearly' ? 'elite_yearly' : 'elite',
       name: (planDefs.elite && planDefs.elite.name) || 'Elite',
       price: billing === 'yearly' ? `$${pricing.eliteYearly}` : `$${pricing.elite}`,
+      monthlyEquiv: billing === 'yearly' ? `$${Math.round(pricing.eliteYearly / 12)}` : null,
+      originalMonthly: billing === 'yearly' ? `$${pricing.elite}` : null,
       period: billing === 'yearly' ? '/year' : '/month',
       features: (planDefs.elite && planDefs.elite.features) || ['Everything in Pro', 'Attach and annotate screenshots', 'Unlimited brokers', 'Custom themes', 'Unlimited Backtesting'],
       style: 'elite',
@@ -837,8 +841,21 @@ const App = () => {
                   </div>
 
                   <div className="mt-3 mb-6">
-                    <span className="text-text-primary font-mono text-4xl font-bold">{plan.price}</span>
-                    <span className="text-text-tertiary text-sm ml-1">{plan.period}</span>
+                    {plan.monthlyEquiv ? (
+                      <>
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-text-tertiary text-sm line-through">{plan.originalMonthly}</span>
+                          <span className="text-text-primary font-mono text-4xl font-bold">{plan.monthlyEquiv}</span>
+                          <span className="text-text-tertiary text-sm">/mo</span>
+                        </div>
+                        <p className="text-text-muted text-xs mt-0.5">billed annually</p>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-text-primary font-mono text-4xl font-bold">{plan.price}</span>
+                        <span className="text-text-tertiary text-sm ml-1">{plan.period}</span>
+                      </>
+                    )}
                   </div>
 
                   <ul className="space-y-3 flex-1">

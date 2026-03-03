@@ -223,7 +223,7 @@ const Navbar = () => {
 // HERO SECTION
 // =====================================================
 const HeroSection = () => (
-  <section className="overflow-hidden">
+  <section className="overflow-hidden pb-16">
     <ContainerScroll
       titleComponent={
         <div className="pt-20 px-6">
@@ -521,7 +521,7 @@ const HowItWorks = () => {
 // =====================================================
 const PricingSection = () => {
   const [pricing, setPricing] = useState({ pro: '12', elite: '18', proYearly: '120', eliteYearly: '180', trialDays: '14' });
-  const [billing, setBilling] = useState('monthly');
+  const [billing, setBilling] = useState('yearly');
 
   useEffect(() => {
     fetch('/api/pricing').then(r => r.json()).then(setPricing).catch(() => {});
@@ -540,6 +540,8 @@ const PricingSection = () => {
     {
       name: (planDefs.pro && planDefs.pro.name) || 'Pro',
       price: billing === 'yearly' ? `$${pricing.proYearly}` : `$${pricing.pro}`,
+      monthlyEquiv: billing === 'yearly' ? `$${Math.round(pricing.proYearly / 12)}` : null,
+      originalMonthly: billing === 'yearly' ? `$${pricing.pro}` : null,
       period: billing === 'yearly' ? '/year' : '/month',
       features: (planDefs.pro && planDefs.pro.features) || ['Unlimited trades', '2 broker connections', 'CSV Import/Export', 'Strategy & rule tracking', 'Premarket prep', '1 Backtesting session'],
       accent: true,
@@ -548,6 +550,8 @@ const PricingSection = () => {
     {
       name: (planDefs.elite && planDefs.elite.name) || 'Elite',
       price: billing === 'yearly' ? `$${pricing.eliteYearly}` : `$${pricing.elite}`,
+      monthlyEquiv: billing === 'yearly' ? `$${Math.round(pricing.eliteYearly / 12)}` : null,
+      originalMonthly: billing === 'yearly' ? `$${pricing.elite}` : null,
       period: billing === 'yearly' ? '/year' : '/month',
       features: (planDefs.elite && planDefs.elite.features) || ['Everything in Pro', 'Attach and annotate screenshots', 'Unlimited broker connections', 'Custom themes', 'Unlimited Backtesting'],
       accent: false,
@@ -610,8 +614,21 @@ const PricingSection = () => {
               )}
               <h3 className="text-text-primary font-semibold text-lg">{plan.name}</h3>
               <div className="mt-4 mb-6">
-                <span className="text-text-primary font-mono text-4xl font-bold">{plan.price}</span>
-                <span className="text-text-tertiary text-sm ml-1">{plan.period}</span>
+                {plan.monthlyEquiv ? (
+                  <>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-text-tertiary text-sm line-through">{plan.originalMonthly}</span>
+                      <span className="text-text-primary font-mono text-4xl font-bold">{plan.monthlyEquiv}</span>
+                      <span className="text-text-tertiary text-sm">/mo</span>
+                    </div>
+                    <p className="text-text-muted text-xs mt-0.5">billed annually</p>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-text-primary font-mono text-4xl font-bold">{plan.price}</span>
+                    <span className="text-text-tertiary text-sm ml-1">{plan.period}</span>
+                  </>
+                )}
               </div>
               <ul className="space-y-3 flex-1">
                 {plan.features.map(feature => (
