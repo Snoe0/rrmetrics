@@ -8,6 +8,12 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
   const [activeTab, setActiveTab] = useState('brokers');
   const [tvEnvironment, setTvEnvironment] = useState('demo');
   const [tvStatus, setTvStatus] = useState(null);
+  const [tvAccounts, setTvAccounts] = useState([]);
+  const [tvAccountsLoading, setTvAccountsLoading] = useState(false);
+  const [tvShowImportPrompt, setTvShowImportPrompt] = useState(false);
+  const [tvSelectedAccount, setTvSelectedAccount] = useState(null); // number | null
+  const [tvSyncStartDate, setTvSyncStartDate] = useState('');
+  const [tvSyncEndDate, setTvSyncEndDate] = useState('');
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState(null);
@@ -62,6 +68,9 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
           setMessage({ type: 'error', text: data.error });
         } else {
           setMessage({ type: 'success', text: 'Tradovate connected successfully!' });
+          if (data.accounts) setTvAccounts(data.accounts);
+          setTvShowImportPrompt(true);
+          setExpandedBroker('tradovate');
           fetchStatus();
         }
       } catch (err) {
@@ -91,9 +100,15 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
     setSyncing(true);
     setMessage(null);
     try {
+      const body = {};
+      if (tvSelectedAccount) body.accountId = tvSelectedAccount;
+      if (tvSyncStartDate) body.startDate = tvSyncStartDate;
+      if (tvSyncEndDate) body.endDate = tvSyncEndDate;
+
       const response = await authFetch('/api/tradovate/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
       });
       const data = await response.json();
       if (data.error) {
@@ -109,6 +124,23 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
     setSyncing(false);
   };
 
+  const fetchTvAccounts = async () => {
+    setTvAccountsLoading(true);
+    try {
+      const response = await authFetch('/api/tradovate/accounts');
+      const data = await response.json();
+      if (data.accounts) setTvAccounts(data.accounts);
+    } catch (err) {
+      console.error('Failed to fetch Tradovate accounts:', err);
+    }
+    setTvAccountsLoading(false);
+  };
+
+  const handleImportNow = async () => {
+    await handleSync();
+    setTvShowImportPrompt(false);
+  };
+
   const handleDeleteCredentials = async () => {
     setMessage(null);
     try {
@@ -118,6 +150,11 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
         setMessage({ type: 'error', text: data.error });
       } else {
         setMessage({ type: 'success', text: data.message });
+        setTvAccounts([]);
+        setTvShowImportPrompt(false);
+        setTvSelectedAccount(null);
+        setTvSyncStartDate('');
+        setTvSyncEndDate('');
         fetchStatus();
       }
     } catch (err) {
@@ -318,6 +355,12 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
 
   const [expandedBroker, setExpandedBroker] = useState(null);
 
+  useEffect(() => {
+    if (expandedBroker === 'tradovate' && tvStatus?.configured && tvAccounts.length === 0) {
+      fetchTvAccounts();
+    }
+  }, [expandedBroker, tvStatus]);
+
   const toggleBroker = (id) => setExpandedBroker(expandedBroker === id ? null : id);
 
   return (
@@ -372,27 +415,210 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-warning/10 text-warning">
-                  Coming Soon
-                </div>
+                {tvStatus?.configured ? (
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-positive/10 text-positive">
+                    Connected
+                  </div>
+                ) : tvStatus?.expired ? (
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-warning/10 text-warning">
+                    Expired
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-text-secondary/10 text-text-secondary">
+                    Not Connected
+                  </div>
+                )}
                 {expandedBroker === 'tradovate' ? <Icons.ChevronUp className="w-4 h-4 text-text-secondary" /> : <Icons.ChevronDown className="w-4 h-4 text-text-secondary" />}
               </div>
             </button>
 
             {expandedBroker === 'tradovate' && (
-              <div className="px-5 pb-5 border-t border-border pt-4">
-                <div className="bg-bg-page/50 rounded-lg p-3 mb-3">
-                  <p className="text-xs text-text-secondary leading-relaxed">
-                    Direct API sync is coming soon. In the meantime, you can export your trades as a CSV from Tradovate and import them into RR Metrics.
-                  </p>
-                </div>
-                <a
-                  href="/guides/tradovate-import"
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-accent/10 text-accent text-sm font-medium rounded-lg hover:bg-accent/20 transition-colors"
-                >
-                  <Icons.FileText className="w-4 h-4" />
-                  How to Export from Tradovate (CSV)
-                </a>
+              <div className="px-5 pb-5 border-t border-border pt-4 space-y-4">
+                {subscriptionStatus && subscriptionStatus.plan !== 'pro' && subscriptionStatus.plan !== 'elite' ? (
+                  <div className="bg-accent/5 border border-accent/20 rounded-lg p-4 text-center">
+                    <p className="text-sm text-text-primary font-medium mb-1">Pro or Elite plan required</p>
+                    <p className="text-xs text-text-secondary mb-3">Broker sync is available on Pro and Elite plans.</p>
+                    <button
+                      onClick={() => window.location.href = '/upgrade'}
+                      className="px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all"
+                    >
+                      Upgrade Now
+                    </button>
+                  </div>
+                ) : !tvStatus?.configured ? (
+                  <>
+                    <div className="bg-bg-page/50 rounded-lg p-3">
+                      <p className="text-xs text-text-secondary leading-relaxed">
+                        {tvStatus?.expired
+                          ? 'Your Tradovate session has expired. Reconnect to resume automatic trade sync.'
+                          : 'Connect your Tradovate account to automatically sync your fills into RR Metrics.'}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-text-secondary mb-1">Environment</label>
+                      <select
+                        value={tvEnvironment}
+                        onChange={(e) => setTvEnvironment(e.target.value)}
+                        className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-accent"
+                      >
+                        <option value="demo">Demo</option>
+                        <option value="live">Live</option>
+                      </select>
+                    </div>
+                    <button
+                      onClick={handleConnect}
+                      disabled={saving}
+                      className="px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
+                    >
+                      {saving ? 'Connecting...' : 'Connect with Tradovate'}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className="bg-bg-page/50 rounded-lg p-3 space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-text-secondary">Environment</span>
+                        <span className="text-text-primary font-medium capitalize">{tvStatus.environment}</span>
+                      </div>
+                      {tvStatus.lastSyncTime && (
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-text-secondary">Last synced</span>
+                          <span className="text-text-primary">{new Date(tvStatus.lastSyncTime).toLocaleString()}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {tvAccountsLoading ? (
+                      <p className="text-xs text-text-secondary">Loading accounts...</p>
+                    ) : tvAccounts.length > 0 ? (
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="text-xs font-medium text-text-secondary">Account</h4>
+                          {tvSelectedAccount && (
+                            <button
+                              onClick={() => setTvSelectedAccount(null)}
+                              className="text-xs text-accent hover:underline"
+                            >
+                              All accounts
+                            </button>
+                          )}
+                        </div>
+                        <div className="space-y-1.5">
+                          {tvAccounts.map(account => {
+                            const selected = tvSelectedAccount === account.id;
+                            return (
+                              <button
+                                key={account.id}
+                                onClick={() => setTvSelectedAccount(selected ? null : account.id)}
+                                className={`w-full flex items-center justify-between rounded-lg px-3 py-2 transition-colors ${
+                                  selected
+                                    ? 'bg-accent/10 border border-accent/30'
+                                    : 'bg-bg-page/50 border border-transparent hover:border-border'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <div className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center ${
+                                    selected ? 'border-accent' : 'border-border'
+                                  }`}>
+                                    {selected && <div className="w-1.5 h-1.5 rounded-full bg-accent" />}
+                                  </div>
+                                  <span className="text-sm text-text-primary">{account.name}</span>
+                                </div>
+                                <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                  account.active ? 'bg-positive/10 text-positive' : 'bg-text-secondary/10 text-text-secondary'
+                                }`}>
+                                  {account.active ? 'Active' : 'Inactive'}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {tvShowImportPrompt ? (
+                      <div className="bg-info/5 border border-info/20 rounded-lg p-4">
+                        <p className="text-sm text-text-primary font-medium mb-1">Import historical fills?</p>
+                        <p className="text-xs text-text-secondary mb-3">
+                          Pull in all your past fills from Tradovate, or skip and only sync new trades going forward.
+                        </p>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-xs font-medium text-text-secondary mb-1">From</label>
+                            <input
+                              type="date"
+                              value={tvSyncStartDate}
+                              onChange={(e) => setTvSyncStartDate(e.target.value)}
+                              className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-xs text-text-primary focus:outline-none focus:border-accent"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-text-secondary mb-1">To</label>
+                            <input
+                              type="date"
+                              value={tvSyncEndDate}
+                              onChange={(e) => setTvSyncEndDate(e.target.value)}
+                              className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-xs text-text-primary focus:outline-none focus:border-accent"
+                            />
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={handleImportNow}
+                            disabled={syncing}
+                            className="flex-1 px-3 py-2 bg-accent text-accent-text text-xs font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
+                          >
+                            {syncing ? 'Importing...' : 'Import historical fills'}
+                          </button>
+                          <button
+                            onClick={() => setTvShowImportPrompt(false)}
+                            className="flex-1 px-3 py-2 border border-border text-text-secondary text-xs font-medium rounded-lg hover:text-text-primary transition-colors"
+                          >
+                            Skip, sync new only
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-xs font-medium text-text-secondary mb-1">From</label>
+                          <input
+                            type="date"
+                            value={tvSyncStartDate}
+                            onChange={(e) => setTvSyncStartDate(e.target.value)}
+                            className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-xs text-text-primary focus:outline-none focus:border-accent"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-text-secondary mb-1">To</label>
+                          <input
+                            type="date"
+                            value={tvSyncEndDate}
+                            onChange={(e) => setTvSyncEndDate(e.target.value)}
+                            className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-xs text-text-primary focus:outline-none focus:border-accent"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleSync}
+                          disabled={syncing}
+                          className="flex-1 px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
+                        >
+                          {syncing ? 'Syncing...' : 'Sync Now'}
+                        </button>
+                        <button
+                          onClick={handleDeleteCredentials}
+                          className="px-4 py-2 border border-border text-text-secondary text-sm font-medium rounded-lg hover:border-negative hover:text-negative transition-colors"
+                        >
+                          Disconnect
+                        </button>
+                      </div>
+                      </>
+                    )}
+                  </>
+                )}
               </div>
             )}
           </div>
