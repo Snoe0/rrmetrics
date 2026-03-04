@@ -99,6 +99,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
   const handleSync = async () => {
     setSyncing(true);
     setMessage(null);
+    let success = false;
     try {
       const body = {};
       if (tvSelectedAccount) body.accountId = tvSelectedAccount;
@@ -117,11 +118,13 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
         setMessage({ type: 'success', text: data.message });
         fetchStatus();
         if (onSyncComplete) onSyncComplete();
+        success = true;
       }
     } catch (err) {
       setMessage({ type: 'error', text: 'Sync failed' });
     }
     setSyncing(false);
+    return success;
   };
 
   const fetchTvAccounts = async () => {
@@ -137,8 +140,8 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
   };
 
   const handleImportNow = async () => {
-    await handleSync();
-    setTvShowImportPrompt(false);
+    const success = await handleSync();
+    if (success) setTvShowImportPrompt(false);
   };
 
   const handleDeleteCredentials = async () => {
@@ -359,7 +362,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
     if (expandedBroker === 'tradovate' && tvStatus?.configured && tvAccounts.length === 0) {
       fetchTvAccounts();
     }
-  }, [expandedBroker, tvStatus]);
+  }, [expandedBroker, tvStatus, tvAccounts.length]);
 
   const toggleBroker = (id) => setExpandedBroker(expandedBroker === id ? null : id);
 
