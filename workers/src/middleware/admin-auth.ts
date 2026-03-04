@@ -1,6 +1,8 @@
 import { createMiddleware } from 'hono/factory';
 import type { Env, AuthContext } from '../bindings';
 
+const ADMIN_EMAIL = 'maintainer@users.noreply.github.com';
+
 type HonoEnv = {
   Bindings: Env;
   Variables: AuthContext;
@@ -8,21 +10,13 @@ type HonoEnv = {
 
 /**
  * Admin auth middleware.
- * Checks Authorization: Bearer <ADMIN_SECRET>.
- * Returns 401 if secret is missing or wrong.
+ * Requires the logged-in Supabase user's email to match ADMIN_EMAIL.
+ * Must run AFTER the global authMiddleware which populates c.get('user').
  */
 export const requiresAdmin = createMiddleware<HonoEnv>(async (c, next) => {
-  const adminSecret = c.env.ADMIN_SECRET;
-  if (!adminSecret) {
-    return c.json({ error: 'Admin not configured.' }, 503);
-  }
-
-  const authHeader = c.req.header('Authorization');
-  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-
-  if (!token || token !== adminSecret) {
+  const user = c.get('user');
+  if (!user || user.email !== ADMIN_EMAIL) {
     return c.json({ error: 'Unauthorized.' }, 401);
   }
-
   return next();
 });
