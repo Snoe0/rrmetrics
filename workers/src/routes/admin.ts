@@ -253,11 +253,13 @@ admin.post('/api/admin/users/:id/extend', async (c) => {
 
     const subscription = await stripe.subscriptions.retrieve(profile.stripe_subscription_id);
 
-    // Use trial_end if already trialing, otherwise fall back to now
-    const base =
+    // Use trial_end if already trialing, current_period_end for active subscriptions,
+    // or fall back to now if neither is available.
+    const subAny = subscription as any;
+    const base: number =
       subscription.status === 'trialing' && subscription.trial_end
         ? subscription.trial_end
-        : Math.floor(Date.now() / 1000);
+        : (subAny.current_period_end ?? Math.floor(Date.now() / 1000));
 
     const newTrialEnd = base + months * 30 * 24 * 60 * 60;
 
