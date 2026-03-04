@@ -129,7 +129,10 @@ tradovate.post('/api/tradovate/sync', requiresLogin, async (c) => {
     startDate?: string;
     endDate?: string;
   };
-  const { accountId, startDate, endDate } = body;
+  const accountId = typeof body.accountId === 'number' && Number.isFinite(body.accountId)
+    ? body.accountId
+    : undefined;
+  const { startDate, endDate } = body;
 
   try {
     const serviceClient = createServiceClient(c.env);
@@ -158,7 +161,7 @@ tradovate.post('/api/tradovate/sync', requiresLogin, async (c) => {
 
     // Apply optional date range filter (client-side — Tradovate has no server-side filter)
     if (startDate || endDate) {
-      const start = startDate ? new Date(startDate) : null;
+      const start = startDate ? new Date(startDate + 'T00:00:00.000Z') : null;
       // endDate is inclusive — include fills up to the end of that calendar day
       const end = endDate ? new Date(endDate + 'T23:59:59.999Z') : null;
       fills = fills.filter((fill) => {
