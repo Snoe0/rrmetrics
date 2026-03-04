@@ -223,4 +223,54 @@ admin.patch('/api/admin/users/:id/subscription', async (c) => {
   }
 });
 
+// POST /api/admin/users/:id/extend
+// Body: { months: number }  (1–12)
+// Extends the user's Stripe subscription by setting trial_end to current billing date + N months.
+admin.post('/api/admin/users/:id/extend', async (c) => {
+  const supabase = createServiceClient(c.env);
+  const id = c.req.param('id');
+  const body = await c.req.json();
+  const months = Number(body.months);
+
+  if (!months || months < 1 || months > 12) {
+    return c.json({ error: 'months must be between 1 and 12.' }, 400);
+  }
+
+  try {
+    const { data: profile, error: lookupErr } = await supabase
+      .from('profiles')
+      .select('stripe_subscription_id')
+      .eq('id', id)
+      .single();
+
+    if (lookupErr || !profile) return c.json({ error: 'User not found.' }, 404);
+    if (!profile.stripe_subscription_id) {
+      return c.json({ error: 'User has no Stripe subscription to extend.' }, 400);
+    }
+
+    const stripe = getStripe(c.env);
+    if (!stripe) return c.json({ error: 'Stripe not configured.' }, 503);
+
+    const subscription = await stripe.subscriptions.retrieve(profile.stripe_subscription_id);
+
+    // Use trial_end if already trialing, otherwise current_period_end
+    const base =
+      subscription.status === 'trialing' && subscription.trial_end
+        ? subscription.trial_end
+        : subscription.current_period_end;
+
+    const newTrialEnd = base + months * 30 * 24 * 60 * 60;
+
+    await stripe.subscriptions.update(profile.stripe_subscription_id, {
+      trial_end: newTrialEnd,
+      proration_behavior: 'none',
+    });
+
+    return c.json({ ok: true, trialEnd: newTrialEnd });
+  } catch (err) {
+    console.error('admin extend subscription error:', err);
+    return c.json({ error: 'Failed to extend subscription.' }, 500);
+  }
+});
+
 export default admin;
