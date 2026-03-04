@@ -89,6 +89,7 @@ export interface UserRow {
   plan: string;
   createdAt: string;
   registrationIp: string | null;
+  stripeSubscriptionId: string | null;
 }
 
 export async function listUsers(
@@ -101,7 +102,7 @@ export async function listUsers(
 
   const { data, error, count } = await supabase
     .from('profiles')
-    .select('id, email, subscription_plan, created_at, registration_ip', { count: 'exact' })
+    .select('id, email, subscription_plan, created_at, registration_ip, stripe_subscription_id', { count: 'exact' })
     .order('created_at', { ascending: false })
     .range(from, to);
 
@@ -114,6 +115,7 @@ export async function listUsers(
       plan: r.subscription_plan || 'trial',
       createdAt: r.created_at,
       registrationIp: r.registration_ip,
+      stripeSubscriptionId: r.stripe_subscription_id,
     })),
     total: count ?? 0,
   };
