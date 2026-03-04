@@ -2,6 +2,7 @@ const React = require('react');
 const { useState, useEffect, useCallback } = React;
 const { createRoot } = require('react-dom/client');
 require('./styles/globals.css');
+const { supabase } = require('./supabase');
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
 
@@ -14,62 +15,6 @@ const adminFetch = (token, path, options = {}) => {
       ...(options.headers || {}),
     },
   });
-};
-
-// ─── Login screen ────────────────────────────────────────────────────────────
-
-const LoginScreen = ({ onLogin }) => {
-  const [secret, setSecret] = useState('');
-  const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(false);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
-    try {
-      const res = await adminFetch(secret, '/api/admin/stats');
-      if (res.status === 401 || res.status === 503) {
-        setError('Invalid admin secret.');
-        setLoading(false);
-        return;
-      }
-      if (!res.ok) {
-        setError('Server error. Check worker logs.');
-        setLoading(false);
-        return;
-      }
-      sessionStorage.setItem('adminToken', secret);
-      onLogin(secret);
-    } catch {
-      setError('Network error.');
-    }
-    setLoading(false);
-  };
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-bg-page">
-      <form onSubmit={handleSubmit} className="bg-bg-surface border border-border rounded-xl p-8 w-full max-w-sm">
-        <h1 className="text-xl font-bold text-text-primary mb-6">Admin Login</h1>
-        {error && <p className="text-negative text-sm mb-4">{error}</p>}
-        <label className="block text-sm text-text-secondary mb-2">Admin Secret</label>
-        <input
-          type="password"
-          value={secret}
-          onChange={(e) => setSecret(e.target.value)}
-          className="w-full px-4 py-3 bg-bg-input border border-border rounded-lg text-text-primary focus:outline-none focus:border-accent mb-4"
-          placeholder="Enter admin secret"
-        />
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full py-3 bg-accent text-accent-text font-semibold rounded-lg hover:brightness-110 disabled:opacity-50"
-        >
-          {loading ? 'Verifying...' : 'Enter'}
-        </button>
-      </form>
-    </div>
-  );
 };
 
 // ─── Nav ──────────────────────────────────────────────────────────────────────
@@ -536,15 +481,63 @@ const Dashboard = ({ token, onLogout }) => {
 // ─── App root ─────────────────────────────────────────────────────────────────
 
 const App = () => {
-  const [token, setToken] = useState(() => sessionStorage.getItem('adminToken') || null);
+  const [token, setToken] = useState(null);
+  const [status, setStatus] = useState('loading'); // 'loading' | 'unauthorized' | 'ready'
 
-  const handleLogin = (t) => setToken(t);
-  const handleLogout = () => {
-    sessionStorage.removeItem('adminToken');
-    setToken(null);
+  useEffect(() => {
+    let cancelled = false;
+    let authSub;
+
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session) {
+        window.location.href = '/login';
+        return;
+      }
+      const res = await adminFetch(session.access_token, '/api/admin/stats');
+      if (cancelled) return;
+      if (res.status === 401) {
+        setStatus('unauthorized');
+        return;
+      }
+      setToken(session.access_token);
+      setStatus('ready');
+    });
+
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) {
+        window.location.href = '/login';
+        return;
+      }
+      // Only update token if already verified as admin — never promote from unauthorized/loading
+      setToken((prev) => (prev !== null ? session.access_token : prev));
+    });
+    authSub = data.subscription;
+
+    return () => {
+      cancelled = true;
+      authSub?.unsubscribe();
+    };
+  }, []);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    window.location.href = '/login';
   };
 
-  if (!token) return <LoginScreen onLogin={handleLogin} />;
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-bg-page">
+        <div className="text-text-secondary text-sm">Loading...</div>
+      </div>
+    );
+  }
+  if (status === 'unauthorized') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-bg-page">
+        <div className="text-text-primary text-sm">Unauthorized. This account does not have admin access.</div>
+      </div>
+    );
+  }
   return <Dashboard token={token} onLogout={handleLogout} />;
 };
 
