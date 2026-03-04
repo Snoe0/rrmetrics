@@ -102,6 +102,7 @@ const UsersView = ({ token }) => {
   const [data, setData] = useState(null);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [managingUser, setManagingUser] = useState(null);
 
   const load = useCallback((p) => {
     setLoading(true);
@@ -131,6 +132,7 @@ const UsersView = ({ token }) => {
                 <th className="pb-2 font-medium">Plan</th>
                 <th className="pb-2 font-medium">Joined</th>
                 <th className="pb-2 font-medium">IP</th>
+                <th className="pb-2 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -140,6 +142,15 @@ const UsersView = ({ token }) => {
                   <td className="py-2">{planBadge(u.plan)}</td>
                   <td className="py-2 text-text-secondary font-mono text-xs">{new Date(u.createdAt).toLocaleDateString()}</td>
                   <td className="py-2 text-text-muted font-mono text-xs">{u.registrationIp || '—'}</td>
+                  <td className="py-2">
+                    <button
+                      type="button"
+                      onClick={() => setManagingUser(u)}
+                      className="text-xs px-3 py-1.5 border border-border rounded-lg text-text-secondary hover:text-text-primary"
+                    >
+                      Manage
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -163,6 +174,14 @@ const UsersView = ({ token }) => {
               Next
             </button>
           </div>
+          {managingUser && (
+            <ManageUserModal
+              user={managingUser}
+              token={token}
+              onClose={() => setManagingUser(null)}
+              onRefresh={() => { load(page); setManagingUser(null); }}
+            />
+          )}
         </>
       )}
     </div>
@@ -448,6 +467,125 @@ const EmailView = ({ token }) => {
           {sending ? 'Sending...' : 'Send to All Matching Users'}
         </button>
       </form>
+    </div>
+  );
+};
+
+// ─── Manage user modal ────────────────────────────────────────────────────────
+
+const PLAN_BORDER = {
+  free: 'border-border text-text-secondary',
+  pro: 'border-info text-info',
+  elite: 'border-accent text-accent',
+};
+
+const ManageUserModal = ({ user, token, onClose, onRefresh }) => {
+  const [working, setWorking] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const [months, setMonths] = useState(1);
+
+  const setPlan = async (plan) => {
+    if (plan === 'free') {
+      if (!window.confirm(`Downgrade ${user.email} to Free? This will cancel their Stripe subscription.`)) return;
+    }
+    setWorking(true);
+    setMsg(null);
+    const res = await adminFetch(token, `/api/admin/users/${user.id}/subscription`, {
+      method: 'PATCH',
+      body: JSON.stringify({ plan }),
+    });
+    const data = await res.json();
+    setWorking(false);
+    if (data.ok) {
+      setMsg(`Plan set to ${plan}.`);
+      onRefresh();
+    } else {
+      setMsg(data.error || 'Error setting plan.');
+    }
+  };
+
+  const addMonths = async () => {
+    setWorking(true);
+    setMsg(null);
+    const res = await adminFetch(token, `/api/admin/users/${user.id}/extend`, {
+      method: 'POST',
+      body: JSON.stringify({ months }),
+    });
+    const data = await res.json();
+    setWorking(false);
+    if (data.ok) {
+      const date = new Date(data.trialEnd * 1000).toLocaleDateString();
+      setMsg(`Added ${months} month(s). Next billing: ${date}`);
+    } else {
+      setMsg(data.error || 'Error extending subscription.');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
+      <div
+        className="bg-bg-surface border border-border rounded-xl p-6 w-full max-w-md shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between mb-5">
+          <div>
+            <div className="text-text-primary font-semibold text-sm">{user.email}</div>
+            <div className="text-text-muted text-xs mt-1">
+              Current plan: <span className="font-mono">{user.plan}</span>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="text-text-muted hover:text-text-primary text-xl leading-none">×</button>
+        </div>
+
+        {msg && <p className="text-sm text-accent mb-4">{msg}</p>}
+
+        <div className="mb-5">
+          <div className="text-text-secondary text-xs uppercase tracking-wider mb-3">Set Plan</div>
+          <div className="flex gap-2">
+            {['free', 'pro', 'elite'].map((p) => (
+              <button
+                key={p}
+                type="button"
+                disabled={working || user.plan === p}
+                onClick={() => setPlan(p)}
+                className={`flex-1 py-2 rounded-lg border text-sm font-semibold capitalize transition-all disabled:opacity-50 ${
+                  user.plan === p
+                    ? 'bg-accent/20 border-accent text-accent cursor-default'
+                    : `${PLAN_BORDER[p] || 'border-border text-text-secondary'} hover:brightness-110`
+                }`}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <div className="text-text-secondary text-xs uppercase tracking-wider mb-3">Add Free Months</div>
+          <div className="flex gap-2 items-center">
+            <input
+              type="number"
+              min="1"
+              max="12"
+              value={months}
+              onChange={(e) => setMonths(Math.max(1, Math.min(12, parseInt(e.target.value, 10) || 1)))}
+              className="w-20 px-3 py-2 bg-bg-input border border-border rounded-lg text-text-primary text-sm text-center"
+            />
+            <button
+              type="button"
+              disabled={working || !user.stripeSubscriptionId}
+              onClick={addMonths}
+              title={!user.stripeSubscriptionId ? 'No Stripe subscription' : undefined}
+              className="flex-1 py-2 bg-positive/20 border border-positive/40 text-positive rounded-lg text-sm font-semibold disabled:opacity-40 hover:brightness-110"
+            >
+              Add Month{months !== 1 ? 's' : ''}
+            </button>
+          </div>
+          {!user.stripeSubscriptionId && (
+            <p className="text-text-muted text-xs mt-2">No Stripe subscription — cannot extend billing period.</p>
+          )}
+        </div>
+      </div>
     </div>
   );
 };
