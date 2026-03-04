@@ -4,6 +4,12 @@ import { requiresAdmin } from '../middleware/admin-auth';
 import { createServiceClient } from '../lib/supabase';
 import * as adminDb from '../db/admin';
 import { sendEmail } from '../utils/email';
+import Stripe from 'stripe';
+
+function getStripe(env: Env): Stripe | null {
+  if (!env.STRIPE_SECRET_KEY) return null;
+  return new Stripe(env.STRIPE_SECRET_KEY);
+}
 
 type HonoEnv = {
   Bindings: Env;
@@ -165,6 +171,55 @@ admin.post('/api/admin/email/send', async (c) => {
   } catch (err) {
     console.error('admin mass email error:', err);
     return c.json({ error: 'Failed to send emails.' }, 500);
+  }
+});
+
+// ─── Subscription management ──────────────────────────────────────────────────
+
+// PATCH /api/admin/users/:id/subscription
+// Body: { plan: 'free' | 'pro' | 'elite' }
+// Downgrading to free also cancels the Stripe subscription.
+admin.patch('/api/admin/users/:id/subscription', async (c) => {
+  const supabase = createServiceClient(c.env);
+  const id = c.req.param('id');
+  const body = await c.req.json();
+  const { plan } = body;
+
+  if (!['free', 'pro', 'elite'].includes(plan)) {
+    return c.json({ error: 'plan must be free, pro, or elite.' }, 400);
+  }
+
+  try {
+    const { data: profile, error: lookupErr } = await supabase
+      .from('profiles')
+      .select('stripe_subscription_id')
+      .eq('id', id)
+      .single();
+
+    if (lookupErr || !profile) return c.json({ error: 'User not found.' }, 404);
+
+    // Cancel Stripe subscription when downgrading to free
+    if (plan === 'free' && profile.stripe_subscription_id) {
+      const stripe = getStripe(c.env);
+      if (stripe) {
+        await stripe.subscriptions.cancel(profile.stripe_subscription_id);
+      }
+    }
+
+    const { error: updateErr } = await supabase
+      .from('profiles')
+      .update({
+        subscription_plan: plan,
+        subscription_status: plan === 'free' ? 'canceled' : 'active',
+      })
+      .eq('id', id);
+
+    if (updateErr) throw updateErr;
+
+    return c.json({ ok: true, plan });
+  } catch (err) {
+    console.error('admin set subscription error:', err);
+    return c.json({ error: 'Failed to update subscription.' }, 500);
   }
 });
 
