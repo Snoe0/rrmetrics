@@ -37,6 +37,27 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChang
     setSidebarOpen(false);
   };
 
+  const handleSignOut = () => {
+    supabase.auth.signOut().then(() => { window.location.href = '/'; });
+  };
+
+  const accountMenuContent = (
+    <>
+      <a href="/upgrade" className="flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:bg-bg-input hover:text-text-primary transition-colors no-underline">
+        <Icons.Zap className="w-4 h-4" />
+        Manage Subscription
+      </a>
+      <a href="/changePass" className="flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:bg-bg-input hover:text-text-primary transition-colors no-underline">
+        <Icons.Lock className="w-4 h-4" />
+        Change Password
+      </a>
+      <button onClick={handleSignOut} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:bg-bg-input hover:text-text-primary transition-colors">
+        <Icons.LogOut className="w-4 h-4" />
+        Log Out
+      </button>
+    </>
+  );
+
   return (
     <>
       {/* Mobile hamburger */}
@@ -184,37 +205,15 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChang
               <>
                 {/* Backdrop — closes panel on outside click */}
                 <div className="fixed inset-0 z-[59]" onClick={() => setAccountOpen(false)} />
-                {/* Side panel — appears to the right of the collapsed sidebar */}
+                {/* Side panel — z-[60] sits above sidebar z-50 and backdrop z-[59] */}
                 <div className="fixed left-16 bottom-4 w-48 bg-bg-surface border border-border rounded-lg overflow-hidden shadow-lg z-[60]">
-                  <a href="/upgrade" className="flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:bg-bg-input hover:text-text-primary transition-colors no-underline">
-                    <Icons.Zap className="w-4 h-4" />
-                    Manage Subscription
-                  </a>
-                  <a href="/changePass" className="flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:bg-bg-input hover:text-text-primary transition-colors no-underline">
-                    <Icons.Lock className="w-4 h-4" />
-                    Change Password
-                  </a>
-                  <button onClick={() => { supabase.auth.signOut().then(() => { window.location = '/'; }); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:bg-bg-input hover:text-text-primary transition-colors">
-                    <Icons.LogOut className="w-4 h-4" />
-                    Log Out
-                  </button>
+                  {accountMenuContent}
                 </div>
               </>
             )}
             {accountOpen && !isCollapsed && (
               <div className="absolute bottom-full left-0 right-0 mb-1 bg-bg-surface border border-border rounded-lg overflow-hidden shadow-lg">
-                <a href="/upgrade" className="flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:bg-bg-input hover:text-text-primary transition-colors no-underline">
-                  <Icons.Zap className="w-4 h-4" />
-                  Manage Subscription
-                </a>
-                <a href="/changePass" className="flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:bg-bg-input hover:text-text-primary transition-colors no-underline">
-                  <Icons.Lock className="w-4 h-4" />
-                  Change Password
-                </a>
-                <button onClick={() => { supabase.auth.signOut().then(() => { window.location = '/'; }); }} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:bg-bg-input hover:text-text-primary transition-colors">
-                  <Icons.LogOut className="w-4 h-4" />
-                  Log Out
-                </button>
+                {accountMenuContent}
               </div>
             )}
           </div>
