@@ -79,15 +79,18 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChang
               <a
                 key={item.id}
                 href="#"
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors no-underline ${
+                title={collapsed ? item.label : undefined}
+                className={`flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition-colors no-underline ${collapsed ? 'justify-center gap-0' : 'gap-3'} ${
                   isActive
                     ? 'bg-bg-surface text-accent border-l-2 border-accent'
                     : 'text-text-secondary hover:text-text-primary hover:bg-bg-surface'
                 }`}
                 onClick={(e) => { e.preventDefault(); handleNav(item.id); }}
               >
-                <Icon className="w-5 h-5" />
-                {item.label}
+                <Icon className="w-5 h-5 flex-shrink-0" />
+                <span className={`transition-opacity duration-200 whitespace-nowrap ${collapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100'}`}>
+                  {item.label}
+                </span>
               </a>
             );
           })}
