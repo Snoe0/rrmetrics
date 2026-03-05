@@ -83,7 +83,7 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChang
         <div className={`border-b border-border flex items-center ${isCollapsed ? 'px-0 py-6 justify-center' : 'px-5 py-6'}`}>
           <a
             href="/trades"
-            className="flex items-center gap-3 no-underline"
+            className={`flex items-center no-underline ${isCollapsed ? 'gap-0' : 'gap-3'}`}
             onClick={(e) => { e.preventDefault(); handleNav('dashboard'); }}
           >
             <img src="/assets/img/logo.svg" alt="RR Metrics" className="w-8 h-8 rounded-md flex-shrink-0" />
