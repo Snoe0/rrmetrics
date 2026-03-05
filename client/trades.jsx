@@ -76,6 +76,9 @@ const App = () => {
   const [pricing, setPricing] = useState({ pro: '12', elite: '18' });
   const [strategyRules, setStrategyRules] = useState([]);
   const [sidePanelOffset, setSidePanelOffset] = useState(0);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => localStorage.getItem('sidebar-collapsed') === 'true'
+  );
   const [announcement, setAnnouncement] = useState(null);
   const [evalFilter, setEvalFilterState] = useState(() => {
     const stored = localStorage.getItem('evalFilter');
@@ -365,8 +368,13 @@ const App = () => {
     <SidePanelContext.Provider value={setSidePanelOffset}>
     <AnnouncementBanner announcement={announcement} onDismiss={handleDismissAnnouncement} />
     <div className="flex min-h-screen">
-      <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} subscriptionStatus={subscriptionStatus} />
-      <main className="flex-1 lg:ml-60 min-h-screen transition-[padding] duration-300" style={{ paddingRight: sidePanelOffset }}>
+      <Sidebar
+        currentPage={currentPage}
+        onNavigate={setCurrentPage}
+        subscriptionStatus={subscriptionStatus}
+        onCollapsedChange={setSidebarCollapsed}
+      />
+      <main className={`flex-1 min-h-screen transition-[margin] duration-300 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-60'}`} style={{ paddingRight: sidePanelOffset }}>
         <div className="p-6 lg:p-8">
           <FreeBanner subscriptionStatus={subscriptionStatus} proPrice={pricing.pro} />
           {syncNotification && (

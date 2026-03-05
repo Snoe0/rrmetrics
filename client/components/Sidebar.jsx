@@ -1,14 +1,28 @@
 const React = require('react');
-const { useState } = React;
+const { useState, useEffect } = React;
 const Icons = require('./shared/Icons');
 const { supabase } = require('../helper');
 
 // =====================================================
 // SIDEBAR
 // =====================================================
-const Sidebar = ({ currentPage, onNavigate, subscriptionStatus }) => {
+const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChange }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(
+    () => localStorage.getItem('sidebar-collapsed') === 'true'
+  );
+
+  const toggleCollapsed = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    localStorage.setItem('sidebar-collapsed', String(next));
+    if (onCollapsedChange) onCollapsedChange(next);
+  };
+
+  useEffect(() => {
+    if (onCollapsedChange) onCollapsedChange(collapsed);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Icons.Home },
