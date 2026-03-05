@@ -397,6 +397,7 @@ const App = () => {
         strategyRules={strategyRules}
         subscriptionStatus={subscriptionStatus}
         trades={trades}
+        sidebarCollapsed={sidebarCollapsed}
       />
       <CSVImportModal isOpen={csvImportOpen} onClose={() => setCsvImportOpen(false)} triggerReload={triggerReload} onDuplicatesSkipped={(n) => setToast({ message: `${n} trade${n !== 1 ? 's were' : ' was'} already in your journal and ${n !== 1 ? 'were' : 'was'} not added again.` })} />
       <Toast toast={toast} onClose={() => setToast(null)} />

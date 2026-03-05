@@ -16,7 +16,7 @@ const { TAG_COLOR_PRESETS } = require('../../utils/tagConstants');
 // TRADE FORM POPUP
 // =====================================================
 
-const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, prefillDate, tags, strategyRules, subscriptionStatus, trades }) => {
+const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, prefillDate, tags, strategyRules, subscriptionStatus, trades, sidebarCollapsed }) => {
   const [screenshot, setScreenshot] = useState(null);
   const [pastedImage, setPastedImage] = useState(null);
   const [isMarkupOpen, setIsMarkupOpen] = useState(false);
@@ -35,15 +35,16 @@ const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, prefillD
   const fileInputRef = useRef(null);
   const windowWidth = useWindowWidth();
   const isUltrawide = windowWidth >= 2000;
+  const isSidePanel = isUltrawide || (!!sidebarCollapsed && windowWidth >= 1280);
   const setSidePanelOffset = React.useContext(SidePanelContext);
   const tradeRules = strategyRules ? strategyRules.filter(r => r.type === 'trade') : [];
   const isElite = subscriptionStatus && subscriptionStatus.plan === 'elite';
   useEffect(() => {
     if (!isOpen) { setSidePanelOffset(0); return; }
-    if (isUltrawide) setSidePanelOffset(520);
+    if (isSidePanel) setSidePanelOffset(520);
     else setSidePanelOffset(0);
     return () => setSidePanelOffset(0);
-  }, [isOpen, isUltrawide, setSidePanelOffset]);
+  }, [isOpen, isSidePanel, setSidePanelOffset]);
 
   const handleQuickCreateTag = async () => {
     if (!quickTagName.trim() || creatingTag) return;
@@ -72,13 +73,13 @@ const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, prefillD
     const handleEscape = (e) => { if (e.key === 'Escape') onClose(); };
     if (isOpen) {
       document.addEventListener('keydown', handleEscape);
-      if (!isUltrawide) document.body.style.overflow = 'hidden';
+      if (!isSidePanel) document.body.style.overflow = 'hidden';
     }
     return () => {
       document.removeEventListener('keydown', handleEscape);
       document.body.style.overflow = 'unset';
     };
-  }, [isOpen, onClose, isUltrawide]);
+  }, [isOpen, onClose, isSidePanel]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -259,8 +260,8 @@ const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, prefillD
 
   return (
     <>
-      <div className={isUltrawide ? "fixed right-0 top-0 h-screen z-40 flex" : "fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"} onClick={!isUltrawide ? onClose : undefined}>
-        <div className={isUltrawide ? "w-[520px] h-full overflow-y-auto bg-bg-surface border-l border-border shadow-2xl" : "bg-bg-surface border border-border rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto"} onClick={(e) => e.stopPropagation()}>
+      <div className={isSidePanel ? "fixed right-0 top-0 h-screen z-40 flex" : "fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"} onClick={!isSidePanel ? onClose : undefined}>
+        <div className={isSidePanel ? "w-[520px] h-full overflow-y-auto bg-bg-surface border-l border-border shadow-2xl" : "bg-bg-surface border border-border rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto"} onClick={(e) => e.stopPropagation()}>
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-border sticky top-0 bg-bg-surface z-10">
             <h2 className="text-lg font-semibold text-text-primary">{isEditing ? 'Edit Trade' : 'New Trade'}</h2>
