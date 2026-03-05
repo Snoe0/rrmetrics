@@ -55,16 +55,18 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChang
       )}
 
       {/* Sidebar */}
-      <nav className={`fixed top-0 left-0 h-full w-60 bg-bg-page border-r border-border flex flex-col z-50 transition-transform duration-300 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <nav className={`fixed top-0 left-0 h-full bg-bg-page border-r border-border flex flex-col z-50 transition-[width] duration-300 overflow-hidden lg:translate-x-0 ${collapsed ? 'w-16' : 'w-60'} ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         {/* Logo */}
-        <div className="px-5 py-6 border-b border-border">
+        <div className={`border-b border-border flex items-center ${collapsed ? 'px-0 py-6 justify-center' : 'px-5 py-6'}`}>
           <a
             href="/trades"
             className="flex items-center gap-3 no-underline"
             onClick={(e) => { e.preventDefault(); handleNav('dashboard'); }}
           >
             <img src="/assets/img/logo.svg" alt="RR Metrics" className="w-8 h-8 rounded-md flex-shrink-0" />
-            <span className="text-text-primary font-semibold text-[15px] tracking-[3px] uppercase">RR Metrics</span>
+            <span className={`text-text-primary font-semibold text-[15px] tracking-[3px] uppercase transition-opacity duration-200 whitespace-nowrap ${collapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100'}`}>
+              RR Metrics
+            </span>
           </a>
         </div>
 
@@ -135,6 +137,20 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChang
             <Icons.BookOpen className="w-5 h-5" />
             Guides
           </a>
+        </div>
+
+        {/* Collapse toggle */}
+        <div className="px-3 pb-2">
+          <button
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors"
+            onClick={toggleCollapsed}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {collapsed ? <Icons.ChevronRight className="w-4 h-4" /> : <Icons.ChevronLeft className="w-4 h-4" />}
+            <span className={`text-xs transition-opacity duration-200 whitespace-nowrap ${collapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100'}`}>
+              Collapse
+            </span>
+          </button>
         </div>
 
         {/* Account section */}
