@@ -97,7 +97,7 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChang
         </div>
 
         {/* Upgrade box — show for trial and free users, not for paid */}
-        {(!subscriptionStatus || (subscriptionStatus.plan !== 'pro' && subscriptionStatus.plan !== 'elite')) && (
+        {!collapsed && (!subscriptionStatus || (subscriptionStatus.plan !== 'pro' && subscriptionStatus.plan !== 'elite')) && (
           <div className="px-4 pb-3">
             <div className="bg-bg-surface border border-border rounded-xl p-4">
               <div className="flex items-center gap-2 mb-2">
@@ -119,15 +119,18 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChang
         <div className="px-3 pb-0">
           <a
             href="#"
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors no-underline ${
+            title={collapsed ? 'Refer & Earn' : undefined}
+            className={`flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition-colors no-underline ${collapsed ? 'justify-center gap-0' : 'gap-3'} ${
               currentPage === 'referral'
                 ? 'bg-bg-surface text-accent border-l-2 border-accent'
                 : 'text-text-secondary hover:text-text-primary hover:bg-bg-surface'
             }`}
             onClick={(e) => { e.preventDefault(); handleNav('referral'); }}
           >
-            <Icons.Gift className="w-5 h-5" />
-            Refer &amp; Earn
+            <Icons.Gift className="w-5 h-5 flex-shrink-0" />
+            <span className={`transition-opacity duration-200 whitespace-nowrap ${collapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100'}`}>
+              Refer &amp; Earn
+            </span>
           </a>
         </div>
 
@@ -135,10 +138,13 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChang
         <div className="px-3 pb-2">
           <a
             href="/guides"
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors no-underline"
+            title={collapsed ? 'Guides' : undefined}
+            className={`flex items-center px-3 py-2.5 rounded-lg text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors no-underline ${collapsed ? 'justify-center gap-0' : 'gap-3'}`}
           >
-            <Icons.BookOpen className="w-5 h-5" />
-            Guides
+            <Icons.BookOpen className="w-5 h-5 flex-shrink-0" />
+            <span className={`transition-opacity duration-200 whitespace-nowrap ${collapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100'}`}>
+              Guides
+            </span>
           </a>
         </div>
 
@@ -160,14 +166,17 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChang
         <div className="px-3 pb-4 border-t border-border pt-3">
           <div className="relative">
             <button
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-text-secondary hover:bg-bg-surface transition-colors"
+              className={`w-full flex items-center px-3 py-2.5 rounded-lg text-sm text-text-secondary hover:bg-bg-surface transition-colors ${collapsed ? 'justify-center gap-0' : 'gap-3'}`}
               onClick={(e) => { e.stopPropagation(); setAccountOpen(!accountOpen); }}
+              title={collapsed ? 'Account' : undefined}
             >
               <div className="w-8 h-8 bg-bg-surface border border-border rounded-full flex items-center justify-center flex-shrink-0">
                 <Icons.User className="w-4 h-4" />
               </div>
-              <span className="flex-1 text-left text-text-primary text-sm">Account</span>
-              {accountOpen ? <Icons.ChevronUp className="w-4 h-4" /> : <Icons.ChevronDown className="w-4 h-4" />}
+              <span className={`flex-1 text-left text-text-primary text-sm transition-opacity duration-200 whitespace-nowrap ${collapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100'}`}>
+                Account
+              </span>
+              {!collapsed && (accountOpen ? <Icons.ChevronUp className="w-4 h-4" /> : <Icons.ChevronDown className="w-4 h-4" />)}
             </button>
             {accountOpen && (
               <div className="absolute bottom-full left-0 right-0 mb-1 bg-bg-surface border border-border rounded-lg overflow-hidden shadow-lg">
