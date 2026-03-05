@@ -35,7 +35,7 @@ const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, prefillD
   const fileInputRef = useRef(null);
   const windowWidth = useWindowWidth();
   const isUltrawide = windowWidth >= 2000;
-  const isSidePanel = isUltrawide || (sidebarCollapsed && windowWidth >= 1280);
+  const isSidePanel = isUltrawide || (sidebarCollapsed && windowWidth >= 1024);
   const setSidePanelOffset = React.useContext(SidePanelContext);
   const tradeRules = strategyRules ? strategyRules.filter(r => r.type === 'trade') : [];
   const isElite = subscriptionStatus && subscriptionStatus.plan === 'elite';
