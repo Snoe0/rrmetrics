@@ -11,7 +11,7 @@ const { calcPercentChange } = require("../../utils/periodUtils");
 const { SidePanelContext } = require("../../utils/contexts");
 const { useWindowWidth } = require("../../utils/hooks");
 
-const DayDetailPanel = ({ dateKey, dayData, onClose, dailyNotes, onSaveNote, onDeleteNote, tags, subscriptionStatus, strategyRules, onEditTrade }) => {
+const DayDetailPanel = ({ dateKey, dayData, onClose, dailyNotes, onSaveNote, onDeleteNote, tags, subscriptionStatus, strategyRules, onEditTrade, sidebarCollapsed }) => {
   const [expandedTrade, setExpandedTrade] = useState(null);
   const [dailyChecks, setDailyChecks] = useState([]);
   const [tradeChecksMap, setTradeChecksMap] = useState({});
@@ -23,11 +23,12 @@ const DayDetailPanel = ({ dateKey, dayData, onClose, dailyNotes, onSaveNote, onD
   const tradeRules = strategyRules ? strategyRules.filter(r => r.type === 'trade') : [];
   const windowWidth = useWindowWidth();
   const isUltrawide = windowWidth >= 2000;
+  const isSidePanel = isUltrawide || (sidebarCollapsed && windowWidth >= 1280);
   const setSidePanelOffset = React.useContext(SidePanelContext);
   useEffect(() => {
-    if (isUltrawide) setSidePanelOffset(480);
+    if (isSidePanel) setSidePanelOffset(480);
     return () => setSidePanelOffset(0);
-  }, [isUltrawide, setSidePanelOffset]);
+  }, [isSidePanel, setSidePanelOffset]);
 
   useEffect(() => {
     if (!isElite || !strategyRules || strategyRules.length === 0) return;
@@ -138,8 +139,8 @@ const DayDetailPanel = ({ dateKey, dayData, onClose, dailyNotes, onSaveNote, onD
   };
 
   return (
-    <div className={isUltrawide ? "fixed right-0 top-0 h-screen z-40 flex" : "fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"} onClick={!isUltrawide ? onClose : undefined}>
-      <div className={isUltrawide ? "w-[480px] h-full flex flex-col bg-bg-surface border-l border-border shadow-2xl" : "bg-bg-surface border border-border rounded-xl w-full max-w-lg max-h-[85vh] flex flex-col"} onClick={(e) => e.stopPropagation()}>
+    <div className={isSidePanel ? "fixed right-0 top-0 h-screen z-40 flex" : "fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"} onClick={!isSidePanel ? onClose : undefined}>
+      <div className={isSidePanel ? "w-[480px] h-full flex flex-col bg-bg-surface border-l border-border shadow-2xl" : "bg-bg-surface border border-border rounded-xl w-full max-w-lg max-h-[85vh] flex flex-col"} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <div>
@@ -336,7 +337,7 @@ const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'Ju
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-const CalendarView = ({ trades, dailyNotes, onSaveNote, onDeleteNote, tags, subscriptionStatus, strategyRules, onOpenAddTrade, onEditTrade }) => {
+const CalendarView = ({ trades, dailyNotes, onSaveNote, onDeleteNote, tags, subscriptionStatus, strategyRules, onOpenAddTrade, onEditTrade, sidebarCollapsed }) => {
   const [viewMode, setViewMode] = useState('daily'); // 'daily' | 'heatmap' | 'monthly'
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState(null);
@@ -490,6 +491,7 @@ const CalendarView = ({ trades, dailyNotes, onSaveNote, onDeleteNote, tags, subs
           subscriptionStatus={subscriptionStatus}
           strategyRules={strategyRules}
           onEditTrade={onEditTrade}
+          sidebarCollapsed={sidebarCollapsed}
         />
       )}
     </div>
