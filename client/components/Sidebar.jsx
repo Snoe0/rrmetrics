@@ -201,16 +201,6 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChang
               </span>
               {!isCollapsed && (accountOpen ? <Icons.ChevronUp className="w-4 h-4" /> : <Icons.ChevronDown className="w-4 h-4" />)}
             </button>
-            {accountOpen && isCollapsed && (
-              <>
-                {/* Backdrop — closes panel on outside click */}
-                <div className="fixed inset-0 z-[59]" onClick={() => setAccountOpen(false)} />
-                {/* Side panel — z-[60] sits above sidebar z-50 and backdrop z-[59] */}
-                <div className="fixed left-16 bottom-4 w-48 bg-bg-surface border border-border rounded-lg overflow-hidden shadow-lg z-[60]">
-                  {accountMenuContent}
-                </div>
-              </>
-            )}
             {accountOpen && !isCollapsed && (
               <div className="absolute bottom-full left-0 right-0 mb-1 bg-bg-surface border border-border rounded-lg overflow-hidden shadow-lg">
                 {accountMenuContent}
@@ -219,6 +209,18 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChang
           </div>
         </div>
       </nav>
+
+      {/* Account side panel — outside nav to escape CSS transform containing block */}
+      {accountOpen && isCollapsed && (
+        <>
+          {/* Backdrop — closes panel on outside click */}
+          <div className="fixed inset-0 z-[59]" onClick={() => setAccountOpen(false)} />
+          {/* Side panel — z-[60] sits above sidebar z-50 and backdrop z-[59] */}
+          <div className="fixed left-16 bottom-4 w-48 bg-bg-surface border border-border rounded-lg overflow-hidden shadow-lg z-[60]">
+            {accountMenuContent}
+          </div>
+        </>
+      )}
     </>
   );
 };
