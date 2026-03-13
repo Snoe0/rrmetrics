@@ -697,10 +697,10 @@ const SubscriptionManager = ({ stripeInstance, pricing, onPlanChanged }) => {
     setPreview(null);
     setChangeError(null);
     try {
-      const res = await authFetch('/api/stripe/subscription/preview', {
+      const res = await authFetch('/api/stripe/preview-plan-change', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan: planId }),
+        body: JSON.stringify({ newPlan: planId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to preview changes');
@@ -717,10 +717,10 @@ const SubscriptionManager = ({ stripeInstance, pricing, onPlanChanged }) => {
     setChangeLoading(true);
     setChangeError(null);
     try {
-      const res = await authFetch('/api/stripe/subscription/change', {
+      const res = await authFetch('/api/stripe/update-subscription', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan: selectedPlan }),
+        body: JSON.stringify({ newPlan: selectedPlan }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to change plan');
@@ -752,10 +752,10 @@ const SubscriptionManager = ({ stripeInstance, pricing, onPlanChanged }) => {
     setCancelLoading(true);
     setCancelError(null);
     try {
-      const res = await authFetch('/api/stripe/subscription/cancel', {
+      const res = await authFetch('/api/stripe/cancel-subscription', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason: cancelReason, feedback: cancelFeedback }),
+        body: JSON.stringify({ feedback: cancelReason, comment: cancelFeedback }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to cancel subscription');
@@ -771,7 +771,7 @@ const SubscriptionManager = ({ stripeInstance, pricing, onPlanChanged }) => {
   const handleResume = async () => {
     setResumeLoading(true);
     try {
-      const res = await authFetch('/api/stripe/subscription/resume', {
+      const res = await authFetch('/api/stripe/resume-subscription', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
@@ -791,14 +791,21 @@ const SubscriptionManager = ({ stripeInstance, pricing, onPlanChanged }) => {
     setPmError(null);
     try {
       // Create SetupIntent on server
-      const res = await authFetch('/api/stripe/subscription/setup-intent', { method: 'POST' });
+      const res = await authFetch('/api/stripe/setup-payment-method', { method: 'POST' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to create setup intent');
 
-      const { error: setupError } = await stripeInstance.confirmCardSetup(data.clientSecret, {
+      const { setupIntent, error: setupError } = await stripeInstance.confirmCardSetup(data.clientSecret, {
         payment_method: { card: pmCardElRef.current },
       });
       if (setupError) throw new Error(setupError.message);
+
+      // Set the new payment method as default on subscription and customer
+      await authFetch('/api/stripe/confirm-payment-method', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentMethodId: setupIntent.payment_method }),
+      });
 
       setShowPMModal(false);
       await fetchSubscription();
@@ -842,25 +849,29 @@ const SubscriptionManager = ({ stripeInstance, pricing, onPlanChanged }) => {
     );
   }
 
-  if (!sub) return null;
+  if (!sub || !sub.subscription) return null;
 
-  const isElite = sub.plan === 'elite';
+  const subscription = sub.subscription;
+  const paymentMethod = sub.paymentMethod;
+  const upcomingInvoice = sub.upcomingInvoice;
+
+  const isElite = subscription.plan === 'elite';
   const planColor = isElite ? 'text-yellow-400' : 'text-accent';
   const planBorderColor = isElite ? 'border-yellow-500/30' : 'border-accent/30';
   const planBgColor = isElite ? 'bg-yellow-500/5' : 'bg-accent/5';
 
   // Build plan options for change plan section
   const planOptions = [];
-  if (sub.plan !== 'pro' || sub.billingInterval !== 'month') {
+  if (subscription.plan !== 'pro' || subscription.billingInterval !== 'month') {
     planOptions.push({ id: 'pro', label: `Pro Monthly — $${pricing.pro}/mo` });
   }
-  if (sub.plan !== 'pro' || sub.billingInterval !== 'year') {
+  if (subscription.plan !== 'pro' || subscription.billingInterval !== 'year') {
     planOptions.push({ id: 'pro_yearly', label: `Pro Yearly — $${pricing.proYearly}/yr` });
   }
-  if (sub.plan !== 'elite' || sub.billingInterval !== 'month') {
+  if (subscription.plan !== 'elite' || subscription.billingInterval !== 'month') {
     planOptions.push({ id: 'elite', label: `Elite Monthly — $${pricing.elite}/mo` });
   }
-  if (sub.plan !== 'elite' || sub.billingInterval !== 'year') {
+  if (subscription.plan !== 'elite' || subscription.billingInterval !== 'year') {
     planOptions.push({ id: 'elite_yearly', label: `Elite Yearly — $${pricing.eliteYearly}/yr` });
   }
 
@@ -872,46 +883,42 @@ const SubscriptionManager = ({ stripeInstance, pricing, onPlanChanged }) => {
           <div className="flex items-center gap-2">
             {isElite ? <Icons.Zap className="w-5 h-5 text-yellow-400" /> : <Icons.CheckCircle className="w-5 h-5 text-accent" />}
             <h2 className="text-text-primary font-semibold text-lg">
-              {sub.plan.charAt(0).toUpperCase() + sub.plan.slice(1)} Plan
+              {subscription.plan.charAt(0).toUpperCase() + subscription.plan.slice(1)} Plan
             </h2>
           </div>
           <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-            sub.cancelAtPeriodEnd
+            subscription.cancelAtPeriodEnd
               ? 'bg-yellow-500/15 text-yellow-500'
-              : sub.status === 'active'
+              : subscription.status === 'active'
                 ? 'bg-positive/15 text-positive'
                 : 'bg-negative/15 text-negative'
           }`}>
-            {sub.cancelAtPeriodEnd ? 'Canceling' : sub.status === 'active' ? 'Active' : sub.status}
+            {subscription.cancelAtPeriodEnd ? 'Canceling' : subscription.status === 'active' ? 'Active' : subscription.status}
           </span>
         </div>
 
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
             <p className="text-text-tertiary text-xs uppercase tracking-wider mb-1">Billing</p>
-            <p className="text-text-primary">{sub.billingInterval === 'year' ? 'Yearly' : 'Monthly'}</p>
+            <p className="text-text-primary">{subscription.billingInterval === 'year' ? 'Yearly' : 'Monthly'}</p>
           </div>
           <div>
             <p className="text-text-tertiary text-xs uppercase tracking-wider mb-1">Amount</p>
-            <p className="text-text-primary font-mono">{formatCurrency(sub.amount, sub.currency)}/{sub.billingInterval === 'year' ? 'yr' : 'mo'}</p>
+            <p className="text-text-primary font-mono">
+              {upcomingInvoice ? `${formatCurrency(upcomingInvoice.amountDue, upcomingInvoice.currency)}/${subscription.billingInterval === 'year' ? 'yr' : 'mo'}` : '—'}
+            </p>
           </div>
           <div>
             <p className="text-text-tertiary text-xs uppercase tracking-wider mb-1">
-              {sub.cancelAtPeriodEnd ? 'Access Until' : 'Next Billing'}
+              {subscription.cancelAtPeriodEnd ? 'Access Until' : 'Next Billing'}
             </p>
             <p className="text-text-primary">
-              {sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '—'}
+              {subscription.currentPeriodEnd ? new Date(subscription.currentPeriodEnd * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '—'}
             </p>
           </div>
-          {sub.discount && (
-            <div>
-              <p className="text-text-tertiary text-xs uppercase tracking-wider mb-1">Discount</p>
-              <p className="text-positive text-sm">{sub.discount}</p>
-            </div>
-          )}
         </div>
 
-        {sub.cancelAtPeriodEnd && (
+        {subscription.cancelAtPeriodEnd && (
           <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Icons.AlertCircle className="w-4 h-4 text-yellow-500 flex-shrink-0" />
@@ -929,7 +936,7 @@ const SubscriptionManager = ({ stripeInstance, pricing, onPlanChanged }) => {
       </div>
 
       {/* ── Change Plan ── */}
-      {!sub.cancelAtPeriodEnd && planOptions.length > 0 && (
+      {!subscription.cancelAtPeriodEnd && planOptions.length > 0 && (
         <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
           <button
             onClick={() => { setShowChangePlan(!showChangePlan); setSelectedPlan(null); setPreview(null); setChangeError(null); }}
@@ -1012,15 +1019,22 @@ const SubscriptionManager = ({ stripeInstance, pricing, onPlanChanged }) => {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-text-primary font-medium text-sm mb-1">Payment Method</p>
-            {sub.paymentMethod ? (
-              <p className="text-text-secondary text-sm">
-                {CARD_BRANDS[sub.paymentMethod.brand] || sub.paymentMethod.brand} ending in {sub.paymentMethod.last4}
-                {sub.paymentMethod.expMonth && (
-                  <span className="text-text-tertiary ml-2">
-                    Exp {String(sub.paymentMethod.expMonth).padStart(2, '0')}/{sub.paymentMethod.expYear}
+            {paymentMethod ? (
+              <div>
+                <p className="text-text-secondary text-sm">
+                  {CARD_BRANDS[paymentMethod.brand] || paymentMethod.brand} ending in {paymentMethod.last4}
+                  {paymentMethod.expMonth && (
+                    <span className="text-text-tertiary ml-2">
+                      Exp {String(paymentMethod.expMonth).padStart(2, '0')}/{paymentMethod.expYear}
+                    </span>
+                  )}
+                </p>
+                {paymentMethod.isExpired && (
+                  <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-negative/15 text-negative">
+                    <Icons.AlertCircle className="w-3 h-3" /> Expired
                   </span>
                 )}
-              </p>
+              </div>
             ) : (
               <p className="text-text-tertiary text-sm">No payment method on file</p>
             )}
@@ -1083,7 +1097,7 @@ const SubscriptionManager = ({ stripeInstance, pricing, onPlanChanged }) => {
       )}
 
       {/* ── Cancel Subscription ── */}
-      {!sub.cancelAtPeriodEnd && (
+      {!subscription.cancelAtPeriodEnd && (
         <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
           <button
             onClick={() => { setShowCancel(!showCancel); setCancelError(null); }}
@@ -1161,9 +1175,9 @@ const SubscriptionManager = ({ stripeInstance, pricing, onPlanChanged }) => {
                 <div key={inv.id} className="flex items-center justify-between py-2.5 text-sm">
                   <div>
                     <span className="text-text-primary">
-                      {new Date(inv.created * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      {new Date(inv.date * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                     </span>
-                    <span className="text-text-tertiary ml-2">{formatCurrency(inv.amountPaid, inv.currency)}</span>
+                    <span className="text-text-tertiary ml-2">{formatCurrency(inv.amount, inv.currency)}</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <span className={`text-xs px-2 py-0.5 rounded-full ${
@@ -1171,9 +1185,9 @@ const SubscriptionManager = ({ stripeInstance, pricing, onPlanChanged }) => {
                     }`}>
                       {inv.status}
                     </span>
-                    {inv.invoicePdf && (
+                    {inv.pdfUrl && (
                       <a
-                        href={inv.invoicePdf}
+                        href={inv.pdfUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-accent text-xs hover:underline"
