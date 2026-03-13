@@ -3,6 +3,7 @@ import type { Env, AuthContext } from '../bindings';
 import { requiresAdmin } from '../middleware/admin-auth';
 import { createServiceClient } from '../lib/supabase';
 import * as adminDb from '../db/admin';
+import * as commissionsDb from '../db/commissions';
 import { sendEmail } from '../utils/email';
 import Stripe from 'stripe';
 
@@ -272,6 +273,21 @@ admin.post('/api/admin/users/:id/extend', async (c) => {
   } catch (err) {
     console.error('admin extend subscription error:', err);
     return c.json({ error: 'Failed to extend subscription.' }, 500);
+  }
+});
+
+// ─── Payout management ────────────────────────────────────────────────────────
+
+// GET /api/admin/payouts?status=pending_approval
+admin.get('/api/admin/payouts', async (c) => {
+  const supabase = createServiceClient(c.env);
+  const statusFilter = c.req.query('status');
+  try {
+    const payouts = await commissionsDb.listPendingPayouts(supabase, statusFilter);
+    return c.json({ payouts });
+  } catch (err) {
+    console.error('admin payouts list error:', err);
+    return c.json({ error: 'Failed to fetch payouts.' }, 500);
   }
 });
 

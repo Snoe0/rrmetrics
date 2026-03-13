@@ -25,6 +25,7 @@ const NAV_ITEMS = [
   { key: 'suspicious', label: 'Suspicious IPs' },
   { key: 'announcements', label: 'Announcements' },
   { key: 'email', label: 'Mass Email' },
+  { key: 'payouts', label: 'Payouts' },
 ];
 
 const Nav = ({ view, setView, onLogout }) => (
@@ -471,6 +472,109 @@ const EmailView = ({ token }) => {
   );
 };
 
+// ─── Payouts view ─────────────────────────────────────────────────────────────
+
+const PAYOUT_STATUS_STYLES = {
+  pending_transfer: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/40',
+  completed: 'bg-positive/20 text-positive border-positive/40',
+  failed: 'bg-negative/20 text-negative border-negative/40',
+};
+
+const PAYOUT_STATUS_LABELS = {
+  pending_transfer: 'Pending Transfer',
+  completed: 'Completed',
+  failed: 'Failed',
+};
+
+const PayoutsView = ({ token }) => {
+  const [payouts, setPayouts] = useState([]);
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback((status) => {
+    setLoading(true);
+    const qs = status === 'all' ? '' : `?status=${status}`;
+    adminFetch(token, `/api/admin/payouts${qs}`)
+      .then((r) => r.json())
+      .then((d) => { setPayouts(d.payouts || []); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [token]);
+
+  useEffect(() => { load(statusFilter); }, [statusFilter, load]);
+
+  const filters = [
+    { value: 'all', label: 'All' },
+    { value: 'pending_transfer', label: 'Pending Transfer' },
+    { value: 'completed', label: 'Completed' },
+    { value: 'failed', label: 'Failed' },
+  ];
+
+  return (
+    <div className="p-8">
+      <h2 className="text-lg font-bold text-text-primary mb-4">Payout History</h2>
+
+      {/* Filter bar */}
+      <div className="flex gap-2 mb-6">
+        {filters.map((f) => (
+          <button
+            key={f.value}
+            type="button"
+            onClick={() => setStatusFilter(f.value)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              statusFilter === f.value
+                ? 'bg-accent text-accent-text'
+                : 'bg-bg-surface border border-border text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {loading && <div className="text-text-secondary">Loading...</div>}
+
+      {!loading && payouts.length === 0 && (
+        <div className="text-text-muted text-sm">No payout requests found.</div>
+      )}
+
+      {!loading && payouts.length > 0 && (
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="text-left text-text-muted border-b border-border">
+              <th className="pb-3 font-medium pr-4">Date</th>
+              <th className="pb-3 font-medium pr-4">User</th>
+              <th className="pb-3 font-medium pr-4">Amount</th>
+              <th className="pb-3 font-medium pr-4">Status</th>
+              <th className="pb-3 font-medium">Transfer ID</th>
+            </tr>
+          </thead>
+          <tbody>
+            {payouts.map((p) => (
+              <tr key={p.id} className="border-b border-border/50 hover:bg-bg-surface/50">
+                <td className="py-3 pr-4 text-text-secondary font-mono text-xs">
+                  {new Date(p.created_at).toLocaleDateString()}
+                </td>
+                <td className="py-3 pr-4 text-text-primary text-xs">{p.email}</td>
+                <td className="py-3 pr-4 text-text-primary font-mono font-semibold">
+                  ${(p.amount_cents / 100).toFixed(2)}
+                </td>
+                <td className="py-3 pr-4">
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${PAYOUT_STATUS_STYLES[p.status] || 'border-border text-text-secondary'}`}>
+                    {PAYOUT_STATUS_LABELS[p.status] || p.status}
+                  </span>
+                </td>
+                <td className="py-3 text-text-muted font-mono text-xs">
+                  {p.stripe_transfer_id || '—'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+};
+
 // ─── Manage user modal ────────────────────────────────────────────────────────
 
 const PLAN_BORDER = {
@@ -602,6 +706,7 @@ const Dashboard = ({ token, onLogout }) => {
       case 'suspicious': return <SuspiciousView token={token} />;
       case 'announcements': return <AnnouncementsView token={token} />;
       case 'email': return <EmailView token={token} />;
+      case 'payouts': return <PayoutsView token={token} />;
       default: return null;
     }
   };
