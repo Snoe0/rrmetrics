@@ -11,7 +11,8 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
   const [tvAccounts, setTvAccounts] = useState([]);
   const [tvAccountsLoading, setTvAccountsLoading] = useState(false);
   const [tvShowImportPrompt, setTvShowImportPrompt] = useState(false);
-  const [tvSelectedAccount, setTvSelectedAccount] = useState(null); // number | null
+  const [tvSelectedAccounts, setTvSelectedAccounts] = useState([]); // rows checked for bulk action
+  const [tvEnabledAccounts, setTvEnabledAccounts] = useState([]); // accounts enabled for sync (Active)
   const [tvSyncStartDate, setTvSyncStartDate] = useState('');
   const [tvSyncEndDate, setTvSyncEndDate] = useState('');
   const [saving, setSaving] = useState(false);
@@ -68,7 +69,10 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
           setMessage({ type: 'error', text: data.error });
         } else {
           setMessage({ type: 'success', text: 'Tradovate connected successfully!' });
-          if (data.accounts) setTvAccounts(data.accounts);
+          if (data.accounts) {
+            setTvAccounts(data.accounts);
+            setTvEnabledAccounts(data.accounts.map(a => a.id));
+          }
           setTvShowImportPrompt(true);
           setExpandedBroker('tradovate');
           fetchStatus();
@@ -96,15 +100,19 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
     window.location.href = `/api/tradovate/connect?environment=${tvEnvironment}`;
   };
 
-  const handleSync = async () => {
+  const handleSync = async ({ useDateRange = false } = {}) => {
     setSyncing(true);
     setMessage(null);
     let success = false;
     try {
       const body = {};
-      if (tvSelectedAccount) body.accountId = tvSelectedAccount;
-      if (tvSyncStartDate) body.startDate = tvSyncStartDate;
-      if (tvSyncEndDate) body.endDate = tvSyncEndDate;
+      if (tvEnabledAccounts.length > 0 && tvEnabledAccounts.length < tvAccounts.length) {
+        body.accountIds = tvEnabledAccounts;
+      }
+      if (useDateRange) {
+        if (tvSyncStartDate) body.startDate = tvSyncStartDate;
+        if (tvSyncEndDate) body.endDate = tvSyncEndDate;
+      }
 
       const response = await authFetch('/api/tradovate/sync', {
         method: 'POST',
@@ -132,15 +140,26 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
     try {
       const response = await authFetch('/api/tradovate/accounts');
       const data = await response.json();
-      if (data.accounts) setTvAccounts(data.accounts);
+      if (data.accounts) {
+        setTvAccounts(data.accounts);
+        setTvEnabledAccounts(data.accounts.map(a => a.id));
+      }
     } catch (err) {
       console.error('Failed to fetch Tradovate accounts:', err);
     }
     setTvAccountsLoading(false);
   };
 
-  const handleImportNow = async () => {
-    const success = await handleSync();
+  const handleImportNow = async (todayOnly = false) => {
+    if (todayOnly) {
+      const today = new Date().toISOString().split('T')[0];
+      setTvSyncStartDate(today);
+      setTvSyncEndDate(today);
+    } else {
+      setTvSyncStartDate('');
+      setTvSyncEndDate('');
+    }
+    const success = await handleSync({ useDateRange: todayOnly });
     if (success) setTvShowImportPrompt(false);
   };
 
@@ -155,7 +174,8 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
         setMessage({ type: 'success', text: data.message });
         setTvAccounts([]);
         setTvShowImportPrompt(false);
-        setTvSelectedAccount(null);
+        setTvSelectedAccounts([]);
+        setTvEnabledAccounts([]);
         setTvSyncStartDate('');
         setTvSyncEndDate('');
         fetchStatus();
@@ -163,6 +183,16 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
     } catch (err) {
       setMessage({ type: 'error', text: 'Failed to delete credentials' });
     }
+  };
+
+  const handleEnableSelected = () => {
+    setTvEnabledAccounts(prev => [...new Set([...prev, ...tvSelectedAccounts])]);
+    setTvSelectedAccounts([]);
+  };
+
+  const handleDisableSelected = () => {
+    setTvEnabledAccounts(prev => prev.filter(id => !tvSelectedAccounts.includes(id)));
+    setTvSelectedAccounts([]);
   };
 
   const fetchPxStatus = async () => {
@@ -496,43 +526,61 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                     ) : tvAccounts.length > 0 ? (
                       <div>
                         <div className="flex items-center justify-between mb-2">
-                          <h4 className="text-xs font-medium text-text-secondary">Account</h4>
-                          {tvSelectedAccount && (
-                            <button
-                              onClick={() => setTvSelectedAccount(null)}
-                              className="text-xs text-accent hover:underline"
-                            >
-                              All accounts
-                            </button>
+                          <h4 className="text-xs font-medium text-text-secondary">Accounts</h4>
+                          {tvSelectedAccounts.length > 0 && (
+                            <div className="flex gap-1">
+                              <button
+                                onClick={handleEnableSelected}
+                                className="text-xs px-2 py-0.5 rounded bg-positive/10 text-positive hover:bg-positive/20 transition-colors"
+                              >
+                                Enable
+                              </button>
+                              <button
+                                onClick={handleDisableSelected}
+                                className="text-xs px-2 py-0.5 rounded bg-text-secondary/10 text-text-secondary hover:bg-text-secondary/20 transition-colors"
+                              >
+                                Disable
+                              </button>
+                            </div>
                           )}
                         </div>
                         <div className="space-y-1.5">
                           {tvAccounts.map(account => {
-                            const selected = tvSelectedAccount === account.id;
+                            const selected = tvSelectedAccounts.includes(account.id);
+                            const enabled = tvEnabledAccounts.includes(account.id);
                             return (
-                              <button
+                              <label
                                 key={account.id}
-                                onClick={() => setTvSelectedAccount(selected ? null : account.id)}
-                                className={`w-full flex items-center justify-between rounded-lg px-3 py-2 transition-colors ${
+                                className={`flex items-center gap-3 rounded-lg px-3 py-2 cursor-pointer transition-colors border ${
                                   selected
-                                    ? 'bg-accent/10 border border-accent/30'
-                                    : 'bg-bg-page/50 border border-transparent hover:border-border'
+                                    ? 'bg-accent/10 border-accent/30'
+                                    : 'bg-bg-page/50 border-border hover:border-border/80'
                                 }`}
                               >
-                                <div className="flex items-center gap-2">
-                                  <div className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center ${
-                                    selected ? 'border-accent' : 'border-border'
-                                  }`}>
-                                    {selected && <div className="w-1.5 h-1.5 rounded-full bg-accent" />}
-                                  </div>
-                                  <span className="text-sm text-text-primary">{account.name}</span>
-                                </div>
-                                <span className={`text-xs px-2 py-0.5 rounded-full ${
-                                  account.active ? 'bg-positive/10 text-positive' : 'bg-text-secondary/10 text-text-secondary'
+                                <input
+                                  type="checkbox"
+                                  checked={selected}
+                                  onChange={() => setTvSelectedAccounts(prev =>
+                                    selected ? prev.filter(id => id !== account.id) : [...prev, account.id]
+                                  )}
+                                  className="sr-only"
+                                />
+                                <div className={`w-4 h-4 rounded flex-shrink-0 flex items-center justify-center border transition-colors ${
+                                  selected ? 'bg-accent border-accent' : 'border-border bg-bg-input'
                                 }`}>
-                                  {account.active ? 'Active' : 'Inactive'}
+                                  {selected && (
+                                    <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                                      <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                    </svg>
+                                  )}
+                                </div>
+                                <span className="text-sm text-text-primary flex-1">{account.name}</span>
+                                <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                  enabled ? 'bg-positive/10 text-positive' : 'bg-text-secondary/10 text-text-secondary'
+                                }`}>
+                                  {enabled ? 'Active' : 'Inactive'}
                                 </span>
-                              </button>
+                              </label>
                             );
                           })}
                         </div>
@@ -541,71 +589,31 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
 
                     {tvShowImportPrompt ? (
                       <div className="bg-info/5 border border-info/20 rounded-lg p-4">
-                        <p className="text-sm text-text-primary font-medium mb-1">Import historical fills?</p>
+                        <p className="text-sm text-text-primary font-medium mb-1">Import trades</p>
                         <p className="text-xs text-text-secondary mb-3">
-                          Pull in all your past fills from Tradovate, or skip and only sync new trades going forward.
+                          Import all your past fills from Tradovate, or just today's trades.
                         </p>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="block text-xs font-medium text-text-secondary mb-1">From</label>
-                            <input
-                              type="date"
-                              value={tvSyncStartDate}
-                              onChange={(e) => setTvSyncStartDate(e.target.value)}
-                              className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-xs text-text-primary focus:outline-none focus:border-accent"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-text-secondary mb-1">To</label>
-                            <input
-                              type="date"
-                              value={tvSyncEndDate}
-                              onChange={(e) => setTvSyncEndDate(e.target.value)}
-                              className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-xs text-text-primary focus:outline-none focus:border-accent"
-                            />
-                          </div>
-                        </div>
                         <div className="flex gap-2">
                           <button
-                            onClick={handleImportNow}
+                            onClick={() => handleImportNow(false)}
                             disabled={syncing}
                             className="flex-1 px-3 py-2 bg-accent text-accent-text text-xs font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
                           >
-                            {syncing ? 'Importing...' : 'Import historical fills'}
+                            {syncing ? 'Importing...' : 'Import all trades'}
                           </button>
                           <button
-                            onClick={() => setTvShowImportPrompt(false)}
-                            className="flex-1 px-3 py-2 border border-border text-text-secondary text-xs font-medium rounded-lg hover:text-text-primary transition-colors"
+                            onClick={() => handleImportNow(true)}
+                            disabled={syncing}
+                            className="flex-1 px-3 py-2 border border-border text-text-secondary text-xs font-medium rounded-lg hover:text-text-primary transition-colors disabled:opacity-50"
                           >
-                            Skip, sync new only
+                            {syncing ? 'Importing...' : "Import today's trades"}
                           </button>
                         </div>
                       </div>
                     ) : (
-                      <>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="block text-xs font-medium text-text-secondary mb-1">From</label>
-                          <input
-                            type="date"
-                            value={tvSyncStartDate}
-                            onChange={(e) => setTvSyncStartDate(e.target.value)}
-                            className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-xs text-text-primary focus:outline-none focus:border-accent"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-text-secondary mb-1">To</label>
-                          <input
-                            type="date"
-                            value={tvSyncEndDate}
-                            onChange={(e) => setTvSyncEndDate(e.target.value)}
-                            className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-xs text-text-primary focus:outline-none focus:border-accent"
-                          />
-                        </div>
-                      </div>
                       <div className="flex gap-2">
                         <button
-                          onClick={handleSync}
+                          onClick={() => handleSync()}
                           disabled={syncing}
                           className="flex-1 px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
                         >
@@ -618,7 +626,6 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                           Disconnect
                         </button>
                       </div>
-                      </>
                     )}
                   </>
                 )}
@@ -1054,22 +1061,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
               {subscriptionStatus && subscriptionStatus.isPremium ? (
                 <button
                   className="flex items-center gap-2 px-4 py-2.5 bg-bg-input border border-border text-text-primary text-sm font-semibold rounded-lg hover:border-accent transition-all"
-                  onClick={async () => {
-                    try {
-                      const response = await authFetch('/api/stripe/billing-portal', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                      });
-                      const data = await response.json();
-                      if (data.url) {
-                        window.location.href = data.url;
-                      } else if (data.error) {
-                        alert(data.error);
-                      }
-                    } catch (err) {
-                      console.error('Failed to open billing portal:', err);
-                    }
-                  }}
+                  onClick={() => { window.location.href = '/upgrade'; }}
                 >
                   <Icons.Settings className="w-4 h-4" />
                   Manage Subscription
