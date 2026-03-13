@@ -140,15 +140,21 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
     setCouponError(null);
     try {
       const res = await authFetch(`/api/stripe/validate-coupon?code=${encodeURIComponent(code)}`);
-      const data = await res.json();
+      let data;
+      try {
+        data = await res.json();
+      } catch {
+        setCouponError('Server returned an unexpected response. Please try again.');
+        return;
+      }
       if (!res.ok) {
         setCouponError(data.error || 'Invalid coupon code.');
       } else {
         setAppliedCoupon(data);
         setCouponCode('');
       }
-    } catch {
-      setCouponError('Failed to validate coupon.');
+    } catch (err) {
+      setCouponError(err?.message || 'Network error. Please check your connection and try again.');
     } finally {
       setCouponLoading(false);
     }
@@ -190,7 +196,12 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
       const res = await authFetch('/api/stripe/create-subscription', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan: plan.id, promoCodeId: appliedCoupon?.id || null, hasReferral: !appliedCoupon && appliedReferral }),
+        body: JSON.stringify({
+          plan: plan.id,
+          promoCodeId: appliedCoupon && !appliedCoupon.isCouponId ? appliedCoupon.id : null,
+          couponId: appliedCoupon?.isCouponId ? appliedCoupon.id : null,
+          hasReferral: !appliedCoupon && appliedReferral,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -199,26 +210,44 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
         return;
       }
 
-      // 2. Confirm the payment with the card element and billing details
-      const { error: confirmError, paymentIntent } = await stripeInstance.confirmCardPayment(
-        data.clientSecret,
-        {
-          payment_method: {
-            card: cardEl,
-            billing_details: {
-              name: fullName,
-              email,
-              address: {
-                line1: addressLine1,
-                city,
-                state: stateProvince,
-                postal_code: postalCode,
-                country,
-              },
-            },
+      // $0 invoice — subscription is already active, no payment confirmation needed
+      if (data.status === 'complete') {
+        onSuccess(plan.id);
+        return;
+      }
+
+      // 2. Create a PaymentMethod from the card element
+      const { error: pmError, paymentMethod } = await stripeInstance.createPaymentMethod({
+        type: 'card',
+        card: cardEl,
+        billing_details: {
+          name: fullName,
+          email,
+          address: {
+            line1: addressLine1,
+            city,
+            state: stateProvince,
+            postal_code: postalCode,
+            country,
           },
         },
-      );
+      });
+
+      if (pmError) {
+        setCardError(pmError.message);
+        setSubmitting(false);
+        return;
+      }
+
+      // 3. Confirm the payment using the confirmation secret (Stripe v20+ flow)
+      const { error: confirmError, paymentIntent } = await stripeInstance.confirmPayment({
+        clientSecret: data.clientSecret,
+        confirmParams: {
+          payment_method: paymentMethod.id,
+          return_url: window.location.href,
+        },
+        redirect: 'if_required',
+      });
 
       if (confirmError) {
         setCardError(confirmError.message);
@@ -226,7 +255,13 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
         return;
       }
 
-      if (paymentIntent.status === 'succeeded') {
+      if (paymentIntent && paymentIntent.status === 'succeeded') {
+        // Confirm subscription is active and update the database
+        await authFetch('/api/stripe/confirm-subscription', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subscriptionId: data.subscriptionId }),
+        });
         onSuccess(plan.id);
       }
     } catch (err) {
@@ -388,97 +423,131 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
             </div>
 
             {/* Referral code */}
-            {!plan.id.endsWith('_yearly') && (
-              referralChecking ? null : !appliedReferral ? (
-                <div className="mb-4">
-                  <label className={labelClass}>
-                    Referral Code
-                    <span className="ml-2 normal-case text-positive font-normal text-[11px]">Get 15% off your first month!</span>
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="RRM-XXXXXX"
-                      value={referralCode}
-                      onChange={(e) => { setReferralCode(e.target.value.toUpperCase()); setReferralError(null); }}
-                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleApplyReferral(); } }}
-                      className={`${inputClass} flex-1 font-mono`}
-                    />
-                    <button
-                      type="button"
-                      onClick={handleApplyReferral}
-                      disabled={!referralCode.trim() || referralLoading}
-                      className="px-4 py-[11px] text-sm font-medium bg-bg-input border border-border rounded-lg text-text-secondary hover:text-text-primary hover:border-accent/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
-                    >
-                      {referralLoading ? '...' : 'Apply'}
-                    </button>
-                  </div>
-                  {referralError && (
-                    <p className="text-negative text-xs mt-1.5">{referralError}</p>
-                  )}
+            {referralChecking ? null : !appliedReferral ? (
+              <div className="mb-4">
+                <label className={labelClass}>
+                  Referral Code
+                  <span className="ml-2 normal-case text-positive font-normal text-[11px]">Get 15% off your first month!</span>
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="RRM-XXXXXX"
+                    value={referralCode}
+                    onChange={(e) => { setReferralCode(e.target.value.toUpperCase()); setReferralError(null); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleApplyReferral(); } }}
+                    className={`${inputClass} flex-1 font-mono`}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleApplyReferral}
+                    disabled={!referralCode.trim() || referralLoading}
+                    className="px-4 py-[11px] text-sm font-medium bg-bg-input border border-border rounded-lg text-text-secondary hover:text-text-primary hover:border-accent/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                  >
+                    {referralLoading ? '...' : 'Apply'}
+                  </button>
                 </div>
-              ) : (
-                <div className="mb-4">
-                  <label className={labelClass}>Referral Code</label>
-                  <div className="flex items-center justify-between bg-positive/10 border border-positive/30 rounded-lg px-3 py-2.5">
-                    <div className="flex items-center gap-2">
-                      <Icons.Check className="w-4 h-4 text-positive flex-shrink-0" />
-                      <span className="text-positive text-sm font-medium">15% referral discount applied</span>
-                    </div>
+                {referralError && (
+                  <p className="text-negative text-xs mt-1.5">{referralError}</p>
+                )}
+              </div>
+            ) : (
+              <div className="mb-4">
+                <label className={labelClass}>Referral Code</label>
+                <div className="flex items-center justify-between bg-positive/10 border border-positive/30 rounded-lg px-3 py-2.5">
+                  <div className="flex items-center gap-2">
+                    <Icons.Check className="w-4 h-4 text-positive flex-shrink-0" />
+                    <span className="text-positive text-sm font-medium">15% referral discount applied</span>
                   </div>
                 </div>
-              )
+              </div>
             )}
 
             {/* Coupon code */}
-            {!plan.id.endsWith('_yearly') && (
-              <div className="mb-4">
-                <label className={labelClass}>Coupon code</label>
-                {appliedCoupon ? (
-                  <div className="flex items-center justify-between bg-positive/10 border border-positive/30 rounded-lg px-3 py-2.5">
-                    <div className="flex items-center gap-2">
-                      <Icons.Check className="w-4 h-4 text-positive flex-shrink-0" />
-                      <span className="text-positive text-sm font-medium">{appliedCoupon.display}</span>
-                    </div>
+            <div className="mb-4">
+              <label className={labelClass}>Coupon code</label>
+              {appliedCoupon ? (
+                <div className="flex items-center justify-between bg-positive/10 border border-positive/30 rounded-lg px-3 py-2.5">
+                  <div className="flex items-center gap-2">
+                    <Icons.Check className="w-4 h-4 text-positive flex-shrink-0" />
+                    <span className="text-positive text-sm font-medium">{appliedCoupon.display}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAppliedCoupon(null)}
+                    className="text-text-tertiary hover:text-text-primary transition-colors ml-2"
+                    aria-label="Remove coupon"
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Enter code"
+                      value={couponCode}
+                      onChange={(e) => { setCouponCode(e.target.value); setCouponError(null); }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleApplyCoupon(); } }}
+                      className={`${inputClass} flex-1`}
+                    />
                     <button
                       type="button"
-                      onClick={() => setAppliedCoupon(null)}
-                      className="text-text-tertiary hover:text-text-primary transition-colors ml-2"
-                      aria-label="Remove coupon"
+                      onClick={handleApplyCoupon}
+                      disabled={!couponCode.trim() || couponLoading}
+                      className="px-4 py-[11px] text-sm font-medium bg-bg-input border border-border rounded-lg text-text-secondary hover:text-text-primary hover:border-accent/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
                     >
-                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                      </svg>
+                      {couponLoading ? '...' : 'Apply'}
                     </button>
                   </div>
-                ) : (
-                  <>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        placeholder="Enter code"
-                        value={couponCode}
-                        onChange={(e) => { setCouponCode(e.target.value.toUpperCase()); setCouponError(null); }}
-                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleApplyCoupon(); } }}
-                        className={`${inputClass} flex-1`}
-                      />
-                      <button
-                        type="button"
-                        onClick={handleApplyCoupon}
-                        disabled={!couponCode.trim() || couponLoading}
-                        className="px-4 py-[11px] text-sm font-medium bg-bg-input border border-border rounded-lg text-text-secondary hover:text-text-primary hover:border-accent/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
-                      >
-                        {couponLoading ? '...' : 'Apply'}
-                      </button>
-                    </div>
-                    {couponError && (
-                      <p className="text-negative text-xs mt-1.5">{couponError}</p>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
+                  {couponError && (
+                    <p className="text-negative text-xs mt-1.5">{couponError}</p>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Cost breakdown */}
+            {(() => {
+              const rawPrice = parseFloat(plan.price.replace('$', ''));
+              let discountAmount = 0;
+              let discountLabel = '';
+              if (appliedCoupon) {
+                if (appliedCoupon.percentOff) {
+                  discountAmount = rawPrice * appliedCoupon.percentOff / 100;
+                } else if (appliedCoupon.amountOff) {
+                  discountAmount = appliedCoupon.amountOff / 100;
+                }
+                discountLabel = appliedCoupon.display;
+              } else if (appliedReferral) {
+                discountAmount = rawPrice * 0.15;
+                discountLabel = '15% referral discount';
+              }
+              if (!discountAmount) return null;
+              const total = Math.max(0, rawPrice - discountAmount);
+              const fmt = (n) => Number.isInteger(n) ? `$${n}` : `$${n.toFixed(2)}`;
+              const period = plan.id.endsWith('_yearly') ? '/yr' : '/mo';
+              return (
+                <div className="mb-4 rounded-lg border border-border divide-y divide-border text-sm overflow-hidden">
+                  <div className="flex justify-between items-center px-3 py-2 text-text-secondary">
+                    <span>{plan.name}</span>
+                    <span className="font-mono">{plan.price}{period}</span>
+                  </div>
+                  <div className="flex justify-between items-center px-3 py-2 text-positive">
+                    <span>{discountLabel}</span>
+                    <span className="font-mono">-{fmt(discountAmount)}</span>
+                  </div>
+                  <div className="flex justify-between items-center px-3 py-2 text-text-primary font-semibold">
+                    <span>Total</span>
+                    <span className="font-mono">{fmt(total)}{period}</span>
+                  </div>
+                </div>
+              );
+            })()}
 
             {cardError && (
               <div className="flex items-start gap-2 mb-4 p-3 bg-negative/10 border border-negative/20 rounded-lg">
@@ -504,9 +573,17 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
                   </svg>
                   Processing...
                 </span>
-              ) : (
-                `Subscribe — ${plan.price}/${plan.id.endsWith('_yearly') ? 'yr' : 'mo'}`
-              )}
+              ) : (() => {
+                const rawPrice = parseFloat(plan.price.replace('$', ''));
+                let discountAmount = 0;
+                if (appliedCoupon?.percentOff) discountAmount = rawPrice * appliedCoupon.percentOff / 100;
+                else if (appliedCoupon?.amountOff) discountAmount = appliedCoupon.amountOff / 100;
+                else if (appliedReferral) discountAmount = rawPrice * 0.15;
+                const total = Math.max(0, rawPrice - discountAmount);
+                const fmt = (n) => Number.isInteger(n) ? `$${n}` : `$${n.toFixed(2)}`;
+                const period = plan.id.endsWith('_yearly') ? 'yr' : 'mo';
+                return discountAmount ? `Subscribe — ${fmt(total)}/${period}` : `Subscribe — ${plan.price}/${period}`;
+              })()}
             </button>
           </form>
         </div>
@@ -525,6 +602,591 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
             <path fillRule="evenodd" clipRule="evenodd" d="M79.3,94.7c0-3.9,3.2-5.4,8.5-5.4c7.6,0,17.2,2.3,24.8,6.4V72.2c-8.3-3.3-16.5-4.6-24.8-4.6C67.5,67.6,54,78.2,54,95.9c0,27.6,38,23.2,38,35.1c0,4.6-4,6.1-9.6,6.1c-8.3,0-18.9-3.4-27.3-8v23.8c9.3,4,18.7,5.7,27.3,5.7c20.8,0,35.1-10.3,35.1-28.2C117.4,100.6,79.3,105.9,79.3,94.7z" />
           </svg>
         </div>
+      </div>
+    </div>
+  );
+};
+
+// =====================================================
+// SUBSCRIPTION MANAGER
+// =====================================================
+const CARD_BRANDS = {
+  visa: 'Visa',
+  mastercard: 'Mastercard',
+  amex: 'American Express',
+  discover: 'Discover',
+  diners: 'Diners Club',
+  jcb: 'JCB',
+  unionpay: 'UnionPay',
+};
+
+const CANCEL_REASONS = [
+  'Too expensive',
+  'Not using it enough',
+  'Missing features I need',
+  'Switching to another tool',
+  'Just testing it out',
+  'Other',
+];
+
+const SubscriptionManager = ({ stripeInstance, pricing, onPlanChanged }) => {
+  const [sub, setSub] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Change plan
+  const [showChangePlan, setShowChangePlan] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [changeLoading, setChangeLoading] = useState(false);
+  const [changeError, setChangeError] = useState(null);
+
+  // Cancel
+  const [showCancel, setShowCancel] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelFeedback, setCancelFeedback] = useState('');
+  const [cancelLoading, setCancelLoading] = useState(false);
+  const [cancelError, setCancelError] = useState(null);
+
+  // Resume
+  const [resumeLoading, setResumeLoading] = useState(false);
+
+  // Payment method
+  const [showPMModal, setShowPMModal] = useState(false);
+  const [pmLoading, setPmLoading] = useState(false);
+  const [pmError, setPmError] = useState(null);
+  const pmCardRef = useRef(null);
+  const pmCardElRef = useRef(null);
+
+  // Invoices
+  const [invoices, setInvoices] = useState(null);
+  const [invoicesLoading, setInvoicesLoading] = useState(false);
+
+  const fetchSubscription = async () => {
+    try {
+      const res = await authFetch('/api/stripe/subscription');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to load subscription');
+      setSub(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchSubscription(); }, []);
+
+  // Mount card element for PM modal
+  useEffect(() => {
+    if (!showPMModal || !pmCardRef.current || !stripeInstance) return;
+    const elements = stripeInstance.elements();
+    const card = elements.create('card', { style: CARD_STYLE });
+    card.mount(pmCardRef.current);
+    pmCardElRef.current = card;
+    return () => { card.unmount(); pmCardElRef.current = null; };
+  }, [showPMModal, stripeInstance]);
+
+  const formatCurrency = (cents, currency = 'usd') =>
+    new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(cents / 100);
+
+  const handlePreview = async (planId) => {
+    setSelectedPlan(planId);
+    setPreviewLoading(true);
+    setPreview(null);
+    setChangeError(null);
+    try {
+      const res = await authFetch('/api/stripe/subscription/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan: planId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to preview changes');
+      setPreview(data);
+    } catch (err) {
+      setChangeError(err.message);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const handleChangePlan = async () => {
+    if (!selectedPlan) return;
+    setChangeLoading(true);
+    setChangeError(null);
+    try {
+      const res = await authFetch('/api/stripe/subscription/change', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan: selectedPlan }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to change plan');
+
+      // If upgrade requires payment confirmation
+      if (data.clientSecret) {
+        const { error: confirmError } = await stripeInstance.confirmPayment({
+          clientSecret: data.clientSecret,
+          confirmParams: { return_url: window.location.href },
+          redirect: 'if_required',
+        });
+        if (confirmError) throw new Error(confirmError.message);
+      }
+
+      const newPlan = selectedPlan.replace('_yearly', '');
+      onPlanChanged(newPlan);
+      setShowChangePlan(false);
+      setSelectedPlan(null);
+      setPreview(null);
+      await fetchSubscription();
+    } catch (err) {
+      setChangeError(err.message);
+    } finally {
+      setChangeLoading(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    setCancelLoading(true);
+    setCancelError(null);
+    try {
+      const res = await authFetch('/api/stripe/subscription/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: cancelReason, feedback: cancelFeedback }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to cancel subscription');
+      setShowCancel(false);
+      await fetchSubscription();
+    } catch (err) {
+      setCancelError(err.message);
+    } finally {
+      setCancelLoading(false);
+    }
+  };
+
+  const handleResume = async () => {
+    setResumeLoading(true);
+    try {
+      const res = await authFetch('/api/stripe/subscription/resume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to resume subscription');
+      await fetchSubscription();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setResumeLoading(false);
+    }
+  };
+
+  const handleUpdatePaymentMethod = async () => {
+    if (!pmCardElRef.current) return;
+    setPmLoading(true);
+    setPmError(null);
+    try {
+      // Create SetupIntent on server
+      const res = await authFetch('/api/stripe/subscription/setup-intent', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to create setup intent');
+
+      const { error: setupError } = await stripeInstance.confirmCardSetup(data.clientSecret, {
+        payment_method: { card: pmCardElRef.current },
+      });
+      if (setupError) throw new Error(setupError.message);
+
+      setShowPMModal(false);
+      await fetchSubscription();
+    } catch (err) {
+      setPmError(err.message);
+    } finally {
+      setPmLoading(false);
+    }
+  };
+
+  const handleLoadInvoices = async () => {
+    setInvoicesLoading(true);
+    try {
+      const res = await authFetch('/api/stripe/invoices');
+      const data = await res.json();
+      if (res.ok) setInvoices(data.invoices || []);
+    } catch {
+      // silent
+    } finally {
+      setInvoicesLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <svg className="w-6 h-6 animate-spin text-text-tertiary" viewBox="0 0 24 24" fill="none">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+        </svg>
+      </div>
+    );
+  }
+
+  if (error && !sub) {
+    return (
+      <div className="p-4 bg-negative/10 border border-negative/20 rounded-lg flex items-center gap-2">
+        <Icons.AlertCircle className="w-5 h-5 text-negative flex-shrink-0" />
+        <p className="text-negative text-sm">{error}</p>
+      </div>
+    );
+  }
+
+  if (!sub) return null;
+
+  const isElite = sub.plan === 'elite';
+  const planColor = isElite ? 'text-yellow-400' : 'text-accent';
+  const planBorderColor = isElite ? 'border-yellow-500/30' : 'border-accent/30';
+  const planBgColor = isElite ? 'bg-yellow-500/5' : 'bg-accent/5';
+
+  // Build plan options for change plan section
+  const planOptions = [];
+  if (sub.plan !== 'pro' || sub.billingInterval !== 'month') {
+    planOptions.push({ id: 'pro', label: `Pro Monthly — $${pricing.pro}/mo` });
+  }
+  if (sub.plan !== 'pro' || sub.billingInterval !== 'year') {
+    planOptions.push({ id: 'pro_yearly', label: `Pro Yearly — $${pricing.proYearly}/yr` });
+  }
+  if (sub.plan !== 'elite' || sub.billingInterval !== 'month') {
+    planOptions.push({ id: 'elite', label: `Elite Monthly — $${pricing.elite}/mo` });
+  }
+  if (sub.plan !== 'elite' || sub.billingInterval !== 'year') {
+    planOptions.push({ id: 'elite_yearly', label: `Elite Yearly — $${pricing.eliteYearly}/yr` });
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-6">
+      {/* ── Plan Overview ── */}
+      <div className={`bg-bg-surface border ${planBorderColor} rounded-xl p-6`}>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            {isElite ? <Icons.Zap className="w-5 h-5 text-yellow-400" /> : <Icons.CheckCircle className="w-5 h-5 text-accent" />}
+            <h2 className="text-text-primary font-semibold text-lg">
+              {sub.plan.charAt(0).toUpperCase() + sub.plan.slice(1)} Plan
+            </h2>
+          </div>
+          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
+            sub.cancelAtPeriodEnd
+              ? 'bg-yellow-500/15 text-yellow-500'
+              : sub.status === 'active'
+                ? 'bg-positive/15 text-positive'
+                : 'bg-negative/15 text-negative'
+          }`}>
+            {sub.cancelAtPeriodEnd ? 'Canceling' : sub.status === 'active' ? 'Active' : sub.status}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div>
+            <p className="text-text-tertiary text-xs uppercase tracking-wider mb-1">Billing</p>
+            <p className="text-text-primary">{sub.billingInterval === 'year' ? 'Yearly' : 'Monthly'}</p>
+          </div>
+          <div>
+            <p className="text-text-tertiary text-xs uppercase tracking-wider mb-1">Amount</p>
+            <p className="text-text-primary font-mono">{formatCurrency(sub.amount, sub.currency)}/{sub.billingInterval === 'year' ? 'yr' : 'mo'}</p>
+          </div>
+          <div>
+            <p className="text-text-tertiary text-xs uppercase tracking-wider mb-1">
+              {sub.cancelAtPeriodEnd ? 'Access Until' : 'Next Billing'}
+            </p>
+            <p className="text-text-primary">
+              {sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '—'}
+            </p>
+          </div>
+          {sub.discount && (
+            <div>
+              <p className="text-text-tertiary text-xs uppercase tracking-wider mb-1">Discount</p>
+              <p className="text-positive text-sm">{sub.discount}</p>
+            </div>
+          )}
+        </div>
+
+        {sub.cancelAtPeriodEnd && (
+          <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Icons.AlertCircle className="w-4 h-4 text-yellow-500 flex-shrink-0" />
+              <p className="text-text-secondary text-sm">Your plan will end at the end of the billing period.</p>
+            </div>
+            <button
+              onClick={handleResume}
+              disabled={resumeLoading}
+              className="px-3 py-1.5 text-xs font-semibold bg-accent text-accent-text rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
+            >
+              {resumeLoading ? 'Resuming...' : 'Resume'}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ── Change Plan ── */}
+      {!sub.cancelAtPeriodEnd && planOptions.length > 0 && (
+        <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
+          <button
+            onClick={() => { setShowChangePlan(!showChangePlan); setSelectedPlan(null); setPreview(null); setChangeError(null); }}
+            className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-bg-input/50 transition-colors"
+          >
+            <span className="text-text-primary font-medium text-sm">Change Plan</span>
+            <svg className={`w-4 h-4 text-text-tertiary transition-transform ${showChangePlan ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+          {showChangePlan && (
+            <div className="px-6 pb-5 border-t border-border pt-4 space-y-3">
+              {planOptions.map(opt => (
+                <button
+                  key={opt.id}
+                  onClick={() => handlePreview(opt.id)}
+                  className={`w-full text-left px-4 py-3 rounded-lg border text-sm transition-colors ${
+                    selectedPlan === opt.id
+                      ? 'border-accent bg-accent/10 text-text-primary'
+                      : 'border-border hover:border-accent/40 text-text-secondary hover:text-text-primary'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+
+              {previewLoading && (
+                <div className="flex items-center justify-center py-3">
+                  <svg className="w-5 h-5 animate-spin text-text-tertiary" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                </div>
+              )}
+
+              {preview && (
+                <div className="rounded-lg border border-border divide-y divide-border text-sm overflow-hidden">
+                  {preview.immediateCharge != null && (
+                    <div className="flex justify-between items-center px-3 py-2">
+                      <span className="text-text-secondary">Due now (prorated)</span>
+                      <span className="text-text-primary font-mono">{formatCurrency(preview.immediateCharge, preview.currency)}</span>
+                    </div>
+                  )}
+                  {preview.credit != null && preview.credit > 0 && (
+                    <div className="flex justify-between items-center px-3 py-2">
+                      <span className="text-text-secondary">Credit applied</span>
+                      <span className="text-positive font-mono">-{formatCurrency(preview.credit, preview.currency)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between items-center px-3 py-2">
+                    <span className="text-text-secondary">New recurring price</span>
+                    <span className="text-text-primary font-mono font-semibold">{formatCurrency(preview.newAmount, preview.currency)}/{preview.interval === 'year' ? 'yr' : 'mo'}</span>
+                  </div>
+                </div>
+              )}
+
+              {changeError && (
+                <div className="flex items-start gap-2 p-3 bg-negative/10 border border-negative/20 rounded-lg">
+                  <Icons.AlertCircle className="w-4 h-4 text-negative flex-shrink-0 mt-0.5" />
+                  <p className="text-negative text-sm">{changeError}</p>
+                </div>
+              )}
+
+              {preview && (
+                <button
+                  onClick={handleChangePlan}
+                  disabled={changeLoading}
+                  className="w-full py-2.5 text-sm font-semibold rounded-lg bg-accent text-accent-text hover:brightness-110 transition-all disabled:opacity-50"
+                >
+                  {changeLoading ? 'Updating...' : 'Confirm Change'}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Payment Method ── */}
+      <div className="bg-bg-surface border border-border rounded-xl px-6 py-5">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-text-primary font-medium text-sm mb-1">Payment Method</p>
+            {sub.paymentMethod ? (
+              <p className="text-text-secondary text-sm">
+                {CARD_BRANDS[sub.paymentMethod.brand] || sub.paymentMethod.brand} ending in {sub.paymentMethod.last4}
+                {sub.paymentMethod.expMonth && (
+                  <span className="text-text-tertiary ml-2">
+                    Exp {String(sub.paymentMethod.expMonth).padStart(2, '0')}/{sub.paymentMethod.expYear}
+                  </span>
+                )}
+              </p>
+            ) : (
+              <p className="text-text-tertiary text-sm">No payment method on file</p>
+            )}
+          </div>
+          <button
+            onClick={() => { setShowPMModal(true); setPmError(null); }}
+            className="px-3 py-1.5 text-xs font-medium border border-border rounded-lg text-text-secondary hover:text-text-primary hover:border-accent/60 transition-colors"
+          >
+            Update
+          </button>
+        </div>
+      </div>
+
+      {/* Payment Method Modal */}
+      {showPMModal && (
+        <div
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={() => setShowPMModal(false)}
+        >
+          <div
+            className="bg-bg-surface border border-border rounded-xl w-full max-w-md shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border">
+              <h3 className="text-text-primary font-semibold">Update Payment Method</h3>
+              <button
+                onClick={() => setShowPMModal(false)}
+                className="text-text-tertiary hover:text-text-primary transition-colors w-8 h-8 flex items-center justify-center rounded-lg hover:bg-bg-input"
+              >
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <div
+                ref={pmCardRef}
+                className="bg-bg-input border border-border rounded-lg px-3 py-[11px] min-h-[42px] transition-colors focus-within:border-accent/60"
+              />
+              {pmError && (
+                <div className="flex items-start gap-2 p-3 bg-negative/10 border border-negative/20 rounded-lg">
+                  <Icons.AlertCircle className="w-4 h-4 text-negative flex-shrink-0 mt-0.5" />
+                  <p className="text-negative text-sm">{pmError}</p>
+                </div>
+              )}
+              <button
+                onClick={handleUpdatePaymentMethod}
+                disabled={pmLoading}
+                className="w-full py-2.5 text-sm font-semibold rounded-lg bg-accent text-accent-text hover:brightness-110 transition-all disabled:opacity-50"
+              >
+                {pmLoading ? 'Saving...' : 'Save Card'}
+              </button>
+            </div>
+            <div className="flex items-center justify-center gap-2 px-6 py-3 border-t border-border">
+              <Icons.Lock className="w-3.5 h-3.5 text-text-muted" />
+              <span className="text-text-muted text-xs">Secured by Stripe</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Cancel Subscription ── */}
+      {!sub.cancelAtPeriodEnd && (
+        <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
+          <button
+            onClick={() => { setShowCancel(!showCancel); setCancelError(null); }}
+            className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-bg-input/50 transition-colors"
+          >
+            <span className="text-negative font-medium text-sm">Cancel Subscription</span>
+            <svg className={`w-4 h-4 text-text-tertiary transition-transform ${showCancel ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+          {showCancel && (
+            <div className="px-6 pb-5 border-t border-border pt-4 space-y-4">
+              <p className="text-text-secondary text-sm">
+                Your plan will remain active until the end of the current billing period. You won't be charged again.
+              </p>
+              <div>
+                <label className="text-text-tertiary text-xs uppercase tracking-wider block mb-1.5">Reason for canceling</label>
+                <select
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  className="w-full bg-bg-input border border-border rounded-lg px-3 py-2.5 text-text-primary text-sm focus:outline-none focus:border-accent/60 transition-colors cursor-pointer"
+                >
+                  <option value="">Select a reason...</option>
+                  {CANCEL_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-text-tertiary text-xs uppercase tracking-wider block mb-1.5">Additional feedback (optional)</label>
+                <textarea
+                  value={cancelFeedback}
+                  onChange={(e) => setCancelFeedback(e.target.value)}
+                  rows={2}
+                  placeholder="Tell us how we can improve..."
+                  className="w-full bg-bg-input border border-border rounded-lg px-3 py-2.5 text-text-primary text-sm placeholder:text-text-tertiary focus:outline-none focus:border-accent/60 transition-colors resize-none"
+                />
+              </div>
+              {cancelError && (
+                <div className="flex items-start gap-2 p-3 bg-negative/10 border border-negative/20 rounded-lg">
+                  <Icons.AlertCircle className="w-4 h-4 text-negative flex-shrink-0 mt-0.5" />
+                  <p className="text-negative text-sm">{cancelError}</p>
+                </div>
+              )}
+              <button
+                onClick={handleCancel}
+                disabled={cancelLoading || !cancelReason}
+                className="w-full py-2.5 text-sm font-semibold rounded-lg bg-negative/10 border border-negative/30 text-negative hover:bg-negative/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {cancelLoading ? 'Canceling...' : 'Confirm Cancellation'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Invoice History ── */}
+      <div className="bg-bg-surface border border-border rounded-xl px-6 py-5">
+        <div className="flex items-center justify-between mb-1">
+          <p className="text-text-primary font-medium text-sm">Invoice History</p>
+          {!invoices && (
+            <button
+              onClick={handleLoadInvoices}
+              disabled={invoicesLoading}
+              className="px-3 py-1.5 text-xs font-medium border border-border rounded-lg text-text-secondary hover:text-text-primary hover:border-accent/60 transition-colors disabled:opacity-50"
+            >
+              {invoicesLoading ? 'Loading...' : 'View Invoices'}
+            </button>
+          )}
+        </div>
+        {invoices && (
+          invoices.length === 0 ? (
+            <p className="text-text-tertiary text-sm mt-2">No invoices yet.</p>
+          ) : (
+            <div className="mt-3 divide-y divide-border">
+              {invoices.map(inv => (
+                <div key={inv.id} className="flex items-center justify-between py-2.5 text-sm">
+                  <div>
+                    <span className="text-text-primary">
+                      {new Date(inv.created * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </span>
+                    <span className="text-text-tertiary ml-2">{formatCurrency(inv.amountPaid, inv.currency)}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      inv.status === 'paid' ? 'bg-positive/15 text-positive' : 'bg-yellow-500/15 text-yellow-500'
+                    }`}>
+                      {inv.status}
+                    </span>
+                    {inv.invoicePdf && (
+                      <a
+                        href={inv.invoicePdf}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-accent text-xs hover:underline"
+                      >
+                        PDF
+                      </a>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        )}
       </div>
     </div>
   );
@@ -584,27 +1246,6 @@ const App = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleManageBilling = async () => {
-    setActionLoading('billing');
-    setError(null);
-    try {
-      const res = await authFetch('/api/stripe/billing-portal', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || 'Something went wrong.');
-        setActionLoading(null);
-        return;
-      }
-      window.location.href = data.url;
-    } catch (err) {
-      setError('Failed to open billing portal.');
-      setActionLoading(null);
-    }
-  };
-
   // 'free' (expired trial) and 'trial' both map to the 'trial' card
   const normalizedPlan = !currentPlan ? null : (currentPlan === 'free' ? 'trial' : currentPlan);
   const hasPaidSubscription = normalizedPlan === 'pro' || normalizedPlan === 'elite';
@@ -652,25 +1293,12 @@ const App = () => {
     if (isCurrent) return { label: 'Current Plan', disabled: true, action: null };
 
     if (plan.id === 'trial') {
-      // Trial card — can't "purchase" trial; paid users can manage via portal
-      if (hasPaidSubscription) {
-        return {
-          label: actionLoading === 'billing' ? 'Redirecting...' : 'Manage Subscription',
-          disabled: actionLoading !== null,
-          action: handleManageBilling,
-        };
-      }
-      return { label: 'Current Plan', disabled: true, action: null };
+      return { label: normalizedPlan === 'trial' ? 'Current Plan' : 'Trial', disabled: true, action: null };
     }
 
-    // Paid plan — existing subscriber goes to billing portal
+    // Paid user — they use SubscriptionManager instead of buttons
     if (hasPaidSubscription) {
-      const label = actionLoading === 'billing'
-        ? 'Redirecting...'
-        : plan.id.replace('_yearly', '') === 'elite' && normalizedPlan === 'pro'
-          ? 'Upgrade to Elite'
-          : 'Switch Plan';
-      return { label, disabled: actionLoading !== null, action: handleManageBilling };
+      return { label: 'Current Plan', disabled: true, action: null };
     }
 
     // Free user — open custom checkout
@@ -701,16 +1329,6 @@ const App = () => {
             <span className="text-text-primary font-semibold text-[15px] tracking-[3px] uppercase">RR Metrics</span>
           </div>
           <div className="flex items-center gap-4">
-            {hasPaidSubscription && (
-              <button
-                onClick={handleManageBilling}
-                disabled={actionLoading !== null}
-                className="flex items-center gap-1.5 text-text-secondary hover:text-text-primary text-sm transition-colors disabled:opacity-50"
-              >
-                <Icons.Settings className="w-4 h-4" />
-                Manage Billing
-              </button>
-            )}
             <a href="/trades" className="flex items-center gap-2 text-text-secondary hover:text-text-primary text-sm transition-colors">
               <Icons.ArrowLeft className="w-4 h-4" />
               Back to Dashboard
@@ -795,99 +1413,111 @@ const App = () => {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {plans.map(plan => {
-              const isCurrent = plan.id.replace('_yearly', '') === normalizedPlan;
-              const isElite = plan.style === 'elite';
-              const isAccent = plan.style === 'accent';
-              const btn = getButtonProps(plan);
+          {hasPaidSubscription && stripeInstance ? (
+            <SubscriptionManager
+              stripeInstance={stripeInstance}
+              pricing={pricing}
+              onPlanChanged={(newPlan) => {
+                setCurrentPlan(newPlan);
+                setSuccess(true);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+            />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {plans.map(plan => {
+                const isCurrent = plan.id.replace('_yearly', '') === normalizedPlan;
+                const isElite = plan.style === 'elite';
+                const isAccent = plan.style === 'accent';
+                const btn = getButtonProps(plan);
 
-              return (
-                <div
-                  key={plan.id}
-                  className={`relative bg-bg-surface rounded-xl p-6 flex flex-col transition-all ${
-                    isCurrent
-                      ? isElite
-                        ? 'border-2 border-yellow-500/70 shadow-lg shadow-yellow-500/10'
-                        : isAccent
-                          ? 'border-2 border-accent shadow-lg shadow-accent/10'
-                          : 'border-2 border-border'
-                      : isElite
-                        ? 'border border-yellow-500/30 hover:border-yellow-500/60'
-                        : isAccent
-                          ? 'border-2 border-accent/60 hover:border-accent'
-                          : 'border border-border'
-                  }`}
-                >
-                  {/* Badge */}
-                  {plan.badge && (
-                    <div className={`absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 text-xs font-bold rounded-full whitespace-nowrap ${
-                      isElite ? 'bg-yellow-500 text-black' : 'bg-accent text-accent-text'
-                    }`}>
-                      {isCurrent ? 'Active' : plan.badge}
-                    </div>
-                  )}
-                  {isCurrent && plan.id === 'trial' && (
-                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-bg-input border border-border text-text-secondary text-xs font-bold rounded-full">
-                      Active
-                    </div>
-                  )}
-
-                  <div className="flex items-start justify-between mb-1">
-                    <h3 className={`font-semibold text-lg ${isElite ? 'text-yellow-400' : 'text-text-primary'}`}>
-                      {plan.name}
-                    </h3>
-                    {isElite && <Icons.Zap className="w-4 h-4 text-yellow-400 mt-0.5" />}
-                  </div>
-
-                  <div className="mt-3 mb-6">
-                    {plan.monthlyEquiv ? (
-                      <>
-                        <div className="flex items-baseline gap-2">
-                          <span className="text-text-tertiary text-sm line-through">{plan.originalMonthly}</span>
-                          <span className="text-text-primary font-mono text-4xl font-bold">{plan.monthlyEquiv}</span>
-                          <span className="text-text-tertiary text-sm">/mo</span>
-                        </div>
-                        <p className="text-text-muted text-xs mt-0.5">billed annually</p>
-                      </>
-                    ) : (
-                      <>
-                        <span className="text-text-primary font-mono text-4xl font-bold">{plan.price}</span>
-                        <span className="text-text-tertiary text-sm ml-1">{plan.period}</span>
-                      </>
-                    )}
-                  </div>
-
-                  <ul className="space-y-3 flex-1">
-                    {plan.features.map(feature => (
-                      <li key={feature} className="flex items-start gap-2 text-sm text-text-secondary">
-                        <Icons.Check className={`w-4 h-4 flex-shrink-0 mt-0.5 ${isElite ? 'text-yellow-400' : 'text-accent'}`} />
-                        {feature}
-                      </li>
-                    ))}
-                  </ul>
-
-                  <button
-                    onClick={btn.action || undefined}
-                    disabled={btn.disabled}
-                    className={`mt-6 w-full py-2.5 text-sm font-semibold rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
-                      isCurrent || plan.id === 'free'
-                        ? 'bg-bg-input border border-border text-text-secondary hover:text-text-primary hover:border-accent'
+                return (
+                  <div
+                    key={plan.id}
+                    className={`relative bg-bg-surface rounded-xl p-6 flex flex-col transition-all ${
+                      isCurrent
+                        ? isElite
+                          ? 'border-2 border-yellow-500/70 shadow-lg shadow-yellow-500/10'
+                          : isAccent
+                            ? 'border-2 border-accent shadow-lg shadow-accent/10'
+                            : 'border-2 border-border'
                         : isElite
-                          ? 'bg-yellow-500 text-black hover:brightness-110'
-                          : 'bg-accent text-accent-text hover:brightness-110'
+                          ? 'border border-yellow-500/30 hover:border-yellow-500/60'
+                          : isAccent
+                            ? 'border-2 border-accent/60 hover:border-accent'
+                            : 'border border-border'
                     }`}
                   >
-                    {btn.label}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
+                    {/* Badge */}
+                    {plan.badge && (
+                      <div className={`absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 text-xs font-bold rounded-full whitespace-nowrap ${
+                        isElite ? 'bg-yellow-500 text-black' : 'bg-accent text-accent-text'
+                      }`}>
+                        {isCurrent ? 'Active' : plan.badge}
+                      </div>
+                    )}
+                    {isCurrent && plan.id === 'trial' && (
+                      <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-bg-input border border-border text-text-secondary text-xs font-bold rounded-full">
+                        Active
+                      </div>
+                    )}
+
+                    <div className="flex items-start justify-between mb-1">
+                      <h3 className={`font-semibold text-lg ${isElite ? 'text-yellow-400' : 'text-text-primary'}`}>
+                        {plan.name}
+                      </h3>
+                      {isElite && <Icons.Zap className="w-4 h-4 text-yellow-400 mt-0.5" />}
+                    </div>
+
+                    <div className="mt-3 mb-6">
+                      {plan.monthlyEquiv ? (
+                        <>
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-text-tertiary text-sm line-through">{plan.originalMonthly}</span>
+                            <span className="text-text-primary font-mono text-4xl font-bold">{plan.monthlyEquiv}</span>
+                            <span className="text-text-tertiary text-sm">/mo</span>
+                          </div>
+                          <p className="text-text-muted text-xs mt-0.5">billed annually</p>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-text-primary font-mono text-4xl font-bold">{plan.price}</span>
+                          <span className="text-text-tertiary text-sm ml-1">{plan.period}</span>
+                        </>
+                      )}
+                    </div>
+
+                    <ul className="space-y-3 flex-1">
+                      {plan.features.map(feature => (
+                        <li key={feature} className="flex items-start gap-2 text-sm text-text-secondary">
+                          <Icons.Check className={`w-4 h-4 flex-shrink-0 mt-0.5 ${isElite ? 'text-yellow-400' : 'text-accent'}`} />
+                          {feature}
+                        </li>
+                      ))}
+                    </ul>
+
+                    <button
+                      onClick={btn.action || undefined}
+                      disabled={btn.disabled}
+                      className={`mt-6 w-full py-2.5 text-sm font-semibold rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                        isCurrent || plan.id === 'free'
+                          ? 'bg-bg-input border border-border text-text-secondary hover:text-text-primary hover:border-accent'
+                          : isElite
+                            ? 'bg-yellow-500 text-black hover:brightness-110'
+                            : 'bg-accent text-accent-text hover:brightness-110'
+                      }`}
+                    >
+                      {btn.label}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           <p className="text-center text-text-muted text-xs mt-8">
             {hasPaidSubscription
-              ? 'Manage, upgrade, or cancel your subscription via the billing portal.'
+              ? 'Manage your plan, payment method, and billing from this page.'
               : 'Cancel anytime — your membership stays active until the end of your billing period. Email us at support@rrmetrics.com for any questions.'}
           </p>
         </div>
