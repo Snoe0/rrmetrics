@@ -727,30 +727,4 @@ stripeRoutes.get('/api/stripe/invoices', requiresLogin, async (c) => {
   }
 });
 
-// POST /api/stripe/billing-portal
-stripeRoutes.post('/api/stripe/billing-portal', requiresLogin, async (c) => {
-  const stripe = getStripe(c.env);
-  if (!stripe) {
-    return c.json({ error: 'Stripe is not configured.' }, 503);
-  }
-
-  const profile = c.get('profile');
-
-  try {
-    if (!profile.stripe_customer_id) {
-      return c.json({ error: 'No billing account found. Please subscribe first.' }, 400);
-    }
-
-    const portalSession = await stripe.billingPortal.sessions.create({
-      customer: profile.stripe_customer_id,
-      return_url: `${c.env.APP_URL}/trades`,
-    });
-
-    return c.json({ url: portalSession.url });
-  } catch (err) {
-    console.error('Billing portal error:', err);
-    return c.json({ error: 'Failed to create billing portal session.' }, 500);
-  }
-});
-
 export default stripeRoutes;
