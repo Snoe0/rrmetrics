@@ -23,28 +23,46 @@ account.post('/api/preferences/theme', requiresLogin, async (c) => {
   const profile = c.get('profile');
   const supabase = c.get('supabase');
   const body = await c.req.json();
-  const { theme, customColors } = body;
+  let { theme, customColors } = body;
 
   if (!theme || !['dark', 'light', 'custom'].includes(theme)) {
     return c.json({ error: 'Invalid theme.' }, 400);
   }
 
+  const isElite = profile.subscription_plan === 'elite';
+
+  // Non-Elite cannot use 'custom' theme
+  if (theme === 'custom' && !isElite) {
+    theme = profile.theme === 'light' ? 'light' : 'dark';
+  }
+
   try {
     const updateData: Record<string, unknown> = { theme };
+    const validHex = /^#[0-9A-Fa-f]{6}$/;
 
-    if (theme === 'custom' && customColors) {
-      const validHex = /^#[0-9A-Fa-f]{6}$/;
-      const fields: Array<[string, string]> = [
-        ['bgPage', 'customColorsBgPage'],
-        ['bgSurface', 'customColorsBgSurface'],
-        ['textPrimary', 'customColorsTextPrimary'],
-        ['accent', 'customColorsAccent'],
-        ['positive', 'customColorsPositive'],
-        ['negative', 'customColorsNegative'],
-      ];
-      for (const [clientKey, dbKey] of fields) {
-        if (customColors[clientKey] && validHex.test(customColors[clientKey])) {
-          updateData[dbKey] = customColors[clientKey];
+    if (customColors) {
+      // Accent is always allowed for all users
+      if (customColors.accent === null) {
+        updateData.customColorsAccent = null;
+      } else if (customColors.accent && validHex.test(customColors.accent)) {
+        updateData.customColorsAccent = customColors.accent;
+      }
+
+      // Remaining 5 colors: Elite + custom theme only
+      if (isElite && theme === 'custom') {
+        const eliteFields: Array<[string, string]> = [
+          ['bgPage', 'customColorsBgPage'],
+          ['bgSurface', 'customColorsBgSurface'],
+          ['textPrimary', 'customColorsTextPrimary'],
+          ['positive', 'customColorsPositive'],
+          ['negative', 'customColorsNegative'],
+        ];
+        for (const [clientKey, dbKey] of eliteFields) {
+          if (customColors[clientKey] === null) {
+            updateData[dbKey] = null;
+          } else if (customColors[clientKey] && validHex.test(customColors[clientKey])) {
+            updateData[dbKey] = customColors[clientKey];
+          }
         }
       }
     }
@@ -167,6 +185,7 @@ account.get('/api/pricing', async (c) => {
       },
     },
     featureGates: {
+      accentColor: ['free', 'trial', 'pro', 'elite'],
       customThemes: ['elite'],
       backtesting: ['pro', 'elite'],
       unlimitedTrades: ['pro', 'elite'],
