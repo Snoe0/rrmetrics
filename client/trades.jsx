@@ -19,6 +19,7 @@ const Sidebar = require('./components/Sidebar');
 // Modal components
 const TradeFormPopup = require('./components/modals/TradeFormPopup');
 const CSVImportModal = require('./components/modals/CSVImportModal');
+const SyncPopup = require('./components/modals/SyncPopup');
 
 // Page components
 const DashboardPage = require('./components/pages/DashboardPage');
@@ -30,6 +31,7 @@ const StrategyPage = require('./components/pages/StrategyPage');
 const BacktestingPage = require('./components/pages/BacktestingPage');
 const UpgradePage = require('./components/pages/UpgradePage');
 const ReferralPage = require('./components/pages/ReferralPage');
+const DotGrid = require('./components/shared/DotGrid');
 
 const AnnouncementBanner = ({ announcement, onDismiss }) => {
   if (!announcement) return null;
@@ -55,7 +57,10 @@ const AnnouncementBanner = ({ announcement, onDismiss }) => {
 const App = () => {
   const [currentPage, setCurrentPage] = useState(() => {
     const params = new URLSearchParams(window.location.search);
-    return (params.get('tv_code') || params.get('tv_error')) ? 'settings' : 'dashboard';
+    if (params.get('tv_code') || params.get('tv_error')) return 'settings';
+    if (params.get('tab')) return params.get('tab');
+    if (params.get('connect')) return 'referral';
+    return 'dashboard';
   });
   const [reloadTrades, setReloadTrades] = useState(false);
   const [trades, setTrades] = useState([]);
@@ -64,6 +69,8 @@ const App = () => {
   const [editingTrade, setEditingTrade] = useState(null);
   const [prefillDate, setPrefillDate] = useState(null);
   const [csvImportOpen, setCsvImportOpen] = useState(false);
+  const [syncPopupOpen, setSyncPopupOpen] = useState(false);
+  const [brokerStatuses, setBrokerStatuses] = useState([]);
   const [toast, setToast] = useState(null);
   const [subscriptionStatus, setSubscriptionStatus] = useState(null);
   const [syncNotification, setSyncNotification] = useState(null);
@@ -95,16 +102,30 @@ const App = () => {
   // Apply theme to DOM and persist
   useEffect(() => {
     const root = document.documentElement;
-    if (theme === 'custom') {
-      // Start from dark base, then override with custom colors
-      root.setAttribute('data-theme', 'dark');
-      const hexToChannels = (hex) => {
-        const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
-        return [r, g, b];
-      };
-      const toRgbStr = (r, g, b) => `${r} ${g} ${b}`;
-      const clamp = (v) => Math.min(255, Math.max(0, Math.round(v)));
+    const hexToChannels = (hex) => {
+      const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+      return [r, g, b];
+    };
+    const toRgbStr = (r, g, b) => `${r} ${g} ${b}`;
+    const clamp = (v) => Math.min(255, Math.max(0, Math.round(v)));
 
+    // 1. Set base theme
+    const baseTheme = theme === 'custom' ? 'dark' : theme;
+    root.setAttribute('data-theme', baseTheme);
+
+    // 2. Clear non-accent overrides
+    ['--bg-page', '--bg-surface', '--bg-input', '--border', '--text-primary', '--text-secondary', '--text-tertiary', '--text-muted', '--positive', '--negative'].forEach(p => root.style.removeProperty(p));
+
+    // 3. Apply accent if set (all users)
+    if (customColors.accent) {
+      const [r, g, b] = hexToChannels(customColors.accent);
+      root.style.setProperty('--accent', toRgbStr(r, g, b));
+    } else {
+      root.style.removeProperty('--accent');
+    }
+
+    // 4. Apply full custom overrides (Elite custom theme only)
+    if (theme === 'custom') {
       if (customColors.bgPage) {
         const [r, g, b] = hexToChannels(customColors.bgPage);
         root.style.setProperty('--bg-page', toRgbStr(r, g, b));
@@ -125,13 +146,10 @@ const App = () => {
         root.style.setProperty('--text-tertiary', toRgbStr(blend(tr, br, 0.43), blend(tg, bg2, 0.43), blend(tb, bb, 0.43)));
         root.style.setProperty('--text-muted', toRgbStr(blend(tr, br, 0.25), blend(tg, bg2, 0.25), blend(tb, bb, 0.25)));
       }
-      if (customColors.accent) { const [r, g, b] = hexToChannels(customColors.accent); root.style.setProperty('--accent', toRgbStr(r, g, b)); }
       if (customColors.positive) { const [r, g, b] = hexToChannels(customColors.positive); root.style.setProperty('--positive', toRgbStr(r, g, b)); }
       if (customColors.negative) { const [r, g, b] = hexToChannels(customColors.negative); root.style.setProperty('--negative', toRgbStr(r, g, b)); }
-    } else {
-      root.setAttribute('data-theme', theme);
-      ['--bg-page', '--bg-surface', '--bg-input', '--border', '--text-primary', '--text-secondary', '--text-tertiary', '--text-muted', '--accent', '--positive', '--negative'].forEach(p => root.style.removeProperty(p));
     }
+
     localStorage.setItem('theme', theme);
     localStorage.setItem('customColors', JSON.stringify(customColors));
   }, [theme, customColors]);
@@ -153,14 +171,21 @@ const App = () => {
     fetchAccountTheme();
   }, []);
 
+  const themeDebounceRef = React.useRef(null);
+
   const handleThemeChange = (newTheme, newCustomColors) => {
     setTheme(newTheme);
-    if (newCustomColors) setCustomColors(newCustomColors);
-    authFetch('/api/preferences/theme', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ theme: newTheme, customColors: newCustomColors || customColors }),
-    }).catch(err => console.error('Failed to save theme:', err));
+    if (newCustomColors !== undefined) setCustomColors(newCustomColors);
+    const colorsToSave = newCustomColors !== undefined ? newCustomColors : customColors;
+
+    if (themeDebounceRef.current) clearTimeout(themeDebounceRef.current);
+    themeDebounceRef.current = setTimeout(() => {
+      authFetch('/api/preferences/theme', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ theme: newTheme, customColors: colorsToSave }),
+      }).catch(err => console.error('Failed to save theme:', err));
+    }, 300);
   };
 
   useEffect(() => {
@@ -252,7 +277,7 @@ const App = () => {
       if (!data.error) {
         setDailyNotes(prev => {
           const filtered = prev.filter(n => n.date !== date);
-          return [...filtered, data.note];
+          return [...filtered, data];
         });
       }
     } catch (err) {
@@ -273,13 +298,15 @@ const App = () => {
     }
   };
 
-  // Auto-sync Tradovate on mount
+  // Auto-sync brokers on mount
   useEffect(() => {
     const autoSync = async () => {
+      const statuses = [];
       try {
         const statusRes = await authFetch('/api/tradovate/status');
         const status = await statusRes.json();
         if (status.configured) {
+          statuses.push({ name: 'Tradovate', apiPrefix: 'tradovate', ...status });
           setSyncNotification('Syncing trades from Tradovate...');
           const syncRes = await authFetch('/api/tradovate/sync', {
             method: 'POST',
@@ -303,6 +330,7 @@ const App = () => {
         const pxStatusRes = await authFetch('/api/projectx/status');
         const pxStat = await pxStatusRes.json();
         if (pxStat.configured && pxStat.selectedAccounts?.length > 0) {
+          statuses.push({ name: 'Topstep', apiPrefix: 'projectx', ...pxStat });
           setSyncNotification('Syncing trades from Topstep...');
           const pxSyncRes = await authFetch('/api/projectx/sync', {
             method: 'POST',
@@ -320,9 +348,37 @@ const App = () => {
       } catch (err) {
         console.error('ProjectX auto-sync failed:', err);
       }
+      setBrokerStatuses(statuses);
     };
     autoSync();
   }, []);
+
+  const handleManualSync = async () => {
+    const hasExpired = brokerStatuses.some(b => b.expired);
+    if (hasExpired) {
+      setSyncPopupOpen(true);
+      return;
+    }
+    for (const broker of brokerStatuses) {
+      setSyncNotification(`Syncing trades from ${broker.name}...`);
+      try {
+        const res = await authFetch(`/api/${broker.apiPrefix}/sync`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        const data = await res.json();
+        if (data.synced > 0) {
+          setSyncNotification(`Synced ${data.synced} new trade${data.synced !== 1 ? 's' : ''} from ${broker.name}`);
+          triggerReload();
+        } else {
+          setSyncNotification(`${broker.name} is up to date`);
+        }
+      } catch {
+        setSyncNotification(`Failed to sync ${broker.name}`);
+      }
+    }
+    setTimeout(() => setSyncNotification(null), 4000);
+  };
 
   const openForm = () => setIsFormOpen(true);
   const openFormWithDate = (dateKey) => { setPrefillDate(dateKey); setIsFormOpen(true); };
@@ -331,7 +387,7 @@ const App = () => {
   const renderPage = () => {
     switch (currentPage) {
       case 'dashboard':
-        return <DashboardPage trades={trades} subscriptionStatus={subscriptionStatus} onOpenForm={openForm} onOpenImport={() => setCsvImportOpen(true)} onOpenAddTrade={openFormWithDate} onEditTrade={openEditForm} dailyNotes={dailyNotes} onSaveNote={handleSaveNote} onDeleteNote={handleDeleteNote} tags={tags} strategyRules={strategyRules} evalFilter={evalFilter} setEvalFilter={setEvalFilter} sidebarCollapsed={sidebarCollapsed} />;
+        return <DashboardPage trades={trades} subscriptionStatus={subscriptionStatus} onOpenForm={openForm} onOpenImport={() => setCsvImportOpen(true)} onManualSync={handleManualSync} brokerStatuses={brokerStatuses} onOpenAddTrade={openFormWithDate} onEditTrade={openEditForm} dailyNotes={dailyNotes} onSaveNote={handleSaveNote} onDeleteNote={handleDeleteNote} tags={tags} strategyRules={strategyRules} evalFilter={evalFilter} setEvalFilter={setEvalFilter} sidebarCollapsed={sidebarCollapsed} />;
       case 'trades':
         return (
           <TradeListPage
@@ -360,14 +416,15 @@ const App = () => {
       case 'referral':
         return <ReferralPage />;
       default:
-        return <DashboardPage trades={trades} subscriptionStatus={subscriptionStatus} onOpenForm={openForm} onOpenImport={() => setCsvImportOpen(true)} onOpenAddTrade={openFormWithDate} onEditTrade={openEditForm} dailyNotes={dailyNotes} onSaveNote={handleSaveNote} onDeleteNote={handleDeleteNote} tags={tags} strategyRules={strategyRules} evalFilter={evalFilter} setEvalFilter={setEvalFilter} sidebarCollapsed={sidebarCollapsed} />;
+        return <DashboardPage trades={trades} subscriptionStatus={subscriptionStatus} onOpenForm={openForm} onOpenImport={() => setCsvImportOpen(true)} onManualSync={handleManualSync} brokerStatuses={brokerStatuses} onOpenAddTrade={openFormWithDate} onEditTrade={openEditForm} dailyNotes={dailyNotes} onSaveNote={handleSaveNote} onDeleteNote={handleDeleteNote} tags={tags} strategyRules={strategyRules} evalFilter={evalFilter} setEvalFilter={setEvalFilter} sidebarCollapsed={sidebarCollapsed} />;
     }
   };
 
   return (
     <SidePanelContext.Provider value={setSidePanelOffset}>
+    <DotGrid />
     <AnnouncementBanner announcement={announcement} onDismiss={handleDismissAnnouncement} />
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen relative z-[1]">
       <Sidebar
         currentPage={currentPage}
         onNavigate={setCurrentPage}
@@ -400,6 +457,7 @@ const App = () => {
         sidebarCollapsed={sidebarCollapsed}
       />
       <CSVImportModal isOpen={csvImportOpen} onClose={() => setCsvImportOpen(false)} triggerReload={triggerReload} onDuplicatesSkipped={(n) => setToast({ message: `${n} trade${n !== 1 ? 's were' : ' was'} already in your journal and ${n !== 1 ? 'were' : 'was'} not added again.` })} />
+      <SyncPopup isOpen={syncPopupOpen} onClose={() => setSyncPopupOpen(false)} triggerReload={triggerReload} />
       <Toast toast={toast} onClose={() => setToast(null)} />
 
       {showWelcome && (
