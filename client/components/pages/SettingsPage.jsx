@@ -1099,6 +1099,8 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
       {activeTab === 'preferences' && (
         <div className="bg-bg-surface border border-border rounded-xl p-6">
           <h3 className="text-text-primary font-semibold mb-4">Preferences</h3>
+
+          {/* Dark / Light toggle */}
           <div className="flex items-center justify-between py-3">
             <div>
               <div className="text-text-primary text-sm font-medium">Theme</div>
@@ -1107,9 +1109,9 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
             <div className="flex gap-1 bg-bg-input rounded-lg p-1">
               <button
                 className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  theme === 'dark' ? 'bg-bg-surface text-text-primary' : 'text-text-secondary hover:text-text-primary'
+                  (theme === 'dark' || theme === 'custom') ? 'bg-bg-surface text-text-primary' : 'text-text-secondary hover:text-text-primary'
                 }`}
-                onClick={() => onThemeChange('dark')}
+                onClick={() => onThemeChange('dark', { accent: customColors.accent || null })}
               >
                 Dark
               </button>
@@ -1117,72 +1119,126 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                 className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                   theme === 'light' ? 'bg-bg-surface text-text-primary' : 'text-text-secondary hover:text-text-primary'
                 }`}
-                onClick={() => onThemeChange('light')}
+                onClick={() => onThemeChange('light', { accent: customColors.accent || null })}
               >
                 Light
               </button>
-              {subscriptionStatus && subscriptionStatus.plan === 'elite' ? (
-                <button
-                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                    theme === 'custom' ? 'bg-bg-surface text-text-primary' : 'text-text-secondary hover:text-text-primary'
-                  }`}
-                  onClick={() => onThemeChange('custom', customColors)}
-                >
-                  Custom
-                </button>
-              ) : (
-                <button
-                  className="px-4 py-2 rounded-md text-sm font-medium text-text-muted cursor-not-allowed"
-                  title="Upgrade to Elite to use custom themes"
-                  disabled
-                >
-                  Custom
-                  <Icons.Lock className="w-3 h-3 inline ml-1 opacity-50" />
-                </button>
-              )}
             </div>
           </div>
 
-          {theme === 'custom' && subscriptionStatus && subscriptionStatus.plan === 'elite' && (
-            <div className="mt-4 pt-4 border-t border-border space-y-4">
-              <div className="text-text-secondary text-sm font-medium">Custom Colors</div>
-              <div className="grid grid-cols-3 gap-4">
-                {[
-                  { key: 'bgPage', label: 'Background', defaultVal: '#0B0E14' },
-                  { key: 'bgSurface', label: 'Elements', defaultVal: '#111111' },
-                  { key: 'textPrimary', label: 'Text', defaultVal: '#FFFFFF' },
-                  { key: 'accent', label: 'Primary / Accent', defaultVal: '#3B82F6' },
-                  { key: 'positive', label: 'Bullish (Positive)', defaultVal: '#10B981' },
-                  { key: 'negative', label: 'Bearish (Negative)', defaultVal: '#EF4444' },
-                ].map(({ key, label, defaultVal }) => (
-                  <div key={key} className="flex items-center gap-3">
-                    <input
-                      type="color"
-                      value={(customColors && customColors[key]) || defaultVal}
-                      onChange={(e) => {
-                        const updated = { ...customColors, [key]: e.target.value };
-                        onThemeChange('custom', updated);
-                      }}
-                      className="w-10 h-10 rounded-lg border border-border cursor-pointer bg-transparent p-0.5"
-                    />
-                    <div>
-                      <div className="text-text-primary text-sm">{label}</div>
-                      <div className="text-text-muted text-xs font-mono">{(customColors && customColors[key]) || defaultVal}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <button
-                className="text-text-tertiary text-xs hover:text-text-secondary transition-colors"
-                onClick={() => {
-                  const defaults = { bgPage: '#0B0E14', bgSurface: '#111111', textPrimary: '#FFFFFF', accent: '#3B82F6', positive: '#10B981', negative: '#EF4444' };
-                  onThemeChange('custom', defaults);
-                }}
-              >
-                Reset to defaults
-              </button>
+          {/* Accent color picker — all users */}
+          <div className="mt-4 pt-4 border-t border-border">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-text-secondary text-sm font-medium">Accent Color</div>
+              {customColors.accent && (
+                <button
+                  className="text-text-tertiary text-xs hover:text-text-secondary transition-colors"
+                  onClick={() => {
+                    const baseTheme = theme === 'custom' ? 'dark' : theme;
+                    onThemeChange(baseTheme, { ...customColors, accent: null });
+                  }}
+                >
+                  Reset to default
+                </button>
+              )}
             </div>
-          )}
+            <div className="flex items-center gap-3">
+              <input
+                type="color"
+                value={customColors.accent || (theme === 'light' ? '#10B981' : '#BFFF00')}
+                onChange={(e) => {
+                  const baseTheme = theme === 'custom' ? 'dark' : theme;
+                  onThemeChange(baseTheme, { ...customColors, accent: e.target.value });
+                }}
+                className="w-10 h-10 rounded-lg border border-border cursor-pointer bg-transparent p-0.5"
+              />
+              <div>
+                <div className="text-text-primary text-sm">Primary / Accent</div>
+                <div className="text-text-muted text-xs font-mono">
+                  {customColors.accent || (theme === 'light' ? '#10B981' : '#BFFF00')}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Full customization — Elite unlocked, blurred for others */}
+          <div className="mt-4 pt-4 border-t border-border">
+            <div className="text-text-secondary text-sm font-medium mb-3">Full Theme Customization</div>
+            {subscriptionStatus && subscriptionStatus.plan === 'elite' ? (
+              <div className="space-y-4">
+                <div className="grid grid-cols-3 gap-4">
+                  {[
+                    { key: 'bgPage', label: 'Background', defaultVal: '#0B0E14' },
+                    { key: 'bgSurface', label: 'Elements', defaultVal: '#111111' },
+                    { key: 'textPrimary', label: 'Text', defaultVal: '#FFFFFF' },
+                    { key: 'positive', label: 'Bullish (Positive)', defaultVal: '#10B981' },
+                    { key: 'negative', label: 'Bearish (Negative)', defaultVal: '#EF4444' },
+                  ].map(({ key, label, defaultVal }) => (
+                    <div key={key} className="flex items-center gap-3">
+                      <input
+                        type="color"
+                        value={(customColors && customColors[key]) || defaultVal}
+                        onChange={(e) => {
+                          const updated = { ...customColors, [key]: e.target.value };
+                          onThemeChange('custom', updated);
+                        }}
+                        className="w-10 h-10 rounded-lg border border-border cursor-pointer bg-transparent p-0.5"
+                      />
+                      <div>
+                        <div className="text-text-primary text-sm">{label}</div>
+                        <div className="text-text-muted text-xs font-mono">{(customColors && customColors[key]) || defaultVal}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  className="text-text-tertiary text-xs hover:text-text-secondary transition-colors"
+                  onClick={() => {
+                    const defaults = { bgPage: '#0B0E14', bgSurface: '#111111', textPrimary: '#FFFFFF', accent: customColors.accent, positive: '#10B981', negative: '#EF4444' };
+                    onThemeChange('custom', defaults);
+                  }}
+                >
+                  Reset colors to defaults
+                </button>
+              </div>
+            ) : (
+              <div
+                className="relative group rounded-lg"
+                aria-label="Upgrade to Elite for full theme customization"
+              >
+                <div className="filter blur-[2px] pointer-events-none select-none">
+                  <div className="grid grid-cols-3 gap-4">
+                    {[
+                      { label: 'Background', color: '#0B0E14' },
+                      { label: 'Elements', color: '#111111' },
+                      { label: 'Text', color: '#FFFFFF' },
+                      { label: 'Bullish (Positive)', color: '#10B981' },
+                      { label: 'Bearish (Negative)', color: '#EF4444' },
+                    ].map(({ label, color }) => (
+                      <div key={label} className="flex items-center gap-3">
+                        <div
+                          className="w-10 h-10 rounded-lg border border-border"
+                          style={{ backgroundColor: color }}
+                        />
+                        <div>
+                          <div className="text-text-primary text-sm">{label}</div>
+                          <div className="text-text-muted text-xs font-mono">{color}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-bg-surface/60 rounded-lg">
+                  <a
+                    href="/upgrade"
+                    className="text-accent text-sm font-medium hover:underline no-underline"
+                  >
+                    Upgrade to Elite for full customization &rarr;
+                  </a>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
