@@ -123,24 +123,26 @@ export async function deleteById(
 export async function cleanupPending(
   supabase: SupabaseClient,
   thresholdIso: string,
-): Promise<void> {
+): Promise<number> {
   // Find broker_connections where the child tradovate_connections has null access_token
-  // and created_at is before threshold
+  // (pending OAuth that was never completed)
   const { data: pendingConnections, error: fetchError } = await supabase
     .from('tradovate_connections')
     .select('broker_connection_id')
     .is('access_token', null);
 
   if (fetchError) throw new Error(`Failed to query pending connections: ${fetchError.message}`);
-  if (!pendingConnections || pendingConnections.length === 0) return;
+  if (!pendingConnections || pendingConnections.length === 0) return 0;
 
   const brokerConnectionIds = pendingConnections.map((r: any) => r.broker_connection_id);
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('broker_connections')
     .delete()
     .in('id', brokerConnectionIds)
-    .lt('created_at', thresholdIso);
+    .lt('created_at', thresholdIso)
+    .select('id');
 
   if (error) throw new Error(`Failed to cleanup pending connections: ${error.message}`);
+  return data?.length || 0;
 }
