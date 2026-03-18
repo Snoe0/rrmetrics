@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { Env, AuthContext } from './bindings';
 import { securityHeaders } from './middleware/security';
 import { authMiddleware } from './middleware/supabase-auth';
+import { refreshExpiringBrokerTokens } from './scheduled/broker-refresh';
 import accountRoutes from './routes/account';
 import tradeRoutes from './routes/trade';
 import tagRoutes from './routes/tag';
@@ -51,4 +52,7 @@ app.route('/', pageRoutes);
 
 export default {
   fetch: app.fetch,
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(refreshExpiringBrokerTokens(env));
+  },
 };
