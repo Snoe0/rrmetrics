@@ -67,7 +67,7 @@ export async function createWithLimitCheck(
   environment: string,
   label: string | null,
   limit: number,
-): Promise<BrokerConnectionRow> {
+): Promise<string> {
   const rpcLimit = limit === Infinity ? 0 : limit;
 
   const { data, error } = await supabase.rpc('create_broker_connection', {
@@ -85,7 +85,8 @@ export async function createWithLimitCheck(
     throw new Error(`Failed to create broker connection: ${error.message}`);
   }
 
-  return data as BrokerConnectionRow;
+  // RPC returns the UUID directly
+  return data as string;
 }
 
 export async function updateById(

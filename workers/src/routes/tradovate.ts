@@ -332,8 +332,8 @@ tradovate.post(
     const limit = BROKER_CONNECTION_LIMITS[plan];
 
     try {
-      // Create parent broker_connection with limit check
-      const brokerConn = await brokerDb.createWithLimitCheck(
+      // Create parent broker_connection with limit check (returns UUID string)
+      const connectionId = await brokerDb.createWithLimitCheck(
         serviceClient,
         user.id,
         'tradovate',
@@ -344,10 +344,10 @@ tradovate.post(
 
       // Generate CSRF nonce and create child tradovate_connection
       const nonce = generateNonce();
-      await tvConnDb.create(serviceClient, brokerConn.id, nonce);
+      await tvConnDb.create(serviceClient, connectionId, nonce);
 
       // Build state: base64(connectionId:nonce)
-      const state = btoa(brokerConn.id + ':' + nonce);
+      const state = btoa(connectionId + ':' + nonce);
       const redirectUri = `${c.env.APP_URL}/api/tradovate/callback`;
 
       const authUrl =
@@ -357,7 +357,7 @@ tradovate.post(
         `&redirect_uri=${encodeURIComponent(redirectUri)}` +
         `&state=${encodeURIComponent(state)}`;
 
-      return c.json({ authUrl, connectionId: brokerConn.id });
+      return c.json({ authUrl, connectionId });
     } catch (err: any) {
       if (err.message === 'CONNECTION_LIMIT_REACHED') {
         return c.json(

@@ -50,10 +50,10 @@ projectx.post(
       // Fetch accounts to return to client
       const accounts = await api.getAccounts(token);
 
-      // Create parent broker_connection with limit check
-      let brokerConn;
+      // Create parent broker_connection with limit check (returns UUID string)
+      let connectionId: string;
       try {
-        brokerConn = await brokerDb.createWithLimitCheck(
+        connectionId = await brokerDb.createWithLimitCheck(
           serviceClient,
           user.id,
           'projectx',
@@ -77,14 +77,14 @@ projectx.post(
 
       // Create child projectx_connection with encrypted credentials
       const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-      await pxConnDb.create(serviceClient, brokerConn.id, {
+      await pxConnDb.create(serviceClient, connectionId, {
         username,
         api_key: await encrypt(apiKey, c.env.ENCRYPTION_KEY),
         access_token: await encrypt(token, c.env.ENCRYPTION_KEY),
         token_expires_at: expiresAt,
       });
 
-      return c.json({ message: 'Connected successfully', accounts, connectionId: brokerConn.id });
+      return c.json({ message: 'Connected successfully', accounts, connectionId });
     } catch (err: any) {
       console.error('ProjectX connect error:', err.message);
       return c.json({ error: `Failed to connect: ${err.message}` }, 400);
