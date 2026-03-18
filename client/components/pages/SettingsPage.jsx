@@ -30,6 +30,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
   const [tvConnecting, setTvConnecting] = useState(false);
   const [tvSyncingId, setTvSyncingId] = useState(null); // connectionId currently syncing, or 'all'
   const [tvShowImportPrompt, setTvShowImportPrompt] = useState(null); // connectionId that just connected
+  const [tvSavingAccounts, setTvSavingAccounts] = useState(null); // connectionId currently saving
 
   // --- ProjectX multi-connection state ---
   const [pxConnections, setPxConnections] = useState([]);
@@ -260,6 +261,44 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
       setMessage({ type: 'error', text: 'Import failed' });
     }
     setTvSyncingId(null);
+  };
+
+  // Toggle a Tradovate account on/off for a connection (local state, saved via handleTvSaveAccounts)
+  const toggleTvAccount = (connectionId, accountId) => {
+    setTvConnections(prev => prev.map(conn => {
+      if (conn.connectionId !== connectionId) return conn;
+      const allAccountIds = (conn.accounts || []).map(a => a.id);
+      // If selectedAccounts is empty, that means "all enabled" — expand to full list first
+      const current = (!conn.selectedAccounts || conn.selectedAccounts.length === 0)
+        ? allAccountIds
+        : conn.selectedAccounts;
+      const updated = current.includes(accountId)
+        ? current.filter(id => id !== accountId)
+        : [...current, accountId];
+      return { ...conn, selectedAccounts: updated };
+    }));
+  };
+
+  const handleTvSaveAccounts = async (connectionId) => {
+    const conn = tvConnections.find(c => c.connectionId === connectionId);
+    if (!conn) return;
+    setTvSavingAccounts(connectionId);
+    try {
+      const response = await authFetch('/api/tradovate/accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connectionId, selectedAccounts: conn.selectedAccounts || [] }),
+      });
+      const data = await response.json();
+      if (data.error) {
+        setMessage({ type: 'error', text: data.error });
+      } else {
+        setMessage({ type: 'success', text: 'Account settings saved' });
+      }
+    } catch {
+      setMessage({ type: 'error', text: 'Failed to save account settings' });
+    }
+    setTvSavingAccounts(null);
   };
 
   // =============================================
@@ -624,15 +663,40 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                           </span>
                         </div>
 
-                        {/* Accounts list */}
-                        {conn.accounts && conn.accounts.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5">
-                            {conn.accounts.map(acct => (
-                              <span key={acct.id} className="inline-flex items-center gap-1 px-2 py-0.5 bg-bg-surface border border-border rounded text-xs text-text-secondary">
-                                <span className={`w-1.5 h-1.5 rounded-full ${acct.active ? 'bg-positive' : 'bg-text-muted'}`}></span>
-                                {acct.name}
-                              </span>
-                            ))}
+                        {/* Accounts list with enable/disable toggles */}
+                        {conn.accounts && conn.accounts.length > 0 && conn.configured && !conn.expired && (
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-medium text-text-secondary">Accounts</span>
+                              {conn.selectedAccounts && conn.selectedAccounts.length > 0 && conn.selectedAccounts.length < conn.accounts.length && (
+                                <span className="text-xs text-text-muted">{conn.selectedAccounts.length} of {conn.accounts.length} enabled</span>
+                              )}
+                            </div>
+                            {conn.accounts.map(acct => {
+                              const isEnabled = !conn.selectedAccounts || conn.selectedAccounts.length === 0 || conn.selectedAccounts.includes(acct.id);
+                              return (
+                                <label key={acct.id} className="flex items-center gap-2.5 p-2 bg-bg-surface/50 rounded-lg cursor-pointer hover:bg-bg-surface transition-colors">
+                                  <input
+                                    type="checkbox"
+                                    checked={isEnabled}
+                                    onChange={() => toggleTvAccount(conn.connectionId, acct.id)}
+                                    className="w-3.5 h-3.5 rounded border-border text-accent focus:ring-accent"
+                                  />
+                                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isEnabled ? (acct.active ? 'bg-positive' : 'bg-warning') : 'bg-text-muted/30'}`}></span>
+                                  <span className={`text-xs font-medium ${isEnabled ? 'text-text-primary' : 'text-text-muted'}`}>{acct.name}</span>
+                                  <span className={`text-xs ml-auto ${isEnabled ? (acct.active ? 'text-positive' : 'text-warning') : 'text-text-muted'}`}>
+                                    {isEnabled ? (acct.active ? 'Online' : 'Offline') : 'Disabled'}
+                                  </span>
+                                </label>
+                              );
+                            })}
+                            <button
+                              onClick={() => handleTvSaveAccounts(conn.connectionId)}
+                              disabled={tvSavingAccounts === conn.connectionId}
+                              className="w-full mt-1 px-3 py-1.5 bg-bg-input border border-border text-text-primary text-xs font-medium rounded-lg hover:border-accent transition-colors disabled:opacity-50"
+                            >
+                              {tvSavingAccounts === conn.connectionId ? 'Saving...' : 'Save Account Settings'}
+                            </button>
                           </div>
                         )}
 

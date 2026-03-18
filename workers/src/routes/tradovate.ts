@@ -133,8 +133,9 @@ async function syncConnection(
   const uniquePositionIds = [...new Set(allFillPairs.map((fp) => fp.positionId))];
   const allPositions = await api.getPositionItems(token, uniquePositionIds);
 
-  // Filter positions by selected account IDs (empty = all accounts)
-  const accountIds = options?.accountIds || [];
+  // Filter positions by selected account IDs
+  // Priority: explicit accountIds from request > saved selected_accounts > all accounts
+  const accountIds = options?.accountIds || tvConn.selected_accounts || [];
   const positions = accountIds.length > 0
     ? allPositions.filter((p) => accountIds.includes(p.accountId))
     : allPositions;
@@ -572,6 +573,7 @@ tradovate.get(
         lastSyncTime: bc.last_sync_time,
         createdAt: bc.created_at,
         accounts,
+        selectedAccounts: tvConn?.selected_accounts || [],
       });
     }
 
@@ -582,6 +584,43 @@ tradovate.get(
       plan,
       canUseBrokerSync,
     });
+  },
+);
+
+/**
+ * POST /api/tradovate/accounts
+ * Save which accounts are enabled for sync on a specific connection.
+ */
+tradovate.post(
+  '/api/tradovate/accounts',
+  requiresLogin,
+  async (c) => {
+    const user = c.get('user');
+    const body = await c.req.json();
+    const { connectionId, selectedAccounts } = body as {
+      connectionId?: string;
+      selectedAccounts?: number[];
+    };
+
+    if (!connectionId) {
+      return c.json({ error: 'Missing connectionId' }, 400);
+    }
+
+    if (!Array.isArray(selectedAccounts)) {
+      return c.json({ error: 'selectedAccounts must be an array' }, 400);
+    }
+
+    const serviceClient = createServiceClient(c.env);
+    const connection = await brokerDb.findById(serviceClient, connectionId);
+    if (!connection || connection.owner !== user.id || connection.broker !== 'tradovate') {
+      return c.json({ error: 'Connection not found' }, 404);
+    }
+
+    await tvConnDb.updateByBrokerConnectionId(serviceClient, connectionId, {
+      selected_accounts: selectedAccounts,
+    });
+
+    return c.json({ message: 'Account settings saved' });
   },
 );
 

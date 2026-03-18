@@ -38,7 +38,7 @@ export async function create(
 export async function updateByBrokerConnectionId(
   supabase: SupabaseClient,
   brokerConnectionId: string,
-  updates: Partial<Pick<TradovateConnectionRow, 'access_token' | 'token_expires_at' | 'oauth_nonce'>>,
+  updates: Partial<Pick<TradovateConnectionRow, 'access_token' | 'token_expires_at' | 'oauth_nonce' | 'selected_accounts'>>,
 ): Promise<void> {
   const { error } = await supabase
     .from('tradovate_connections')

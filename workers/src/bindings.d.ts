@@ -119,6 +119,7 @@ export interface TradovateConnectionRow {
   access_token: string | null;
   token_expires_at: string | null;
   oauth_nonce: string | null;
+  selected_accounts: number[] | null;
 }
 
 export interface ProjectXConnectionRow {
