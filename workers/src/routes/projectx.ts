@@ -6,7 +6,7 @@ import * as projectxDb from '../db/projectx';
 import { encrypt, decrypt } from '../utils/crypto';
 import { ProjectXAPI } from '../services/ProjectXAPI';
 import { requiresLogin } from '../middleware/supabase-auth';
-import { checkSubscriptionStatus, requiresBrokerSync, BROKER_ACCOUNT_LIMITS } from '../middleware/subscription';
+import { checkSubscriptionStatus, requiresBrokerSync, BROKER_CONNECTION_LIMITS } from '../middleware/subscription';
 import { createServiceClient } from '../lib/supabase';
 
 type HonoEnv = {
@@ -98,7 +98,7 @@ projectx.get('/api/projectx/status', requiresLogin, checkSubscriptionStatus, asy
     }
 
     const subStatus = c.get('subscriptionStatus' as any) as { effectivePlan: string } | undefined;
-    const userPlan = (subStatus?.effectivePlan || 'free') as keyof typeof BROKER_ACCOUNT_LIMITS;
+    const userPlan = (subStatus?.effectivePlan || 'free') as keyof typeof BROKER_CONNECTION_LIMITS;
     const canUseBrokerSync = userPlan === 'pro' || userPlan === 'elite';
 
     return c.json({
@@ -114,7 +114,7 @@ projectx.get('/api/projectx/status', requiresLogin, checkSubscriptionStatus, asy
       accounts,
       plan: userPlan,
       canUseBrokerSync,
-      accountLimit: BROKER_ACCOUNT_LIMITS[userPlan],
+      accountLimit: BROKER_CONNECTION_LIMITS[userPlan],
     });
   } catch (err: any) {
     console.error('ProjectX status error:', err.message);
@@ -140,8 +140,8 @@ projectx.post('/api/projectx/accounts', requiresLogin, checkSubscriptionStatus, 
 
   // Enforce account limit based on subscription plan
   const status = c.get('subscriptionStatus' as any) as { effectivePlan: string } | undefined;
-  const plan = (status?.effectivePlan || 'free') as keyof typeof BROKER_ACCOUNT_LIMITS;
-  const limit = BROKER_ACCOUNT_LIMITS[plan];
+  const plan = (status?.effectivePlan || 'free') as keyof typeof BROKER_CONNECTION_LIMITS;
+  const limit = BROKER_CONNECTION_LIMITS[plan];
   if (selectedAccounts.length > limit) {
     return c.json(
       { error: `Your ${plan} plan allows up to ${limit} broker account${limit !== 1 ? 's' : ''}. Upgrade to Elite for unlimited.`, upgrade: true },

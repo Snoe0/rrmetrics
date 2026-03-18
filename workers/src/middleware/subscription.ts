@@ -48,8 +48,8 @@ export const checkSubscriptionStatus = createMiddleware<{
   return next();
 });
 
-/** Broker connection limits by plan. */
-export const BROKER_ACCOUNT_LIMITS: Record<EffectivePlan, number> = {
+/** Broker connection limits by plan (shared pool across all brokers). */
+export const BROKER_CONNECTION_LIMITS: Record<EffectivePlan, number> = {
   trial: 0,
   free: 0,
   pro: 3,
