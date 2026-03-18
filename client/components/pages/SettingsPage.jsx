@@ -712,7 +712,6 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                                         : 'bg-text-muted/30'
                                     }`}></span>
                                     {acct.name}
-                                    {!isEnabled && <span className="text-text-muted/60 text-[10px]">off</span>}
                                   </button>
                                 );
                               })}
