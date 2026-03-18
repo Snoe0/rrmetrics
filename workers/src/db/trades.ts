@@ -17,6 +17,7 @@ interface TradeAPI {
   tradovateSource: string;
   projectxTradeId: string | null;
   projectxSource: string | null;
+  brokerConnectionId: string | null;
   createdDate: string;
   tags: string[];
 }
@@ -39,6 +40,7 @@ function rowToAPI(row: any, tagIds: string[] = []): TradeAPI {
     tradovateSource: row.tradovate_source,
     projectxTradeId: row.projectx_trade_id || null,
     projectxSource: row.projectx_source || null,
+    brokerConnectionId: row.broker_connection_id || null,
     createdDate: row.created_date,
     tags: tagIds,
   };
@@ -212,6 +214,7 @@ export async function bulkInsertTrades(
     tradovateSource?: string;
     projectxTradeId?: string | null;
     projectxSource?: string | null;
+    brokerConnectionId?: string | null;
   }>,
 ): Promise<{ imported: number; skipped: number }> {
   // Dedup: fetch existing trades that share any of the incoming enter_times
@@ -256,6 +259,7 @@ export async function bulkInsertTrades(
     tradovate_source: t.tradovateSource || 'manual',
     projectx_trade_id: t.projectxTradeId || null,
     projectx_source: t.projectxSource || null,
+    broker_connection_id: t.brokerConnectionId || null,
   }));
 
   const { data: inserted, error } = await supabase
