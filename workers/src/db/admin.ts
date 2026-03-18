@@ -87,6 +87,7 @@ export interface UserRow {
   id: string;
   email: string;
   plan: string;
+  role: string;
   createdAt: string;
   registrationIp: string | null;
   stripeSubscriptionId: string | null;
@@ -102,7 +103,7 @@ export async function listUsers(
 
   const { data, error, count } = await supabase
     .from('profiles')
-    .select('id, email, subscription_plan, created_at, registration_ip, stripe_subscription_id', { count: 'exact' })
+    .select('id, email, subscription_plan, role, created_at, registration_ip, stripe_subscription_id', { count: 'exact' })
     .order('created_at', { ascending: false })
     .range(from, to);
 
@@ -113,6 +114,7 @@ export async function listUsers(
       id: r.id,
       email: r.email,
       plan: r.subscription_plan || 'trial',
+      role: r.role || 'user',
       createdAt: r.created_at,
       registrationIp: r.registration_ip,
       stripeSubscriptionId: r.stripe_subscription_id,
@@ -126,14 +128,35 @@ export async function listUsers(
 export async function getAllEmails(
   supabase: SupabaseClient,
   planFilter?: string,
-): Promise<string[]> {
-  let query = supabase.from('profiles').select('email');
-  if (planFilter && planFilter !== 'all') {
+  trialDays?: number,
+): Promise<Array<{ email: string; id: string }>> {
+  let query = supabase.from('profiles').select('email, id, created_at, subscription_plan');
+
+  // Always exclude unsubscribed users
+  query = query.eq('email_unsubscribed', false);
+
+  if (planFilter === 'expired_trial') {
+    // Free users whose trial has expired
+    query = query.eq('subscription_plan', 'free');
+  } else if (planFilter && planFilter !== 'all') {
     query = query.eq('subscription_plan', planFilter);
   }
+
   const { data, error } = await query;
   if (error) throw error;
-  return (data ?? []).map((r) => r.email);
+
+  let rows = data ?? [];
+
+  // For expired_trial, filter by trial expiry date
+  if (planFilter === 'expired_trial' && trialDays !== undefined) {
+    const now = Date.now();
+    rows = rows.filter((r) => {
+      const expiry = new Date(r.created_at).getTime() + trialDays * 24 * 60 * 60 * 1000;
+      return now > expiry;
+    });
+  }
+
+  return rows.map((r) => ({ email: r.email, id: r.id }));
 }
 
 // ─── Announcements ────────────────────────────────────────────────────────────

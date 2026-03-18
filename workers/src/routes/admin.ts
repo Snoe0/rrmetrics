@@ -5,6 +5,7 @@ import { createServiceClient } from '../lib/supabase';
 import * as adminDb from '../db/admin';
 import * as commissionsDb from '../db/commissions';
 import { sendEmail } from '../utils/email';
+import { buildUnsubscribeUrl } from '../utils/unsubscribe';
 import Stripe from 'stripe';
 
 function getStripe(env: Env): Stripe | null {
@@ -139,7 +140,7 @@ admin.delete('/api/admin/announcements/:id', async (c) => {
 
 // POST /api/admin/email/send
 // Body: { subject, text, html, planFilter? }
-// planFilter: 'all' | 'pro' | 'elite' | 'free' | 'trial'
+// planFilter: 'all' | 'pro' | 'elite' | 'free' | 'trial' | 'expired_trial'
 admin.post('/api/admin/email/send', async (c) => {
   const supabase = createServiceClient(c.env);
   const reqBody = await c.req.json();
@@ -149,26 +150,46 @@ admin.post('/api/admin/email/send', async (c) => {
     return c.json({ error: 'subject, text, and html are required.' }, 400);
   }
 
+  // ── TEST MODE: override recipient ──
+  const TEST_EMAIL_OVERRIDE = 'maintainer@users.noreply.github.com';
+  // Remove when ready for production
+  // ───────────────────────────────────
+
   try {
-    const emails = await adminDb.getAllEmails(supabase, planFilter);
-    if (emails.length === 0) {
+    const trialDays = parseInt(c.env.TRIAL_DAYS || '14', 10);
+    const recipients = await adminDb.getAllEmails(supabase, planFilter, trialDays);
+    if (recipients.length === 0) {
       return c.json({ sent: 0, message: 'No users match the filter.' });
     }
 
     let sent = 0;
     const errors: string[] = [];
 
-    for (const email of emails) {
+    for (const recipient of recipients) {
       try {
-        await sendEmail({ to: email, subject, text, html }, c.env.RESEND_API_KEY, c.env.RESEND_FROM_EMAIL);
+        // Build per-user unsubscribe URL
+        const unsubUrl = await buildUnsubscribeUrl(recipient.id, c.env.APP_URL, c.env.ENCRYPTION_KEY);
+
+        // Append unsubscribe footer to HTML
+        const htmlWithUnsub = html +
+          `<div style="text-align:center;margin-top:32px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.06);">` +
+          `<a href="${unsubUrl}" style="color:#6b7280;font-size:11px;text-decoration:underline;">Unsubscribe</a></div>`;
+        const textWithUnsub = text + `\n\nUnsubscribe: ${unsubUrl}`;
+
+        const emailTo = TEST_EMAIL_OVERRIDE || recipient.email;
+        await sendEmail(
+          { to: emailTo, subject, text: textWithUnsub, html: htmlWithUnsub },
+          c.env.RESEND_API_KEY,
+          c.env.RESEND_FROM_EMAIL,
+        );
         sent++;
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
-        errors.push(`${email}: ${message}`);
+        errors.push(`${recipient.email}: ${message}`);
       }
     }
 
-    return c.json({ sent, total: emails.length, errors });
+    return c.json({ sent, total: recipients.length, errors });
   } catch (err) {
     console.error('admin mass email error:', err);
     return c.json({ error: 'Failed to send emails.' }, 500);
@@ -273,6 +294,35 @@ admin.post('/api/admin/users/:id/extend', async (c) => {
   } catch (err) {
     console.error('admin extend subscription error:', err);
     return c.json({ error: 'Failed to extend subscription.' }, 500);
+  }
+});
+
+// ─── Role management ─────────────────────────────────────────────────────────
+
+// PATCH /api/admin/users/:id/role
+// Body: { role: 'user' | 'developer' }
+admin.patch('/api/admin/users/:id/role', async (c) => {
+  const supabase = createServiceClient(c.env);
+  const id = c.req.param('id');
+  const body = await c.req.json();
+  const { role } = body;
+
+  if (!['user', 'developer'].includes(role)) {
+    return c.json({ error: 'role must be user or developer.' }, 400);
+  }
+
+  try {
+    const { error } = await supabase
+      .from('profiles')
+      .update({ role })
+      .eq('id', id);
+
+    if (error) throw error;
+
+    return c.json({ ok: true, role });
+  } catch (err) {
+    console.error('admin set role error:', err);
+    return c.json({ error: 'Failed to update role.' }, 500);
   }
 });
 
