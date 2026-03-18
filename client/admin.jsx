@@ -131,6 +131,7 @@ const UsersView = ({ token }) => {
               <tr className="text-left text-text-muted border-b border-border">
                 <th className="pb-2 font-medium">Email</th>
                 <th className="pb-2 font-medium">Plan</th>
+                <th className="pb-2 font-medium">Role</th>
                 <th className="pb-2 font-medium">Joined</th>
                 <th className="pb-2 font-medium">IP</th>
                 <th className="pb-2 font-medium">Actions</th>
@@ -141,6 +142,7 @@ const UsersView = ({ token }) => {
                 <tr key={u.id} className="border-b border-border/50 hover:bg-bg-surface/50">
                   <td className="py-2 text-text-primary">{u.email}</td>
                   <td className="py-2">{planBadge(u.plan)}</td>
+                  <td className="py-2 text-text-secondary font-mono text-xs">{u.role || 'user'}</td>
                   <td className="py-2 text-text-secondary font-mono text-xs">{new Date(u.createdAt).toLocaleDateString()}</td>
                   <td className="py-2 text-text-muted font-mono text-xs">{u.registrationIp || '—'}</td>
                   <td className="py-2">
@@ -382,10 +384,37 @@ const AnnouncementsView = ({ token }) => {
 
 // ─── Mass email view ──────────────────────────────────────────────────────────
 
+const EMAIL_TEMPLATES = [
+  { name: 'Custom', subject: '', text: '', html: '' },
+  {
+    name: 'New Feature Announcement',
+    subject: 'New on RR Metrics: [Feature Name]',
+    text: 'Hey there,\n\nWe just shipped something new: [Feature Name].\n\n[Brief description of the feature and how it helps traders.]\n\nCheck it out: https://rrmetrics.com/trades\n\n— The RR Metrics Team',
+    html: '<h1 style="margin:0 0 16px;font-size:22px;font-weight:700;color:#ffffff;">Something new just dropped</h1>\n<p style="margin:0 0 20px;font-size:15px;color:#d1d5db;line-height:1.6;">[Brief description of the feature and how it helps traders.]</p>',
+  },
+  {
+    name: 'General Update',
+    subject: 'RR Metrics Update',
+    text: 'Hey there,\n\n[Your update here.]\n\n— The RR Metrics Team',
+    html: '<h1 style="margin:0 0 16px;font-size:22px;font-weight:700;color:#ffffff;">Quick Update</h1>\n<p style="margin:0 0 20px;font-size:15px;color:#d1d5db;line-height:1.6;">[Your update here.]</p>',
+  },
+];
+
 const EmailView = ({ token }) => {
   const [form, setForm] = useState({ subject: '', text: '', html: '', planFilter: 'all' });
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState(null);
+  const [selectedTemplate, setSelectedTemplate] = useState('Custom');
+
+  const handleTemplateChange = (e) => {
+    const tpl = EMAIL_TEMPLATES.find((t) => t.name === e.target.value);
+    if (tpl) {
+      setSelectedTemplate(tpl.name);
+      if (tpl.name !== 'Custom') {
+        setForm({ ...form, subject: tpl.subject, text: tpl.text, html: tpl.html });
+      }
+    }
+  };
 
   const handleSend = async (e) => {
     e.preventDefault();
@@ -404,7 +433,7 @@ const EmailView = ({ token }) => {
   return (
     <div className="p-8 max-w-2xl">
       <h2 className="text-lg font-bold text-text-primary mb-2">Mass Email</h2>
-      <p className="text-text-secondary text-sm mb-6">Sends via Resend. One email per user, sequentially.</p>
+      <p className="text-text-secondary text-sm mb-6">Sends via Resend. Unsubscribed users are automatically excluded.</p>
 
       {result && (
         <div className={`mb-6 p-4 rounded-xl border ${result.error ? 'border-negative/40 bg-negative/10' : 'border-positive/40 bg-positive/10'}`}>
@@ -416,19 +445,34 @@ const EmailView = ({ token }) => {
       )}
 
       <form onSubmit={handleSend} className="bg-bg-surface border border-border rounded-xl p-5 space-y-4">
-        <div>
-          <label className="block text-sm text-text-secondary mb-2">Send to</label>
-          <select
-            value={form.planFilter}
-            onChange={(e) => setForm({ ...form, planFilter: e.target.value })}
-            className="px-3 py-2 bg-bg-input border border-border rounded-lg text-text-primary text-sm"
-          >
-            <option value="all">All users</option>
-            <option value="pro">Pro only</option>
-            <option value="elite">Elite only</option>
-            <option value="free">Free only</option>
-            <option value="trial">Trial only</option>
-          </select>
+        <div className="flex gap-4">
+          <div className="flex-1">
+            <label className="block text-sm text-text-secondary mb-2">Send to</label>
+            <select
+              value={form.planFilter}
+              onChange={(e) => setForm({ ...form, planFilter: e.target.value })}
+              className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-text-primary text-sm"
+            >
+              <option value="all">All users</option>
+              <option value="pro">Pro only</option>
+              <option value="elite">Elite only</option>
+              <option value="free">Free only</option>
+              <option value="trial">Trial only</option>
+              <option value="expired_trial">Expired trial</option>
+            </select>
+          </div>
+          <div className="flex-1">
+            <label className="block text-sm text-text-secondary mb-2">Template</label>
+            <select
+              value={selectedTemplate}
+              onChange={handleTemplateChange}
+              className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-text-primary text-sm"
+            >
+              {EMAIL_TEMPLATES.map((t) => (
+                <option key={t.name} value={t.name}>{t.name}</option>
+              ))}
+            </select>
+          </div>
         </div>
         <div>
           <label className="block text-sm text-text-secondary mb-2">Subject</label>
@@ -460,6 +504,7 @@ const EmailView = ({ token }) => {
             required
           />
         </div>
+        <p className="text-xs text-text-secondary">Unsubscribe link is automatically appended to every email.</p>
         <button
           type="submit"
           disabled={sending}
@@ -642,6 +687,38 @@ const ManageUserModal = ({ user, token, onClose, onRefresh }) => {
         </div>
 
         {msg && <p className="text-sm text-accent mb-4">{msg}</p>}
+
+        <div className="mb-5">
+          <div className="text-text-secondary text-xs uppercase tracking-wider mb-3">Set Role</div>
+          <div className="flex gap-2">
+            {['user', 'developer'].map((r) => (
+              <button
+                key={r}
+                type="button"
+                disabled={working || (user.role || 'user') === r}
+                onClick={async () => {
+                  setWorking(true);
+                  setMsg(null);
+                  const res = await adminFetch(token, `/api/admin/users/${user.id}/role`, {
+                    method: 'PATCH',
+                    body: JSON.stringify({ role: r }),
+                  });
+                  const data = await res.json();
+                  setWorking(false);
+                  if (data.ok) { setMsg(`Role set to ${r}.`); onRefresh(); }
+                  else { setMsg(data.error || 'Error setting role.'); }
+                }}
+                className={`flex-1 py-2 rounded-lg border text-sm font-semibold capitalize transition-all disabled:opacity-50 ${
+                  (user.role || 'user') === r
+                    ? 'bg-accent/20 border-accent text-accent cursor-default'
+                    : 'border-border text-text-secondary hover:brightness-110'
+                }`}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+        </div>
 
         <div className="mb-5">
           <div className="text-text-secondary text-xs uppercase tracking-wider mb-3">Set Plan</div>
