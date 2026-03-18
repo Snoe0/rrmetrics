@@ -243,7 +243,7 @@ export function monthlyEmail(vars: TemplateVars): { subject: string; html: strin
     <p style="margin:0 0 8px;font-size:15px;color:#d1d5db;line-height:1.6;">
       Your free account is still active. Upgrade anytime to unlock everything.
     </p>
-    ${ctaButton('See What You\\'re Missing', vars.upgradeUrl)}
+    ${ctaButton("See What You're Missing", vars.upgradeUrl)}
   `;
 
   const text = `Hey ${vars.userName},

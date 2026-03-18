@@ -50,7 +50,7 @@ async function ensureBaseCoupon(stripe: Stripe): Promise<void> {
  */
 async function createPromoCode(stripe: Stripe, userId: string): Promise<string> {
   const promo = await stripe.promotionCodes.create({
-    coupon: 'COMEBACK50',
+    promotion: { coupon: 'COMEBACK50', type: 'coupon' },
     max_redemptions: 1,
     metadata: { userId },
   });
