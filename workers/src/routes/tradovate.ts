@@ -461,41 +461,36 @@ tradovate.post('/api/tradovate/exchange', requiresLogin, async (c) => {
 
     const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
 
-    // Store encrypted token
+    // Fetch accounts and check for duplicates BEFORE storing the token
+    const api = new TradovateAPI(brokerConn.environment);
+    const rawAccounts = (await api.getAccounts(accessToken)) as any[];
+    const accountIds = rawAccounts.map((a: any) => a.id as number);
+
+    const duplicates = await tvConnDb.findDuplicateAccountIds(
+      serviceClient, user.id, accountIds, connectionId,
+    );
+    if (duplicates.length > 0) {
+      // Clean up the pending connection — no token was stored yet
+      await brokerDb.deleteById(serviceClient, connectionId, user.id);
+      const dupeNames = rawAccounts
+        .filter((a: any) => duplicates.includes(a.id))
+        .map((a: any) => a.name)
+        .join(', ');
+      return c.json({
+        error: `Account${duplicates.length > 1 ? 's' : ''} already connected: ${dupeNames}`,
+      }, 409);
+    }
+
+    // No duplicates — store encrypted token + account IDs
     await tvConnDb.updateByBrokerConnectionId(serviceClient, connectionId, {
       access_token: await encrypt(accessToken, c.env.ENCRYPTION_KEY),
       token_expires_at: expiresAt,
+      account_ids: accountIds,
     });
 
-    // Fetch accounts, check for duplicates, fetch balances
+    // Fetch balances and generate label (best-effort)
     let accounts: Array<{ id: number; name: string; active: boolean; balance: number | null }> = [];
     try {
-      const api = new TradovateAPI(brokerConn.environment);
-      const rawAccounts = (await api.getAccounts(accessToken)) as any[];
-      const accountIds = rawAccounts.map((a: any) => a.id as number);
-
-      // Check for duplicate accounts already connected
-      const duplicates = await tvConnDb.findDuplicateAccountIds(
-        serviceClient, user.id, accountIds, connectionId,
-      );
-      if (duplicates.length > 0) {
-        // Clean up the pending connection
-        await brokerDb.deleteById(serviceClient, connectionId, user.id);
-        const dupeNames = rawAccounts
-          .filter((a: any) => duplicates.includes(a.id))
-          .map((a: any) => a.name)
-          .join(', ');
-        return c.json({
-          error: `Account${duplicates.length > 1 ? 's' : ''} already connected: ${dupeNames}`,
-        }, 409);
-      }
-
-      // Store account IDs on the connection for future duplicate checks
-      await tvConnDb.updateByBrokerConnectionId(serviceClient, connectionId, {
-        account_ids: accountIds,
-      });
-
-      // Fetch balances in parallel
       const balanceResults = await Promise.all(
         rawAccounts.map((a: any) => api.getCashBalance(accessToken, a.id)),
       );
@@ -514,7 +509,13 @@ tradovate.post('/api/tradovate/exchange', requiresLogin, async (c) => {
         await brokerDb.updateById(serviceClient, connectionId, { label });
       }
     } catch {
-      // non-fatal — accounts list is best-effort
+      // non-fatal — balances/label are best-effort
+      accounts = rawAccounts.map((a: any) => ({
+        id: a.id,
+        name: a.name,
+        active: a.active !== false,
+        balance: null,
+      }));
     }
 
     return c.json({ message: 'Tradovate connected successfully', accounts, connectionId });
