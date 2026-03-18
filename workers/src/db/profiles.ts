@@ -1,17 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ProfileRow, AccountAPI } from '../bindings';
 
-function isTokenExpired(expiresAt: string | null): boolean {
-  if (!expiresAt) return false;
-  return new Date(expiresAt) < new Date();
-}
-
 /** Maps a profile row to the client-compatible API shape (id -> _id) */
 export function toAPI(row: ProfileRow): AccountAPI {
   return {
     _id: row.id,
     email: row.email,
-    isPremium: (row.subscription_plan || 'trial') !== 'trial',
+    isPremium: row.subscription_plan === 'pro' || row.subscription_plan === 'elite',
     subscriptionPlan: row.subscription_plan || 'trial',
     subscriptionStatus: row.subscription_status || null,
     theme: row.theme || 'dark',
@@ -25,19 +20,6 @@ export function toAPI(row: ProfileRow): AccountAPI {
     },
     createdDate: row.created_at,
     hasPassword: true,
-    tradovate: {
-      configured: !!row.tradovate_access_token && !isTokenExpired(row.tradovate_token_expires_at),
-      expired: !!row.tradovate_access_token && isTokenExpired(row.tradovate_token_expires_at),
-      environment: row.tradovate_environment || 'demo',
-      lastSyncTime: row.tradovate_last_sync_time || null,
-    },
-    projectx: {
-      configured: !!row.projectx_token && !isTokenExpired(row.projectx_token_expires_at),
-      expired: !!row.projectx_token && isTokenExpired(row.projectx_token_expires_at),
-      selectedAccounts: row.projectx_selected_accounts ? JSON.parse(row.projectx_selected_accounts) : [],
-      copytradeConfig: row.projectx_copytrade_config ? JSON.parse(row.projectx_copytrade_config) : null,
-      lastSyncTime: row.projectx_last_sync_time || null,
-    },
   };
 }
 
@@ -73,18 +55,9 @@ export async function updateById(
     subscriptionPlan: 'subscription_plan',
     subscriptionStatus: 'subscription_status',
     theme: 'theme',
-    tradovateAccessToken: 'tradovate_access_token',
-    tradovateTokenExpiresAt: 'tradovate_token_expires_at',
-    tradovateEnvironment: 'tradovate_environment',
-    tradovateLastSyncTime: 'tradovate_last_sync_time',
-    projectxUsername: 'projectx_username',
-    projectxApiKey: 'projectx_api_key',
-    projectxToken: 'projectx_token',
-    projectxTokenExpiresAt: 'projectx_token_expires_at',
-    projectxSelectedAccounts: 'projectx_selected_accounts',
-    projectxCopytradeConfig: 'projectx_copytrade_config',
-    projectxLastSyncTime: 'projectx_last_sync_time',
     registrationIp: 'registration_ip',
+    stripeConnectAccountId: 'stripe_connect_account_id',
+    stripeConnectOnboarded: 'stripe_connect_onboarded',
     customColorsBgPage: 'custom_colors_bg_page',
     customColorsBgSurface: 'custom_colors_bg_surface',
     customColorsTextPrimary: 'custom_colors_text_primary',
@@ -104,8 +77,10 @@ export async function updateById(
 
   if (Object.keys(updateData).length === 0) return;
 
-  await supabase
+  const { error } = await supabase
     .from('profiles')
     .update(updateData)
     .eq('id', id);
+
+  if (error) throw new Error(`Profile update failed: ${error.message}`);
 }
