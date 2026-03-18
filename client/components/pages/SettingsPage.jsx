@@ -712,6 +712,11 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                                         : 'bg-text-muted/30'
                                     }`}></span>
                                     {acct.name}
+                                    {acct.balance != null && (
+                                      <span className={`text-[10px] font-mono ${isEnabled ? 'text-text-secondary' : 'text-text-muted/60'}`}>
+                                        ${acct.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                      </span>
+                                    )}
                                   </button>
                                 );
                               })}

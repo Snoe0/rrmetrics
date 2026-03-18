@@ -120,6 +120,7 @@ export interface TradovateConnectionRow {
   token_expires_at: string | null;
   oauth_nonce: string | null;
   selected_accounts: number[] | null;
+  account_ids: number[] | null;
 }
 
 export interface ProjectXConnectionRow {

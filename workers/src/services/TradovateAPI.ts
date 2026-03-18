@@ -3,6 +3,40 @@
  * Uses OAuth tokens obtained via the Tradovate OAuth flow.
  */
 
+export interface TvPosition {
+  id: number;
+  accountId: number;
+  contractId: number;
+  timestamp: string;
+  netPos: number;
+}
+
+export interface TvFillPair {
+  id: number;
+  positionId: number;
+  buyFillId: number;
+  sellFillId: number;
+  qty: number;
+  buyPrice: number;
+  sellPrice: number;
+  active: boolean;
+}
+
+export interface TvFill {
+  id: number;
+  orderId: number;
+  contractId: number;
+  timestamp: string;
+  action: string;
+  qty: number;
+  price: number;
+}
+
+export interface TvContract {
+  id: number;
+  name: string;
+}
+
 export class TradovateAPI {
   private baseUrl: string;
 
@@ -61,6 +95,39 @@ export class TradovateAPI {
     return { accessToken: data.access_token, expiresIn: data.expires_in ?? 5400 };
   }
 
+  /**
+   * Renew an existing access token before it expires.
+   * Returns a fresh token with a new expiration window.
+   */
+  async renewAccessToken(token: string): Promise<{ accessToken: string; expiresIn: number }> {
+    const response = await fetch(`${this.baseUrl}/auth/renewaccesstoken`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Token renewal failed: ${response.status} ${errorText}`);
+    }
+
+    const data = (await response.json()) as {
+      accessToken?: string;
+      expirationTime?: string;
+      errorText?: string;
+    };
+
+    if (!data.accessToken) {
+      throw new Error(data.errorText || 'No access token returned from renewal');
+    }
+
+    // Tradovate renewal returns expirationTime as ISO string; compute seconds remaining
+    const expiresIn = data.expirationTime
+      ? Math.floor((new Date(data.expirationTime).getTime() - Date.now()) / 1000)
+      : 5400;
+
+    return { accessToken: data.accessToken, expiresIn };
+  }
+
   async getAccounts(token: string): Promise<unknown[]> {
     const response = await fetch(`${this.baseUrl}/account/list`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -69,55 +136,69 @@ export class TradovateAPI {
     return response.json() as Promise<unknown[]>;
   }
 
-  async getFills(
-    token: string,
-  ): Promise<
-    Array<{
-      orderId?: string;
-      id?: number;
-      contractId: number;
-      action?: string;
-      qty?: number;
-      price?: number;
-      timestamp: string;
-    }>
-  > {
-    const response = await fetch(`${this.baseUrl}/fill/list`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!response.ok) throw new Error(`Failed to fetch fills: ${response.status}`);
-    return response.json() as Promise<any[]>;
+  /** Fetch cash balance snapshot for a specific account. */
+  async getCashBalance(token: string, accountId: number): Promise<{ cashBalance: number } | null> {
+    try {
+      const response = await fetch(`${this.baseUrl}/cashBalance/getCashBalanceSnapshot?accountId=${accountId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) return null;
+      const data = await response.json() as any;
+      return { cashBalance: data.cashBalance ?? data.totalCashValue ?? null };
+    } catch {
+      return null;
+    }
   }
 
-  async getFillsByAccount(
-    token: string,
-    accountId: number,
-  ): Promise<
-    Array<{
-      orderId?: string;
-      id?: number;
-      contractId: number;
-      action?: string;
-      qty?: number;
-      price?: number;
-      timestamp: string;
-    }>
-  > {
-    const response = await fetch(`${this.baseUrl}/fill/ldeps?masterid=${accountId}`, {
+  /** All currently open positions for the authenticated user. */
+  async getPositions(token: string): Promise<TvPosition[]> {
+    const response = await fetch(`${this.baseUrl}/position/list`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (!response.ok) throw new Error(`Failed to fetch fills for account ${accountId}: ${response.status}`);
-    return response.json() as Promise<any[]>;
+    if (!response.ok) throw new Error(`Failed to fetch positions: ${response.status}`);
+    return response.json() as Promise<TvPosition[]>;
   }
 
-  async getContract(
-    token: string,
-    id: number,
-  ): Promise<{ name?: string; [key: string]: unknown }> {
-    const response = await fetch(`${this.baseUrl}/contract/item?id=${id}`, {
+  /** Batch-fetch specific positions by ID (works for historical/closed positions). */
+  async getPositionItems(token: string, ids: number[]): Promise<TvPosition[]> {
+    if (ids.length === 0) return [];
+    const response = await fetch(`${this.baseUrl}/position/items?ids=${ids.join(',')}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (!response.ok) throw new Error(`Failed to fetch contract ${id}: ${response.status}`);
-    return response.json() as Promise<{ name?: string }>;
+    if (!response.ok) throw new Error(`Failed to fetch position items: ${response.status}`);
+    return response.json() as Promise<TvPosition[]>;
+  }
+
+  /**
+   * All fill pairs for the authenticated user.
+   * Each FillPair represents one matched buy+sell round-trip (Tradovate's own FIFO matching).
+   * active=false → the pair's position is fully closed.
+   */
+  async getFillPairs(token: string): Promise<TvFillPair[]> {
+    const response = await fetch(`${this.baseUrl}/fillPair/list`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new Error(`Failed to fetch fill pairs: ${response.status}`);
+    return response.json() as Promise<TvFillPair[]>;
+  }
+
+  /** Batch-fetch fills by ID. Returns fill timestamps and order IDs. */
+  async getFillItems(token: string, ids: number[]): Promise<TvFill[]> {
+    if (ids.length === 0) return [];
+    const response = await fetch(`${this.baseUrl}/fill/items?ids=${ids.join(',')}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new Error(`Failed to fetch fill items: ${response.status}`);
+    return response.json() as Promise<TvFill[]>;
+  }
+
+  /** Batch-fetch contracts by ID to resolve names. */
+  async getContractItems(token: string, ids: number[]): Promise<TvContract[]> {
+    if (ids.length === 0) return [];
+    const response = await fetch(`${this.baseUrl}/contract/items?ids=${ids.join(',')}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new Error(`Failed to fetch contract items: ${response.status}`);
+    return response.json() as Promise<TvContract[]>;
   }
 }

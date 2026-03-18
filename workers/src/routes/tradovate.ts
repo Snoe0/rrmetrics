@@ -467,15 +467,44 @@ tradovate.post('/api/tradovate/exchange', requiresLogin, async (c) => {
       token_expires_at: expiresAt,
     });
 
-    // Fetch accounts to auto-generate label and return to client
-    let accounts: Array<{ id: number; name: string; active: boolean }> = [];
+    // Fetch accounts, check for duplicates, fetch balances
+    let accounts: Array<{ id: number; name: string; active: boolean; balance: number | null }> = [];
     try {
       const api = new TradovateAPI(brokerConn.environment);
       const rawAccounts = (await api.getAccounts(accessToken)) as any[];
-      accounts = rawAccounts.map((a) => ({
+      const accountIds = rawAccounts.map((a: any) => a.id as number);
+
+      // Check for duplicate accounts already connected
+      const duplicates = await tvConnDb.findDuplicateAccountIds(
+        serviceClient, user.id, accountIds, connectionId,
+      );
+      if (duplicates.length > 0) {
+        // Clean up the pending connection
+        await brokerDb.deleteById(serviceClient, connectionId, user.id);
+        const dupeNames = rawAccounts
+          .filter((a: any) => duplicates.includes(a.id))
+          .map((a: any) => a.name)
+          .join(', ');
+        return c.json({
+          error: `Account${duplicates.length > 1 ? 's' : ''} already connected: ${dupeNames}`,
+        }, 409);
+      }
+
+      // Store account IDs on the connection for future duplicate checks
+      await tvConnDb.updateByBrokerConnectionId(serviceClient, connectionId, {
+        account_ids: accountIds,
+      });
+
+      // Fetch balances in parallel
+      const balanceResults = await Promise.all(
+        rawAccounts.map((a: any) => api.getCashBalance(accessToken, a.id)),
+      );
+
+      accounts = rawAccounts.map((a: any, i: number) => ({
         id: a.id,
         name: a.name,
         active: a.active !== false,
+        balance: balanceResults[i]?.cashBalance ?? null,
       }));
 
       // Auto-generate label from environment + first account name
@@ -546,17 +575,23 @@ tradovate.get(
         }
       }
 
-      // Fetch accounts for active connections
-      let accounts: Array<{ id: number; name: string; active: boolean }> = [];
+      // Fetch accounts + balances for active connections
+      let accounts: Array<{ id: number; name: string; active: boolean; balance: number | null }> = [];
       if (hasToken && !tokenExpired && tvConn) {
         try {
           const token = await decrypt(tvConn.access_token!, c.env.ENCRYPTION_KEY);
           const api = new TradovateAPI(bc.environment);
           const rawAccounts = (await api.getAccounts(token)) as any[];
-          accounts = rawAccounts.map((a: any) => ({
+
+          const balanceResults = await Promise.all(
+            rawAccounts.map((a: any) => api.getCashBalance(token, a.id)),
+          );
+
+          accounts = rawAccounts.map((a: any, i: number) => ({
             id: a.id,
             name: a.name,
             active: a.active !== false,
+            balance: balanceResults[i]?.cashBalance ?? null,
           }));
         } catch {
           // non-fatal — accounts list is best-effort

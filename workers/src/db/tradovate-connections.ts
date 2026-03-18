@@ -38,7 +38,7 @@ export async function create(
 export async function updateByBrokerConnectionId(
   supabase: SupabaseClient,
   brokerConnectionId: string,
-  updates: Partial<Pick<TradovateConnectionRow, 'access_token' | 'token_expires_at' | 'oauth_nonce' | 'selected_accounts'>>,
+  updates: Partial<Pick<TradovateConnectionRow, 'access_token' | 'token_expires_at' | 'oauth_nonce' | 'selected_accounts' | 'account_ids'>>,
 ): Promise<void> {
   const { error } = await supabase
     .from('tradovate_connections')
@@ -65,4 +65,35 @@ export async function findExpiringSoon(
     environment: row.broker_connections?.environment || 'demo',
     broker_connections: undefined,
   })) as Array<TradovateConnectionRow & { environment: string }>;
+}
+
+/**
+ * Check if any of the given Tradovate account IDs already exist in another
+ * connection for this user. Returns the IDs that overlap, or empty array.
+ */
+export async function findDuplicateAccountIds(
+  supabase: SupabaseClient,
+  ownerId: string,
+  accountIds: number[],
+  excludeConnectionId: string,
+): Promise<number[]> {
+  if (accountIds.length === 0) return [];
+
+  // Get all tradovate_connections for this user (via broker_connections join)
+  const { data, error } = await supabase
+    .from('tradovate_connections')
+    .select('account_ids, broker_connection_id, broker_connections!inner(owner)')
+    .eq('broker_connections.owner', ownerId)
+    .not('account_ids', 'is', null)
+    .neq('broker_connection_id', excludeConnectionId);
+
+  if (error || !data) return [];
+
+  const existingIds = new Set<number>();
+  for (const row of data as any[]) {
+    const ids = row.account_ids as number[] | null;
+    if (ids) ids.forEach((id: number) => existingIds.add(id));
+  }
+
+  return accountIds.filter(id => existingIds.has(id));
 }
