@@ -593,6 +593,13 @@ tradovate.get(
             active: a.active !== false,
             balance: balanceResults[i]?.cashBalance ?? null,
           }));
+
+          // Auto-populate account_ids if missing (e.g. migrated connections)
+          if (!tvConn.account_ids && accounts.length > 0) {
+            await tvConnDb.updateByBrokerConnectionId(serviceClient, bc.id, {
+              account_ids: accounts.map(a => a.id),
+            });
+          }
         } catch {
           // non-fatal — accounts list is best-effort
         }
