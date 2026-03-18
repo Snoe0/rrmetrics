@@ -25,6 +25,7 @@ export interface Env {
   ADMIN_SECRET?: string;
   TRADOVATE_CLIENT_ID?: string;
   TRADOVATE_CLIENT_SECRET?: string;
+  DISCORD_PAYOUT_WEBHOOK?: string;
 }
 
 export interface ProfileRow {
@@ -41,18 +42,9 @@ export interface ProfileRow {
   custom_colors_accent: string | null;
   custom_colors_positive: string | null;
   custom_colors_negative: string | null;
-  tradovate_access_token: string | null;
-  tradovate_token_expires_at: string | null;
-  tradovate_environment: string;
-  tradovate_last_sync_time: string | null;
-  projectx_username: string | null;
-  projectx_api_key: string | null;
-  projectx_token: string | null;
-  projectx_token_expires_at: string | null;
-  projectx_selected_accounts: string | null;
-  projectx_copytrade_config: string | null;
-  projectx_last_sync_time: string | null;
   registration_ip: string | null;
+  stripe_connect_account_id: string | null;
+  stripe_connect_onboarded: boolean;
   created_at: string;
 }
 
@@ -73,19 +65,6 @@ export interface AccountAPI {
   };
   createdDate: string;
   hasPassword: boolean;
-  tradovate: {
-    configured: boolean;
-    expired: boolean;
-    environment: string;
-    lastSyncTime: string | null;
-  };
-  projectx: {
-    configured: boolean;
-    expired: boolean;
-    selectedAccounts: number[];
-    copytradeConfig: { leadAccountId: number; multiplier: number } | null;
-    lastSyncTime: string | null;
-  };
 }
 
 export interface TradeRow {
@@ -105,6 +84,7 @@ export interface TradeRow {
   tradovate_source: string;
   projectx_trade_id: string | null;
   projectx_source: string | null;
+  broker_connection_id: string | null;
   created_date: string;
 }
 
@@ -120,6 +100,36 @@ export interface DailyNoteRow {
   user_id: string;
   date: string;
   content: string;
+}
+
+export interface BrokerConnectionRow {
+  id: string;
+  owner: string;
+  broker: string;
+  environment: string;
+  label: string | null;
+  last_sync_time: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TradovateConnectionRow {
+  id: string;
+  broker_connection_id: string;
+  access_token: string | null;
+  token_expires_at: string | null;
+  oauth_nonce: string | null;
+}
+
+export interface ProjectXConnectionRow {
+  id: string;
+  broker_connection_id: string;
+  username: string | null;
+  api_key: string | null;
+  access_token: string | null;
+  token_expires_at: string | null;
+  selected_accounts: number[] | null;
+  copytrade_config: { leadAccountId: number; multiplier: number } | null;
 }
 
 export interface AuthContext {
