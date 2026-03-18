@@ -76,8 +76,7 @@ const StatsView = ({ token }) => {
     { label: 'Total Users', value: stats.totalUsers },
     { label: 'Pro', value: stats.proUsers },
     { label: 'Elite', value: stats.eliteUsers },
-    { label: 'Free', value: stats.freeUsers },
-    { label: 'Trial', value: stats.trialUsers },
+    { label: 'Free / Trial', value: stats.freeUsers },
     { label: 'New (7d)', value: stats.newUsersLast7Days },
     { label: 'New (30d)', value: stats.newUsersLast30Days },
   ];
@@ -115,8 +114,11 @@ const UsersView = ({ token }) => {
 
   useEffect(() => { load(page); }, [page, load]);
 
-  const planBadge = (plan) => {
-    const colors = { pro: 'text-info', elite: 'text-accent', free: 'text-text-muted', trial: 'text-warning' };
+  const planBadge = (plan, role) => {
+    if (role === 'developer') {
+      return <span className="font-mono text-xs text-purple-400">developer</span>;
+    }
+    const colors = { pro: 'text-info', elite: 'text-accent', free: 'text-text-muted' };
     return <span className={`font-mono text-xs ${colors[plan] || 'text-text-secondary'}`}>{plan}</span>;
   };
 
@@ -130,8 +132,7 @@ const UsersView = ({ token }) => {
             <thead>
               <tr className="text-left text-text-muted border-b border-border">
                 <th className="pb-2 font-medium">Email</th>
-                <th className="pb-2 font-medium">Plan</th>
-                <th className="pb-2 font-medium">Role</th>
+                <th className="pb-2 font-medium">Tier</th>
                 <th className="pb-2 font-medium">Joined</th>
                 <th className="pb-2 font-medium">IP</th>
                 <th className="pb-2 font-medium">Actions</th>
@@ -141,8 +142,7 @@ const UsersView = ({ token }) => {
               {data.users.map((u) => (
                 <tr key={u.id} className="border-b border-border/50 hover:bg-bg-surface/50">
                   <td className="py-2 text-text-primary">{u.email}</td>
-                  <td className="py-2">{planBadge(u.plan)}</td>
-                  <td className="py-2 text-text-secondary font-mono text-xs">{u.role || 'user'}</td>
+                  <td className="py-2">{planBadge(u.plan, u.role)}</td>
                   <td className="py-2 text-text-secondary font-mono text-xs">{new Date(u.createdAt).toLocaleDateString()}</td>
                   <td className="py-2 text-text-muted font-mono text-xs">{u.registrationIp || '—'}</td>
                   <td className="py-2">
@@ -456,9 +456,8 @@ const EmailView = ({ token }) => {
               <option value="all">All users</option>
               <option value="pro">Pro only</option>
               <option value="elite">Elite only</option>
-              <option value="free">Free only</option>
-              <option value="trial">Trial only</option>
-              <option value="expired_trial">Expired trial</option>
+              <option value="free">Free / Trial</option>
+              <option value="expired_trial">Expired trial only</option>
             </select>
           </div>
           <div className="flex-1">
@@ -626,6 +625,7 @@ const PLAN_BORDER = {
   free: 'border-border text-text-secondary',
   pro: 'border-info text-info',
   elite: 'border-accent text-accent',
+  developer: 'border-purple-500 text-purple-400',
 };
 
 const ManageUserModal = ({ user, token, onClose, onRefresh }) => {
@@ -680,7 +680,7 @@ const ManageUserModal = ({ user, token, onClose, onRefresh }) => {
           <div>
             <div className="text-text-primary font-semibold text-sm">{user.email}</div>
             <div className="text-text-muted text-xs mt-1">
-              Current plan: <span className="font-mono">{user.plan}</span>
+              Current tier: <span className="font-mono">{user.role === 'developer' ? 'developer' : user.plan}</span>
             </div>
           </div>
           <button type="button" onClick={onClose} className="text-text-muted hover:text-text-primary text-xl leading-none">×</button>
@@ -689,56 +689,65 @@ const ManageUserModal = ({ user, token, onClose, onRefresh }) => {
         {msg && <p className="text-sm text-accent mb-4">{msg}</p>}
 
         <div className="mb-5">
-          <div className="text-text-secondary text-xs uppercase tracking-wider mb-3">Set Role</div>
+          <div className="text-text-secondary text-xs uppercase tracking-wider mb-3">Set Tier</div>
           <div className="flex gap-2">
-            {['user', 'developer'].map((r) => (
-              <button
-                key={r}
-                type="button"
-                disabled={working || (user.role || 'user') === r}
-                onClick={async () => {
+            {['free', 'pro', 'elite', 'developer'].map((tier) => {
+              const isDeveloperTier = tier === 'developer';
+              const currentTier = user.role === 'developer' ? 'developer' : user.plan;
+              const isActive = currentTier === tier;
+
+              const handleClick = async () => {
+                if (isDeveloperTier) {
+                  // Set role to developer + plan to elite (gets all features)
                   setWorking(true);
                   setMsg(null);
                   const res = await adminFetch(token, `/api/admin/users/${user.id}/role`, {
                     method: 'PATCH',
-                    body: JSON.stringify({ role: r }),
+                    body: JSON.stringify({ role: 'developer' }),
                   });
                   const data = await res.json();
+                  if (data.ok) {
+                    // Also ensure they have elite plan
+                    await adminFetch(token, `/api/admin/users/${user.id}/subscription`, {
+                      method: 'PATCH',
+                      body: JSON.stringify({ plan: 'elite' }),
+                    });
+                    setMsg('Tier set to developer (elite + dev access).');
+                    onRefresh();
+                  } else {
+                    setMsg(data.error || 'Error setting role.');
+                  }
                   setWorking(false);
-                  if (data.ok) { setMsg(`Role set to ${r}.`); onRefresh(); }
-                  else { setMsg(data.error || 'Error setting role.'); }
-                }}
-                className={`flex-1 py-2 rounded-lg border text-sm font-semibold capitalize transition-all disabled:opacity-50 ${
-                  (user.role || 'user') === r
-                    ? 'bg-accent/20 border-accent text-accent cursor-default'
-                    : 'border-border text-text-secondary hover:brightness-110'
-                }`}
-              >
-                {r}
-              </button>
-            ))}
-          </div>
-        </div>
+                } else {
+                  // Regular plan change — also reset role to 'user' if they were developer
+                  if (user.role === 'developer') {
+                    await adminFetch(token, `/api/admin/users/${user.id}/role`, {
+                      method: 'PATCH',
+                      body: JSON.stringify({ role: 'user' }),
+                    });
+                  }
+                  setPlan(tier);
+                }
+              };
 
-        <div className="mb-5">
-          <div className="text-text-secondary text-xs uppercase tracking-wider mb-3">Set Plan</div>
-          <div className="flex gap-2">
-            {['free', 'pro', 'elite'].map((p) => (
-              <button
-                key={p}
-                type="button"
-                disabled={working || user.plan === p}
-                onClick={() => setPlan(p)}
-                className={`flex-1 py-2 rounded-lg border text-sm font-semibold capitalize transition-all disabled:opacity-50 ${
-                  user.plan === p
-                    ? 'bg-accent/20 border-accent text-accent cursor-default'
-                    : `${PLAN_BORDER[p] || 'border-border text-text-secondary'} hover:brightness-110`
-                }`}
-              >
-                {p}
-              </button>
-            ))}
+              return (
+                <button
+                  key={tier}
+                  type="button"
+                  disabled={working || isActive}
+                  onClick={handleClick}
+                  className={`flex-1 py-2 rounded-lg border text-sm font-semibold capitalize transition-all disabled:opacity-50 ${
+                    isActive
+                      ? `${isDeveloperTier ? 'bg-purple-500/20 border-purple-500 text-purple-400' : 'bg-accent/20 border-accent text-accent'} cursor-default`
+                      : `${PLAN_BORDER[tier] || 'border-border text-text-secondary'} hover:brightness-110`
+                  }`}
+                >
+                  {tier}
+                </button>
+              );
+            })}
           </div>
+          <p className="text-text-muted text-xs mt-2">Developer = Elite features + Trade Syncer access</p>
         </div>
 
         <div>

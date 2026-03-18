@@ -140,7 +140,7 @@ admin.delete('/api/admin/announcements/:id', async (c) => {
 
 // POST /api/admin/email/send
 // Body: { subject, text, html, planFilter? }
-// planFilter: 'all' | 'pro' | 'elite' | 'free' | 'trial' | 'expired_trial'
+// planFilter: 'all' | 'pro' | 'elite' | 'free' | 'expired_trial'
 admin.post('/api/admin/email/send', async (c) => {
   const supabase = createServiceClient(c.env);
   const reqBody = await c.req.json();

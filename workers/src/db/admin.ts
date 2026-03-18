@@ -7,7 +7,6 @@ export interface CustomerStats {
   proUsers: number;
   eliteUsers: number;
   freeUsers: number;
-  trialUsers: number;
   newUsersLast7Days: number;
   newUsersLast30Days: number;
 }
@@ -29,8 +28,7 @@ export async function getCustomerStats(supabase: SupabaseClient): Promise<Custom
     totalUsers: rows.length,
     proUsers: rows.filter((r) => r.subscription_plan === 'pro').length,
     eliteUsers: rows.filter((r) => r.subscription_plan === 'elite').length,
-    freeUsers: rows.filter((r) => r.subscription_plan === 'free').length,
-    trialUsers: rows.filter((r) => !r.subscription_plan || r.subscription_plan === 'trial').length,
+    freeUsers: rows.filter((r) => !r.subscription_plan || r.subscription_plan === 'free').length,
     newUsersLast7Days: rows.filter((r) => r.created_at >= minus7).length,
     newUsersLast30Days: rows.filter((r) => r.created_at >= minus30).length,
   };
@@ -75,7 +73,7 @@ export async function getSuspiciousAccounts(
         id: a.id,
         email: a.email,
         createdAt: a.created_at,
-        plan: a.subscription_plan || 'trial',
+        plan: a.subscription_plan || 'free',
       })),
     }))
     .sort((a, b) => b.count - a.count);
