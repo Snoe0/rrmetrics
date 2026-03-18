@@ -31,6 +31,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
   const [tvSyncingId, setTvSyncingId] = useState(null); // connectionId currently syncing, or 'all'
   const [tvShowImportPrompt, setTvShowImportPrompt] = useState(null); // connectionId that just connected
   const [tvSavingAccounts, setTvSavingAccounts] = useState(null); // connectionId currently saving
+  const [tvSelectedAcctIds, setTvSelectedAcctIds] = useState([]); // UI-selected account IDs (for enable/disable action)
 
   // --- ProjectX multi-connection state ---
   const [pxConnections, setPxConnections] = useState([]);
@@ -263,40 +264,57 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
     setTvSyncingId(null);
   };
 
-  // Toggle a Tradovate account on/off for a connection (local state, saved via handleTvSaveAccounts)
-  const toggleTvAccount = (connectionId, accountId) => {
-    setTvConnections(prev => prev.map(conn => {
-      if (conn.connectionId !== connectionId) return conn;
-      const allAccountIds = (conn.accounts || []).map(a => a.id);
-      // If selectedAccounts is empty, that means "all enabled" — expand to full list first
-      const current = (!conn.selectedAccounts || conn.selectedAccounts.length === 0)
-        ? allAccountIds
-        : conn.selectedAccounts;
-      const updated = current.includes(accountId)
-        ? current.filter(id => id !== accountId)
-        : [...current, accountId];
-      return { ...conn, selectedAccounts: updated };
-    }));
+  // Toggle UI selection of a Tradovate account (does not change enabled state)
+  const toggleTvAcctSelection = (accountId) => {
+    setTvSelectedAcctIds(prev =>
+      prev.includes(accountId) ? prev.filter(id => id !== accountId) : [...prev, accountId]
+    );
   };
 
-  const handleTvSaveAccounts = async (connectionId) => {
+  // Enable or disable the UI-selected accounts, then save
+  const handleTvEnableDisable = async (connectionId, enable) => {
+    if (tvSelectedAcctIds.length === 0) return;
     const conn = tvConnections.find(c => c.connectionId === connectionId);
     if (!conn) return;
+
+    const allAccountIds = (conn.accounts || []).map(a => a.id);
+    // Current enabled set — empty means all
+    const currentEnabled = (!conn.selectedAccounts || conn.selectedAccounts.length === 0)
+      ? allAccountIds
+      : [...conn.selectedAccounts];
+
+    let updated;
+    if (enable) {
+      // Add selected IDs to enabled set
+      updated = [...new Set([...currentEnabled, ...tvSelectedAcctIds])];
+    } else {
+      // Remove selected IDs from enabled set
+      updated = currentEnabled.filter(id => !tvSelectedAcctIds.includes(id));
+    }
+
+    // If all accounts are enabled, store empty array (means "all")
+    const toSave = updated.length === allAccountIds.length ? [] : updated;
+
     setTvSavingAccounts(connectionId);
     try {
       const response = await authFetch('/api/tradovate/accounts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ connectionId, selectedAccounts: conn.selectedAccounts || [] }),
+        body: JSON.stringify({ connectionId, selectedAccounts: toSave }),
       });
       const data = await response.json();
       if (data.error) {
         setMessage({ type: 'error', text: data.error });
       } else {
-        setMessage({ type: 'success', text: 'Account settings saved' });
+        // Update local state
+        setTvConnections(prev => prev.map(c =>
+          c.connectionId === connectionId ? { ...c, selectedAccounts: toSave } : c
+        ));
+        setTvSelectedAcctIds([]);
+        setMessage({ type: 'success', text: enable ? 'Accounts enabled' : 'Accounts disabled' });
       }
     } catch {
-      setMessage({ type: 'error', text: 'Failed to save account settings' });
+      setMessage({ type: 'error', text: 'Failed to update accounts' });
     }
     setTvSavingAccounts(null);
   };
@@ -663,9 +681,9 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                           </span>
                         </div>
 
-                        {/* Accounts list with enable/disable toggles */}
+                        {/* Accounts with click-to-select + enable/disable */}
                         {conn.accounts && conn.accounts.length > 0 && conn.configured && !conn.expired && (
-                          <div className="space-y-1.5">
+                          <div className="space-y-2">
                             <div className="flex items-center justify-between">
                               <span className="text-xs font-medium text-text-secondary">Accounts</span>
                               {conn.selectedAccounts && conn.selectedAccounts.length > 0 && conn.selectedAccounts.length < conn.accounts.length && (
@@ -675,33 +693,54 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                             <div className="flex flex-wrap gap-1.5">
                               {conn.accounts.map(acct => {
                                 const isEnabled = !conn.selectedAccounts || conn.selectedAccounts.length === 0 || conn.selectedAccounts.includes(acct.id);
+                                const isSelected = tvSelectedAcctIds.includes(acct.id);
                                 return (
                                   <button
                                     key={acct.id}
-                                    onClick={() => toggleTvAccount(conn.connectionId, acct.id)}
-                                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer border ${
-                                      isEnabled
-                                        ? 'bg-accent/10 border-accent/30 text-accent'
-                                        : 'bg-bg-surface/50 border-border text-text-muted'
+                                    onClick={() => toggleTvAcctSelection(acct.id)}
+                                    className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer border ${
+                                      isSelected
+                                        ? 'bg-accent/15 border-accent text-accent ring-1 ring-accent/30'
+                                        : isEnabled
+                                          ? 'bg-bg-surface border-border text-text-primary hover:border-accent/50'
+                                          : 'bg-bg-surface/30 border-border/50 text-text-muted hover:border-border'
                                     }`}
                                   >
-                                    <span className={`w-1.5 h-1.5 rounded-full ${
+                                    <span className={`w-2 h-2 rounded-full ${
                                       isEnabled
                                         ? (acct.active ? 'bg-positive' : 'bg-warning')
-                                        : 'bg-text-muted/40'
+                                        : 'bg-text-muted/30'
                                     }`}></span>
                                     {acct.name}
+                                    {!isEnabled && <span className="text-text-muted/60 text-[10px]">off</span>}
                                   </button>
                                 );
                               })}
                             </div>
-                            <button
-                              onClick={() => handleTvSaveAccounts(conn.connectionId)}
-                              disabled={tvSavingAccounts === conn.connectionId}
-                              className="w-full mt-1 px-3 py-1.5 bg-bg-input border border-border text-text-primary text-xs font-medium rounded-lg hover:border-accent transition-colors disabled:opacity-50"
-                            >
-                              {tvSavingAccounts === conn.connectionId ? 'Saving...' : 'Save Account Settings'}
-                            </button>
+                            {tvSelectedAcctIds.length > 0 && (
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => handleTvEnableDisable(conn.connectionId, true)}
+                                  disabled={tvSavingAccounts === conn.connectionId}
+                                  className="px-3 py-1.5 bg-positive/10 text-positive text-xs font-medium rounded-lg hover:bg-positive/20 transition-colors disabled:opacity-50"
+                                >
+                                  {tvSavingAccounts === conn.connectionId ? 'Saving...' : `Enable (${tvSelectedAcctIds.length})`}
+                                </button>
+                                <button
+                                  onClick={() => handleTvEnableDisable(conn.connectionId, false)}
+                                  disabled={tvSavingAccounts === conn.connectionId}
+                                  className="px-3 py-1.5 bg-negative/10 text-negative text-xs font-medium rounded-lg hover:bg-negative/20 transition-colors disabled:opacity-50"
+                                >
+                                  {tvSavingAccounts === conn.connectionId ? 'Saving...' : `Disable (${tvSelectedAcctIds.length})`}
+                                </button>
+                                <button
+                                  onClick={() => setTvSelectedAcctIds([])}
+                                  className="px-2 py-1.5 text-text-muted text-xs hover:text-text-secondary transition-colors"
+                                >
+                                  Clear
+                                </button>
+                              </div>
+                            )}
                           </div>
                         )}
 
