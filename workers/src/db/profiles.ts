@@ -20,6 +20,7 @@ export function toAPI(row: ProfileRow): AccountAPI {
     },
     createdDate: row.created_at,
     hasPassword: true,
+    role: row.role,
   };
 }
 
@@ -64,6 +65,7 @@ export async function updateById(
     customColorsAccent: 'custom_colors_accent',
     customColorsPositive: 'custom_colors_positive',
     customColorsNegative: 'custom_colors_negative',
+    emailUnsubscribed: 'email_unsubscribed',
   };
 
   const updateData: Record<string, unknown> = {};

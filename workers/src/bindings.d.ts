@@ -45,7 +45,9 @@ export interface ProfileRow {
   registration_ip: string | null;
   stripe_connect_account_id: string | null;
   stripe_connect_onboarded: boolean;
+  role: string;
   created_at: string;
+  email_unsubscribed: boolean;
 }
 
 export interface AccountAPI {
@@ -65,6 +67,7 @@ export interface AccountAPI {
   };
   createdDate: string;
   hasPassword: boolean;
+  role?: string;
 }
 
 export interface TradeRow {
@@ -132,6 +135,31 @@ export interface ProjectXConnectionRow {
   token_expires_at: string | null;
   selected_accounts: number[] | null;
   copytrade_config: { leadAccountId: number; multiplier: number } | null;
+}
+
+export interface SyncerConfigRow {
+  id: string;
+  owner: string;
+  leader_connection_id: string | null;
+  leader_account_id: number | null;
+  follower_accounts: Array<{ connectionId: string; accountId: number; multiplier: number }>;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SyncerOrderLogRow {
+  id: string;
+  config_id: string;
+  leader_order_id: number;
+  leader_action: string | null;
+  leader_symbol: string | null;
+  leader_qty: number | null;
+  follower_account_id: number;
+  follower_order_id: number | null;
+  status: string;
+  error_message: string | null;
+  created_at: string;
 }
 
 export interface AuthContext {
