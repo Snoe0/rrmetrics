@@ -1,11 +1,15 @@
 import { Hono } from 'hono';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Env, AuthContext } from '../bindings';
-import * as profilesDb from '../db/profiles';
+import * as brokerDb from '../db/broker-connections';
+import * as tvConnDb from '../db/tradovate-connections';
 import * as tradesDb from '../db/trades';
 import { encrypt, decrypt } from '../utils/crypto';
 import { TradovateAPI } from '../services/TradovateAPI';
 import { requiresLogin } from '../middleware/supabase-auth';
+import { checkSubscriptionStatus, requiresBrokerSync, BROKER_CONNECTION_LIMITS } from '../middleware/subscription';
 import { createServiceClient } from '../lib/supabase';
+import type { EffectivePlan } from '../middleware/subscription';
 
 type HonoEnv = {
   Bindings: Env;
@@ -14,47 +18,404 @@ type HonoEnv = {
 
 const tradovate = new Hono<HonoEnv>();
 
+/** Threshold in ms — renew token if it expires within 30 minutes. */
+const RENEWAL_THRESHOLD_MS = 30 * 60 * 1000;
+
 /**
- * GET /api/tradovate/connect?environment=demo|live
- * Initiates the Tradovate OAuth flow by redirecting to the Tradovate consent screen.
- * Public endpoint — the OAuth redirect does not carry auth headers.
+ * Ensures the stored Tradovate token is fresh. If the token expires within
+ * 30 minutes, it is proactively renewed and the DB is updated.
+ * Returns the decrypted, valid access token.
+ * Throws if the token is already fully expired (past expiry and renewal fails).
  */
-tradovate.get('/api/tradovate/connect', async (c) => {
-  const clientId = c.env.TRADOVATE_CLIENT_ID;
-  if (!clientId) {
-    return c.text('Tradovate OAuth is not configured on this server.', 500);
+async function ensureFreshToken(
+  env: Env,
+  brokerConnectionId: string,
+  encryptedToken: string,
+  expiresAt: string | null,
+  environment: string,
+): Promise<string> {
+  const token = await decrypt(encryptedToken, env.ENCRYPTION_KEY);
+  const expiresAtMs = expiresAt ? new Date(expiresAt).getTime() : 0;
+  const now = Date.now();
+
+  // Token still has plenty of time — use as-is
+  if (expiresAtMs - now > RENEWAL_THRESHOLD_MS) {
+    return token;
   }
 
-  const environment = c.req.query('environment') === 'live' ? 'live' : 'demo';
-  const redirectUri = `${c.env.APP_URL}/api/tradovate/callback`;
+  // Token is within the renewal window (or already expired) — attempt renewal
+  const api = new TradovateAPI(environment);
+  try {
+    const { accessToken, expiresIn } = await api.renewAccessToken(token);
+    const newExpiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
 
-  const authUrl =
-    `https://trader.tradovate.com/oauth` +
-    `?response_type=code` +
-    `&client_id=${encodeURIComponent(clientId)}` +
-    `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-    `&state=${environment}`;
+    const serviceClient = createServiceClient(env);
+    await tvConnDb.updateByBrokerConnectionId(serviceClient, brokerConnectionId, {
+      access_token: await encrypt(accessToken, env.ENCRYPTION_KEY),
+      token_expires_at: newExpiresAt,
+    });
 
-  return c.redirect(authUrl);
-});
+    return accessToken;
+  } catch (err: any) {
+    // If renewal fails but token hasn't fully expired yet, use the existing one
+    if (expiresAtMs > now) {
+      return token;
+    }
+    throw new Error('Tradovate session expired and renewal failed. Please reconnect your account.');
+  }
+}
 
 /**
- * GET /api/tradovate/callback?code=...&state=demo|live
- * Receives the OAuth authorization code from Tradovate and passes it to the SPA
- * via URL params, where the authenticated client will exchange it.
- * Public endpoint — called by Tradovate's redirect.
+ * Strips the CME expiry suffix (month code + 1–4 digit year) from a contract name.
+ * "MNQH2026" → "MNQ", "MNQH26" → "MNQ", "MNQH6" → "MNQ"
+ * "NQH6" → "NQ", "ESH6" → "ES", "CLJ6" → "CL"
+ * CME month codes: F G H J K M N Q U V X Z
+ * Returns the original string unchanged if no suffix matches.
+ */
+function rootSymbol(name: string): string {
+  return name.replace(/[FGHJKMNQUVXZ]\d{1,4}$/, '') || name;
+}
+
+/** Generate a cryptographically random nonce for CSRF protection on OAuth. */
+function generateNonce(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Core sync pipeline for a single Tradovate connection.
+ * Fetches fill pairs → positions → contracts → round trips → dedup → insert.
+ * Returns the number of new trades synced.
+ */
+async function syncConnection(
+  env: Env,
+  supabase: SupabaseClient,
+  userId: string,
+  connectionId: string,
+  options?: { accountIds?: number[]; startDate?: string; endDate?: string },
+): Promise<number> {
+  const serviceClient = createServiceClient(env);
+
+  // Load connection data
+  const brokerConn = await brokerDb.findById(serviceClient, connectionId);
+  if (!brokerConn || brokerConn.owner !== userId) {
+    throw new Error('Connection not found');
+  }
+
+  const tvConn = await tvConnDb.findByBrokerConnectionId(serviceClient, connectionId);
+  if (!tvConn || !tvConn.access_token) {
+    throw new Error('Tradovate not connected for this connection');
+  }
+
+  // Ensure fresh token
+  const token = await ensureFreshToken(
+    env,
+    connectionId,
+    tvConn.access_token,
+    tvConn.token_expires_at,
+    brokerConn.environment,
+  );
+
+  const api = new TradovateAPI(brokerConn.environment);
+
+  // Step 1: Get all fill pairs — each FillPair is one completed buy+sell round-trip
+  const allFillPairs = await api.getFillPairs(token);
+
+  if (allFillPairs.length === 0) {
+    await brokerDb.updateById(serviceClient, connectionId, {
+      last_sync_time: new Date().toISOString(),
+    });
+    return 0;
+  }
+
+  // Step 2: Batch-fetch the positions referenced by those fill pairs.
+  const uniquePositionIds = [...new Set(allFillPairs.map((fp) => fp.positionId))];
+  const allPositions = await api.getPositionItems(token, uniquePositionIds);
+
+  // Filter positions by selected account IDs (empty = all accounts)
+  const accountIds = options?.accountIds || [];
+  const positions = accountIds.length > 0
+    ? allPositions.filter((p) => accountIds.includes(p.accountId))
+    : allPositions;
+
+  const positionIdSet = new Set(positions.map((p) => p.id));
+
+  // Keep only fill pairs that belong to the selected account(s)
+  const targetedPairs = allFillPairs.filter((fp) => positionIdSet.has(fp.positionId));
+
+  if (targetedPairs.length === 0) {
+    await brokerDb.updateById(serviceClient, connectionId, {
+      last_sync_time: new Date().toISOString(),
+    });
+    return 0;
+  }
+
+  // Step 3: Batch-fetch fills to get entry/exit timestamps and orderId for dedup key.
+  const allFillIds = [...new Set(targetedPairs.flatMap((fp) => [fp.buyFillId, fp.sellFillId]))];
+  const fills = (await api.getFillItems(token, allFillIds)) as any[];
+  const fillMap = new Map(fills.map((f: any) => [f.id, f]));
+
+  // Build a contractId → ticker map from any embedded name fields in raw fill responses
+  const contractNameFromFill: Record<number, string> = {};
+  for (const f of fills) {
+    const cid: number | undefined = f.contractId;
+    if (cid !== undefined && !contractNameFromFill[cid]) {
+      const embedded: string | undefined =
+        f.contractName ?? f.ticker ?? f.symbol ?? f.contract?.name ?? f.contract?.ticker;
+      if (embedded) contractNameFromFill[cid] = embedded;
+    }
+  }
+
+  // Step 4: Batch-fetch contract names from ContractLibrary.
+  const contractIds = [...new Set(positions.map((p) => p.contractId))];
+  const contractNameMap = new Map<number, string>(
+    Object.entries(contractNameFromFill).map(([k, v]) => [Number(k), v]),
+  );
+  try {
+    const contracts = await api.getContractItems(token, contractIds);
+    for (const ct of contracts) {
+      if (ct.name) contractNameMap.set(Number(ct.id), ct.name);
+    }
+  } catch {
+    // Contract name lookup failed — fall back to fill-embedded names or numeric IDs
+  }
+
+  const posContractMap = new Map(positions.map((p) => [p.id, p.contractId]));
+
+  // Build positionId → accountId map so we can tag trades with their source account
+  const posAccountMap = new Map(positions.map((p) => [p.id, p.accountId as number]));
+
+  // Fetch account names for labeling
+  const accountNameMap = new Map<number, string>();
+  try {
+    const rawAccounts = (await api.getAccounts(token)) as any[];
+    for (const a of rawAccounts) {
+      if (a.id && a.name) accountNameMap.set(a.id, a.name);
+    }
+  } catch {
+    // non-fatal — fall back to numeric account IDs
+  }
+
+  const source = `tradovate_${brokerConn.environment}` as
+    | 'tradovate_demo'
+    | 'tradovate_live';
+
+  // Step 5: Map each fillPair to a round-trip trade record
+  interface RoundTrip {
+    ticker: string;
+    enterTime: string;
+    exitTime: string;
+    enterPrice: number;
+    exitPrice: number;
+    quantity: number;
+    tradovateOrderId: string;
+    comments?: string;
+  }
+  const roundTrips: RoundTrip[] = [];
+
+  for (const fp of targetedPairs) {
+    const contractId = posContractMap.get(fp.positionId);
+    const contractName =
+      contractId !== undefined
+        ? (contractNameMap.get(contractId) ?? String(contractId))
+        : 'UNKNOWN';
+    const ticker = rootSymbol(contractName.toUpperCase().trim());
+
+    const buyFill = fillMap.get(fp.buyFillId);
+    const sellFill = fillMap.get(fp.sellFillId);
+
+    if (!buyFill || !sellFill) continue;
+
+    const buyTime = new Date(buyFill.timestamp).getTime();
+    const sellTime = new Date(sellFill.timestamp).getTime();
+
+    const isLong = buyTime <= sellTime;
+    const entryFill = isLong ? buyFill : sellFill;
+    const exitFill = isLong ? sellFill : buyFill;
+
+    const tradovateOrderId = `${entryFill.orderId}_${exitFill.orderId}`;
+
+    const acctId = posAccountMap.get(fp.positionId);
+    const acctLabel = acctId !== undefined
+      ? (accountNameMap.get(acctId) ?? String(acctId))
+      : undefined;
+
+    roundTrips.push({
+      ticker,
+      enterTime: entryFill.timestamp,
+      exitTime: exitFill.timestamp,
+      enterPrice: isLong ? fp.buyPrice : fp.sellPrice,
+      exitPrice: isLong ? fp.sellPrice : fp.buyPrice,
+      quantity: isLong ? fp.qty : -fp.qty,
+      tradovateOrderId,
+      comments: acctLabel ? `Tradovate account: ${acctLabel}` : undefined,
+    });
+  }
+
+  // Step 6: Apply optional date range filter on entry time
+  let filteredTrips = roundTrips;
+  const { startDate, endDate } = options || {};
+  if (startDate || endDate) {
+    const start = startDate ? new Date(startDate + 'T00:00:00.000Z') : null;
+    const end = endDate ? new Date(endDate + 'T23:59:59.999Z') : null;
+    filteredTrips = roundTrips.filter((t) => {
+      const entryTime = new Date(t.enterTime);
+      if (start && entryTime < start) return false;
+      if (end && entryTime > end) return false;
+      return true;
+    });
+  }
+
+  if (filteredTrips.length === 0) {
+    await brokerDb.updateById(serviceClient, connectionId, {
+      last_sync_time: new Date().toISOString(),
+    });
+    return 0;
+  }
+
+  // Step 7: Skip already-synced trades
+  const allCompositeIds = filteredTrips.map((t) => t.tradovateOrderId);
+  const existingOrderIds = await tradesDb.findByTradovateOrderIds(supabase, userId, allCompositeIds);
+  const existingIds = new Set(existingOrderIds);
+
+  const newTrades = filteredTrips
+    .filter((t) => !existingIds.has(t.tradovateOrderId))
+    .map((t) => ({
+      ...t,
+      tradovateSource: source,
+      brokerConnectionId: connectionId,
+    }));
+
+  let syncedCount = 0;
+  if (newTrades.length > 0) {
+    const result = await tradesDb.bulkInsertTrades(supabase, userId, newTrades);
+    syncedCount = result.imported;
+  }
+
+  await brokerDb.updateById(serviceClient, connectionId, {
+    last_sync_time: new Date().toISOString(),
+  });
+
+  return syncedCount;
+}
+
+// ─── Routes ──────────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/tradovate/connect
+ * Initiates the Tradovate OAuth flow. Creates a pending broker_connection +
+ * tradovate_connection with a CSRF nonce, then returns the auth URL for the
+ * client to redirect to.
+ */
+tradovate.post(
+  '/api/tradovate/connect',
+  requiresLogin,
+  checkSubscriptionStatus,
+  requiresBrokerSync,
+  async (c) => {
+    const user = c.get('user');
+    const body = await c.req.json().catch(() => ({})) as { environment?: string };
+    const environment = body.environment === 'live' ? 'live' : 'demo';
+
+    const clientId = c.env.TRADOVATE_CLIENT_ID;
+    if (!clientId) {
+      return c.json({ error: 'Tradovate OAuth is not configured on this server.' }, 500);
+    }
+
+    const serviceClient = createServiceClient(c.env);
+
+    // Determine connection limit for user's plan
+    const status = c.get('subscriptionStatus' as any) as { effectivePlan: EffectivePlan } | undefined;
+    const plan = status?.effectivePlan || 'free';
+    const limit = BROKER_CONNECTION_LIMITS[plan];
+
+    try {
+      // Create parent broker_connection with limit check
+      const brokerConn = await brokerDb.createWithLimitCheck(
+        serviceClient,
+        user.id,
+        'tradovate',
+        environment,
+        null, // label auto-generated after exchange
+        limit,
+      );
+
+      // Generate CSRF nonce and create child tradovate_connection
+      const nonce = generateNonce();
+      await tvConnDb.create(serviceClient, brokerConn.id, nonce);
+
+      // Build state: base64(connectionId:nonce)
+      const state = btoa(brokerConn.id + ':' + nonce);
+      const redirectUri = `${c.env.APP_URL}/api/tradovate/callback`;
+
+      const authUrl =
+        `https://trader.tradovate.com/oauth` +
+        `?response_type=code` +
+        `&client_id=${encodeURIComponent(clientId)}` +
+        `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+        `&state=${encodeURIComponent(state)}`;
+
+      return c.json({ authUrl, connectionId: brokerConn.id });
+    } catch (err: any) {
+      if (err.message === 'CONNECTION_LIMIT_REACHED') {
+        return c.json(
+          {
+            error: 'You have reached your broker connection limit. Upgrade your plan for more connections.',
+            upgrade: true,
+            limit,
+          },
+          402,
+        );
+      }
+      throw err;
+    }
+  },
+);
+
+/**
+ * GET /api/tradovate/callback?code=...&state=...
+ * Receives the OAuth authorization code from Tradovate.
+ * Public endpoint — called by Tradovate's redirect (no auth context).
+ * Validates the CSRF nonce, then redirects to the SPA with code + connectionId.
  */
 tradovate.get('/api/tradovate/callback', async (c) => {
   const code = c.req.query('code');
   const state = c.req.query('state');
 
-  if (!code) {
+  if (!code || !state) {
     return c.redirect('/trades?tv_error=oauth_failed');
   }
 
-  const env = state === 'live' ? 'live' : 'demo';
+  // Decode state → connectionId:nonce
+  let connectionId: string;
+  let nonce: string;
+  try {
+    const decoded = atob(state);
+    const separatorIdx = decoded.indexOf(':');
+    if (separatorIdx === -1) throw new Error('Invalid state format');
+    connectionId = decoded.substring(0, separatorIdx);
+    nonce = decoded.substring(separatorIdx + 1);
+  } catch {
+    return c.redirect('/trades?tv_error=invalid_state');
+  }
+
+  // Use service client (no auth context on callback)
+  const serviceClient = createServiceClient(c.env);
+
+  // Verify nonce matches
+  const tvConn = await tvConnDb.findByBrokerConnectionId(serviceClient, connectionId);
+  if (!tvConn || tvConn.oauth_nonce !== nonce) {
+    return c.redirect('/trades?tv_error=invalid_nonce');
+  }
+
+  // Clear the nonce (one-time use)
+  await tvConnDb.updateByBrokerConnectionId(serviceClient, connectionId, {
+    oauth_nonce: null,
+  });
+
   return c.redirect(
-    `/trades?tv_code=${encodeURIComponent(code)}&tv_env=${env}`,
+    `/trades?tv_code=${encodeURIComponent(code)}&tv_conn=${encodeURIComponent(connectionId)}`,
   );
 });
 
@@ -66,10 +427,10 @@ tradovate.get('/api/tradovate/callback', async (c) => {
 tradovate.post('/api/tradovate/exchange', requiresLogin, async (c) => {
   const user = c.get('user');
   const body = await c.req.json();
-  const { code, environment } = body as { code?: string; environment?: string };
+  const { code, connectionId } = body as { code?: string; connectionId?: string };
 
-  if (!code || !environment) {
-    return c.json({ error: 'Missing code or environment' }, 400);
+  if (!code || !connectionId) {
+    return c.json({ error: 'Missing code or connectionId' }, 400);
   }
 
   const clientId = c.env.TRADOVATE_CLIENT_ID;
@@ -78,12 +439,20 @@ tradovate.post('/api/tradovate/exchange', requiresLogin, async (c) => {
     return c.json({ error: 'Tradovate OAuth is not configured on this server.' }, 500);
   }
 
+  const serviceClient = createServiceClient(c.env);
+
+  // Verify connection ownership
+  const brokerConn = await brokerDb.findById(serviceClient, connectionId);
+  if (!brokerConn || brokerConn.owner !== user.id) {
+    return c.json({ error: 'Connection not found' }, 404);
+  }
+
   const redirectUri = `${c.env.APP_URL}/api/tradovate/callback`;
 
   try {
     const { accessToken, expiresIn } = await TradovateAPI.exchangeOAuthCode({
       code,
-      environment,
+      environment: brokerConn.environment,
       clientId,
       clientSecret,
       redirectUri,
@@ -91,326 +460,220 @@ tradovate.post('/api/tradovate/exchange', requiresLogin, async (c) => {
 
     const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
 
-    const serviceClient = createServiceClient(c.env);
-    await profilesDb.updateById(serviceClient, user.id, {
-      tradovateAccessToken: await encrypt(accessToken, c.env.ENCRYPTION_KEY),
-      tradovateTokenExpiresAt: expiresAt,
-      tradovateEnvironment: environment,
+    // Store encrypted token
+    await tvConnDb.updateByBrokerConnectionId(serviceClient, connectionId, {
+      access_token: await encrypt(accessToken, c.env.ENCRYPTION_KEY),
+      token_expires_at: expiresAt,
     });
 
-    // Fetch accounts to display in the client after OAuth
+    // Fetch accounts to auto-generate label and return to client
     let accounts: Array<{ id: number; name: string; active: boolean }> = [];
     try {
-      const api = new TradovateAPI(environment);
+      const api = new TradovateAPI(brokerConn.environment);
       const rawAccounts = (await api.getAccounts(accessToken)) as any[];
       accounts = rawAccounts.map((a) => ({
         id: a.id,
         name: a.name,
         active: a.active !== false,
       }));
+
+      // Auto-generate label from environment + first account name
+      if (accounts.length > 0) {
+        const envLabel = brokerConn.environment === 'live' ? 'Live' : 'Demo';
+        const label = `Tradovate ${envLabel} — ${accounts[0].name}`;
+        await brokerDb.updateById(serviceClient, connectionId, { label });
+      }
     } catch {
       // non-fatal — accounts list is best-effort
     }
 
-    return c.json({ message: 'Tradovate connected successfully', accounts });
+    return c.json({ message: 'Tradovate connected successfully', accounts, connectionId });
   } catch (err: any) {
-    console.error('Tradovate OAuth exchange error:', err.message);
+    // Clean up the pending connection on failure
+    try {
+      await brokerDb.deleteById(serviceClient, connectionId, user.id);
+    } catch {
+      // cleanup is best-effort
+    }
     return c.json({ error: `Failed to connect: ${err.message}` }, 400);
   }
 });
 
-// POST /api/tradovate/sync
-tradovate.post('/api/tradovate/sync', requiresLogin, async (c) => {
-  const user = c.get('user');
-  const supabase = c.get('supabase');
-
-  const body = await c.req.json().catch(() => ({})) as {
-    accountId?: number;
-    startDate?: string;
-    endDate?: string;
-  };
-  const accountId = typeof body.accountId === 'number' && Number.isFinite(body.accountId)
-    ? body.accountId
-    : undefined;
-  const { startDate, endDate } = body;
-
-  try {
+/**
+ * GET /api/tradovate/status
+ * Returns all Tradovate connections for the user with their status,
+ * plus overall connection usage and limits.
+ */
+tradovate.get(
+  '/api/tradovate/status',
+  requiresLogin,
+  checkSubscriptionStatus,
+  async (c) => {
+    const user = c.get('user');
     const serviceClient = createServiceClient(c.env);
-    const profile = await profilesDb.findById(serviceClient, user.id);
 
-    if (!profile || !profile.tradovate_access_token) {
-      return c.json({ error: 'Tradovate not connected' }, 400);
-    }
+    // Fetch all Tradovate connections for user
+    const brokerConns = await brokerDb.findByOwnerAndBroker(serviceClient, user.id, 'tradovate');
 
-    if (
-      profile.tradovate_token_expires_at &&
-      new Date(profile.tradovate_token_expires_at) < new Date()
-    ) {
-      return c.json(
-        { error: 'Tradovate session expired. Please reconnect your account.', expired: true },
-        401,
-      );
-    }
+    // Total count across ALL brokers for limit tracking
+    const totalCount = await brokerDb.countByOwner(serviceClient, user.id);
 
-    const token = await decrypt(profile.tradovate_access_token, c.env.ENCRYPTION_KEY);
-    const api = new TradovateAPI(profile.tradovate_environment);
+    // Determine plan and limits
+    const status = c.get('subscriptionStatus' as any) as { effectivePlan: EffectivePlan } | undefined;
+    const plan = status?.effectivePlan || 'free';
+    const limit = BROKER_CONNECTION_LIMITS[plan];
+    const canUseBrokerSync = plan === 'pro' || plan === 'elite';
 
-    let fills = accountId
-      ? await api.getFillsByAccount(token, accountId)
-      : await api.getFills(token);
+    // Build status for each connection
+    const connections = [];
+    for (const bc of brokerConns) {
+      const tvConn = await tvConnDb.findByBrokerConnectionId(serviceClient, bc.id);
+      const hasToken = !!tvConn?.access_token;
 
-    // Apply optional date range filter (client-side — Tradovate has no server-side filter)
-    if (startDate || endDate) {
-      const start = startDate ? new Date(startDate + 'T00:00:00.000Z') : null;
-      // endDate is inclusive — include fills up to the end of that calendar day
-      const end = endDate ? new Date(endDate + 'T23:59:59.999Z') : null;
-      fills = fills.filter((fill) => {
-        const t = new Date(fill.timestamp);
-        if (start && t < start) return false;
-        if (end && t > end) return false;
-        return true;
-      });
-    }
-
-    if (!fills || fills.length === 0) {
-      await profilesDb.updateById(serviceClient, user.id, {
-        tradovateLastSyncTime: new Date().toISOString(),
-      });
-      return c.json({ message: 'No fills found', synced: 0 });
-    }
-
-    const source = `tradovate_${profile.tradovate_environment}` as
-      | 'tradovate_demo'
-      | 'tradovate_live';
-
-    // Resolve contract names
-    const uniqueContractIds = [...new Set(fills.map((f) => f.contractId))];
-    const contractNames: Record<number, string> = {};
-    await Promise.all(
-      uniqueContractIds.map(async (contractId) => {
+      let tokenExpired = false;
+      if (hasToken && tvConn) {
         try {
-          const contract = await api.getContract(token, contractId);
-          contractNames[contractId] = contract.name || `Contract-${contractId}`;
+          await ensureFreshToken(
+            c.env,
+            bc.id,
+            tvConn.access_token!,
+            tvConn.token_expires_at,
+            bc.environment,
+          );
         } catch {
-          contractNames[contractId] = `Contract-${contractId}`;
-        }
-      }),
-    );
-
-    // Step 1: Aggregate partial fills into orders (keyed by orderId)
-    interface OrderData {
-      orderId: string;
-      contractId: number;
-      action: string;
-      qty: number;
-      price: number; // weighted average
-      timestamp: string;
-    }
-    const orderMap: Record<string, OrderData> = {};
-    for (const fill of fills) {
-      const orderId = String(fill.orderId || fill.id);
-      if (!orderMap[orderId]) {
-        orderMap[orderId] = {
-          orderId,
-          contractId: fill.contractId,
-          action: (fill.action || 'Buy').toLowerCase() === 'sell' ? 'Sell' : 'Buy',
-          qty: 0,
-          price: 0,
-          timestamp: fill.timestamp,
-        };
-      }
-      const order = orderMap[orderId];
-      const fillQty = fill.qty || 0;
-      // Weighted average price across partial fills
-      order.price = (order.price * order.qty + (fill.price || 0) * fillQty) / (order.qty + fillQty || 1);
-      order.qty += fillQty;
-      // Use earliest timestamp
-      if (new Date(fill.timestamp) < new Date(order.timestamp)) {
-        order.timestamp = fill.timestamp;
-      }
-    }
-
-    // Step 2: Group orders by contractId, sort chronologically
-    const ordersByContract: Record<number, OrderData[]> = {};
-    for (const order of Object.values(orderMap)) {
-      if (!ordersByContract[order.contractId]) ordersByContract[order.contractId] = [];
-      ordersByContract[order.contractId].push(order);
-    }
-    for (const orders of Object.values(ordersByContract)) {
-      orders.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-    }
-
-    // Step 3: FIFO matching — pair buy orders with sell orders to form round-trip trades
-    // tradovateOrderId = "entryOrderId_exitOrderId" (unique per completed trade)
-    interface RoundTrip {
-      ticker: string;
-      enterTime: string;
-      exitTime: string;
-      enterPrice: number;
-      exitPrice: number;
-      quantity: number;
-      tradovateOrderId: string;
-    }
-    const roundTrips: RoundTrip[] = [];
-
-    for (const [contractIdStr, orders] of Object.entries(ordersByContract)) {
-      const ticker = String(contractNames[Number(contractIdStr)]).toUpperCase().trim();
-      type Lot = { orderId: string; qty: number; price: number; timestamp: string };
-      const openLongs: Lot[] = [];
-      const openShorts: Lot[] = [];
-
-      for (const order of orders) {
-        let remaining = order.qty;
-
-        if (order.action === 'Buy') {
-          // Close any open short positions first (FIFO)
-          while (remaining > 0 && openShorts.length > 0) {
-            const short = openShorts[0];
-            const matched = Math.min(remaining, short.qty);
-            roundTrips.push({
-              ticker,
-              enterTime: short.timestamp,
-              exitTime: order.timestamp,
-              enterPrice: short.price,
-              exitPrice: order.price,
-              quantity: matched,
-              tradovateOrderId: `${short.orderId}_${order.orderId}`,
-            });
-            short.qty -= matched;
-            remaining -= matched;
-            if (short.qty === 0) openShorts.shift();
-          }
-          if (remaining > 0) {
-            openLongs.push({ orderId: order.orderId, qty: remaining, price: order.price, timestamp: order.timestamp });
-          }
-        } else {
-          // Close any open long positions first (FIFO)
-          while (remaining > 0 && openLongs.length > 0) {
-            const long = openLongs[0];
-            const matched = Math.min(remaining, long.qty);
-            roundTrips.push({
-              ticker,
-              enterTime: long.timestamp,
-              exitTime: order.timestamp,
-              enterPrice: long.price,
-              exitPrice: order.price,
-              quantity: matched,
-              tradovateOrderId: `${long.orderId}_${order.orderId}`,
-            });
-            long.qty -= matched;
-            remaining -= matched;
-            if (long.qty === 0) openLongs.shift();
-          }
-          if (remaining > 0) {
-            openShorts.push({ orderId: order.orderId, qty: remaining, price: order.price, timestamp: order.timestamp });
-          }
+          tokenExpired = true;
         }
       }
+
+      connections.push({
+        connectionId: bc.id,
+        broker: bc.broker,
+        environment: bc.environment,
+        label: bc.label,
+        configured: hasToken && !tokenExpired,
+        expired: tokenExpired,
+        lastSyncTime: bc.last_sync_time,
+        createdAt: bc.created_at,
+      });
     }
-
-    // Step 4: Filter out already-synced round-trip trades
-    const allCompositeIds = roundTrips.map((t) => t.tradovateOrderId);
-    const existingOrderIds = await tradesDb.findByTradovateOrderIds(supabase, user.id, allCompositeIds);
-    const existingIds = new Set(existingOrderIds);
-
-    const newTrades = roundTrips
-      .filter((t) => !existingIds.has(t.tradovateOrderId))
-      .map((t) => ({ ...t, tradovateSource: source }));
-
-    let syncedCount = 0;
-    if (newTrades.length > 0) {
-      const result = await tradesDb.bulkInsertTrades(supabase, user.id, newTrades);
-      syncedCount = result.imported;
-    }
-
-    await profilesDb.updateById(serviceClient, user.id, {
-      tradovateLastSyncTime: new Date().toISOString(),
-    });
-
-    return c.json({ message: `Synced ${syncedCount} new trades`, synced: syncedCount });
-  } catch (err: any) {
-    console.error('Tradovate sync error:', err.message);
-    return c.json({ error: `Sync failed: ${err.message}` }, 500);
-  }
-});
-
-// GET /api/tradovate/status
-tradovate.get('/api/tradovate/status', requiresLogin, async (c) => {
-  const user = c.get('user');
-  try {
-    const serviceClient = createServiceClient(c.env);
-    const profile = await profilesDb.findById(serviceClient, user.id);
-    if (!profile) return c.json({ error: 'Account not found' }, 404);
-
-    const hasToken = !!profile.tradovate_access_token;
-    const tokenExpired =
-      hasToken && profile.tradovate_token_expires_at
-        ? new Date(profile.tradovate_token_expires_at) < new Date()
-        : false;
 
     return c.json({
-      configured: hasToken && !tokenExpired,
-      expired: tokenExpired,
-      environment: profile.tradovate_environment || 'demo',
-      lastSyncTime: profile.tradovate_last_sync_time || null,
+      connections,
+      connectionsUsed: totalCount,
+      connectionLimit: limit === Infinity ? null : limit,
+      plan,
+      canUseBrokerSync,
     });
-  } catch (err: any) {
-    console.error('Tradovate status error:', err.message);
-    return c.json({ error: 'Failed to get Tradovate status' }, 500);
-  }
-});
+  },
+);
 
-// GET /api/tradovate/accounts
-tradovate.get('/api/tradovate/accounts', requiresLogin, async (c) => {
-  const user = c.get('user');
-  try {
-    const serviceClient = createServiceClient(c.env);
-    const profile = await profilesDb.findById(serviceClient, user.id);
+/**
+ * POST /api/tradovate/sync
+ * Syncs trades for a single Tradovate connection.
+ */
+tradovate.post(
+  '/api/tradovate/sync',
+  requiresLogin,
+  checkSubscriptionStatus,
+  requiresBrokerSync,
+  async (c) => {
+    const user = c.get('user');
+    const supabase = c.get('supabase');
 
-    if (!profile || !profile.tradovate_access_token) {
-      return c.json({ error: 'Tradovate not connected' }, 400);
+    const body = await c.req.json().catch(() => ({})) as {
+      connectionId?: string;
+      accountIds?: number[];
+      startDate?: string;
+      endDate?: string;
+    };
+
+    const { connectionId, startDate, endDate } = body;
+    if (!connectionId) {
+      return c.json({ error: 'Missing connectionId' }, 400);
     }
 
-    if (
-      profile.tradovate_token_expires_at &&
-      new Date(profile.tradovate_token_expires_at) < new Date()
-    ) {
-      return c.json({ error: 'Tradovate session expired', expired: true }, 401);
+    const accountIds = Array.isArray(body.accountIds)
+      ? body.accountIds.filter((id): id is number => typeof id === 'number' && Number.isFinite(id))
+      : [];
+
+    try {
+      const synced = await syncConnection(c.env, supabase, user.id, connectionId, {
+        accountIds: accountIds.length > 0 ? accountIds : undefined,
+        startDate,
+        endDate,
+      });
+
+      return c.json({ message: `Synced ${synced} new trades`, synced });
+    } catch (err: any) {
+      if (err.message === 'Connection not found') {
+        return c.json({ error: 'Connection not found' }, 404);
+      }
+      if (err.message.includes('expired')) {
+        return c.json({ error: err.message, expired: true }, 401);
+      }
+      return c.json({ error: `Sync failed: ${err.message}` }, 500);
+    }
+  },
+);
+
+/**
+ * POST /api/tradovate/sync-all
+ * Syncs trades for all Tradovate connections belonging to the user.
+ */
+tradovate.post(
+  '/api/tradovate/sync-all',
+  requiresLogin,
+  checkSubscriptionStatus,
+  requiresBrokerSync,
+  async (c) => {
+    const user = c.get('user');
+    const supabase = c.get('supabase');
+    const serviceClient = createServiceClient(c.env);
+
+    const brokerConns = await brokerDb.findByOwnerAndBroker(serviceClient, user.id, 'tradovate');
+
+    if (brokerConns.length === 0) {
+      return c.json({ message: 'No Tradovate connections found', results: [] });
     }
 
-    const token = await decrypt(profile.tradovate_access_token, c.env.ENCRYPTION_KEY);
-    const api = new TradovateAPI(profile.tradovate_environment);
-    const rawAccounts = (await api.getAccounts(token)) as any[];
-    const accounts = rawAccounts.map((a) => ({
-      id: a.id,
-      name: a.name,
-      active: a.active !== false,
-    }));
+    const results: Array<{
+      connectionId: string;
+      label: string | null;
+      tradesImported: number;
+      error?: string;
+    }> = [];
 
-    return c.json({ accounts });
-  } catch (err: any) {
-    console.error('Tradovate accounts error:', err.message);
-    return c.json({ error: 'Failed to fetch accounts' }, 500);
-  }
-});
+    for (const bc of brokerConns) {
+      try {
+        const tradesImported = await syncConnection(c.env, supabase, user.id, bc.id);
+        results.push({ connectionId: bc.id, label: bc.label, tradesImported });
+      } catch (err: any) {
+        results.push({ connectionId: bc.id, label: bc.label, tradesImported: 0, error: err.message });
+      }
+    }
 
-// DELETE /api/tradovate/credentials
-tradovate.delete('/api/tradovate/credentials', requiresLogin, async (c) => {
+    const totalImported = results.reduce((sum, r) => sum + r.tradesImported, 0);
+    return c.json({
+      message: `Synced ${totalImported} new trades across ${brokerConns.length} connection(s)`,
+      results,
+    });
+  },
+);
+
+/**
+ * DELETE /api/tradovate/connections/:connectionId
+ * Deletes a broker connection and its child tradovate_connection (cascade).
+ */
+tradovate.delete('/api/tradovate/connections/:connectionId', requiresLogin, async (c) => {
   const user = c.get('user');
+  const connectionId = c.req.param('connectionId');
+  const serviceClient = createServiceClient(c.env);
 
   try {
-    const serviceClient = createServiceClient(c.env);
-    await profilesDb.updateById(serviceClient, user.id, {
-      tradovateAccessToken: null,
-      tradovateTokenExpiresAt: null,
-      tradovateEnvironment: 'demo',
-      tradovateLastSyncTime: null,
-    });
-
-    return c.json({ message: 'Tradovate disconnected' });
+    await brokerDb.deleteById(serviceClient, connectionId, user.id);
+    return c.json({ message: 'Connection deleted' });
   } catch (err: any) {
-    console.error('Tradovate disconnect error:', err.message);
-    return c.json({ error: 'Failed to disconnect' }, 500);
+    return c.json({ error: `Failed to delete connection: ${err.message}` }, 500);
   }
 });
 
