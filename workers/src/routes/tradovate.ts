@@ -545,6 +545,23 @@ tradovate.get(
         }
       }
 
+      // Fetch accounts for active connections
+      let accounts: Array<{ id: number; name: string; active: boolean }> = [];
+      if (hasToken && !tokenExpired && tvConn) {
+        try {
+          const token = await decrypt(tvConn.access_token!, c.env.ENCRYPTION_KEY);
+          const api = new TradovateAPI(bc.environment);
+          const rawAccounts = (await api.getAccounts(token)) as any[];
+          accounts = rawAccounts.map((a: any) => ({
+            id: a.id,
+            name: a.name,
+            active: a.active !== false,
+          }));
+        } catch {
+          // non-fatal — accounts list is best-effort
+        }
+      }
+
       connections.push({
         connectionId: bc.id,
         broker: bc.broker,
@@ -554,6 +571,7 @@ tradovate.get(
         expired: tokenExpired,
         lastSyncTime: bc.last_sync_time,
         createdAt: bc.created_at,
+        accounts,
       });
     }
 

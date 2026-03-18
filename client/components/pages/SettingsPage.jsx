@@ -624,6 +624,18 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                           </span>
                         </div>
 
+                        {/* Accounts list */}
+                        {conn.accounts && conn.accounts.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {conn.accounts.map(acct => (
+                              <span key={acct.id} className="inline-flex items-center gap-1 px-2 py-0.5 bg-bg-surface border border-border rounded text-xs text-text-secondary">
+                                <span className={`w-1.5 h-1.5 rounded-full ${acct.active ? 'bg-positive' : 'bg-text-muted'}`}></span>
+                                {acct.name}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
                         {conn.lastSyncTime && (
                           <p className="text-xs text-text-muted">
                             Last sync: {relativeTime(conn.lastSyncTime)}
