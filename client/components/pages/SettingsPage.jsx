@@ -1,46 +1,103 @@
 const React = require('react');
-const { useState, useEffect } = React;
+const { useState, useEffect, useCallback } = React;
 const { authFetch, supabase } = require('../../helper.js');
 const { TAG_COLOR_PRESETS } = require('../../utils/tagConstants');
 const Icons = require('../shared/Icons');
 
+// Helper: relative time string from ISO date
+const relativeTime = (iso) => {
+  if (!iso) return null;
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, customColors, tags, triggerReload, subscriptionStatus }) => {
   const [activeTab, setActiveTab] = useState('brokers');
-  const [tvEnvironment, setTvEnvironment] = useState('demo');
-  const [tvStatus, setTvStatus] = useState(null);
-  const [tvAccounts, setTvAccounts] = useState([]);
-  const [tvAccountsLoading, setTvAccountsLoading] = useState(false);
-  const [tvShowImportPrompt, setTvShowImportPrompt] = useState(false);
-  const [tvSelectedAccounts, setTvSelectedAccounts] = useState([]); // rows checked for bulk action
-  const [tvEnabledAccounts, setTvEnabledAccounts] = useState([]); // accounts enabled for sync (Active)
-  const [tvSyncStartDate, setTvSyncStartDate] = useState('');
-  const [tvSyncEndDate, setTvSyncEndDate] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState(null);
-  const [pxStatus, setPxStatus] = useState(null);
-  const [pxAccounts, setPxAccounts] = useState([]);
+
+  // --- Tradovate multi-connection state ---
+  const [tvConnections, setTvConnections] = useState([]);
+  const [tvConnectionsUsed, setTvConnectionsUsed] = useState(0);
+  const [tvConnectionLimit, setTvConnectionLimit] = useState(0);
+  const [tvCanUseBrokerSync, setTvCanUseBrokerSync] = useState(false);
+  const [tvEnvironment, setTvEnvironment] = useState('demo');
+  const [tvConnecting, setTvConnecting] = useState(false);
+  const [tvSyncingId, setTvSyncingId] = useState(null); // connectionId currently syncing, or 'all'
+  const [tvShowImportPrompt, setTvShowImportPrompt] = useState(null); // connectionId that just connected
+
+  // --- ProjectX multi-connection state ---
+  const [pxConnections, setPxConnections] = useState([]);
+  const [pxConnectionsUsed, setPxConnectionsUsed] = useState(0);
+  const [pxConnectionLimit, setPxConnectionLimit] = useState(0);
+  const [pxCanUseBrokerSync, setPxCanUseBrokerSync] = useState(false);
   const [pxUsername, setPxUsername] = useState('');
   const [pxApiKey, setPxApiKey] = useState('');
-  const [pxSelectedAccounts, setPxSelectedAccounts] = useState([]);
-  const [pxCopytradeEnabled, setPxCopytradeEnabled] = useState(false);
-  const [pxLeadAccount, setPxLeadAccount] = useState(null);
-  const [pxMultiplier, setPxMultiplier] = useState(1);
   const [pxConnecting, setPxConnecting] = useState(false);
-  const [pxSyncing, setPxSyncing] = useState(false);
+  const [pxSyncingId, setPxSyncingId] = useState(null);
+  const [pxShowNewForm, setPxShowNewForm] = useState(false);
+  // Per-connection editing state for ProjectX accounts
+  const [pxEditingConnId, setPxEditingConnId] = useState(null);
+  const [pxEditSelectedAccounts, setPxEditSelectedAccounts] = useState([]);
+  const [pxEditCopytradeEnabled, setPxEditCopytradeEnabled] = useState(false);
+  const [pxEditLeadAccount, setPxEditLeadAccount] = useState(null);
+  const [pxEditMultiplier, setPxEditMultiplier] = useState(1);
+
+  // --- Tag state ---
   const [newTagName, setNewTagName] = useState('');
   const [newTagColor, setNewTagColor] = useState(TAG_COLOR_PRESETS[0]);
   const [editingTagId, setEditingTagId] = useState(null);
   const [editTagName, setEditTagName] = useState('');
   const [editTagColor, setEditTagColor] = useState('');
 
-  useEffect(() => { fetchStatus(); fetchPxStatus(); }, []);
+  const [expandedBroker, setExpandedBroker] = useState(null);
 
-  // Handle OAuth callback: exchange code when redirected back from Tradovate
+  // =============================================
+  // Tradovate data fetching
+  // =============================================
+  const fetchTvStatus = useCallback(async () => {
+    try {
+      const response = await authFetch('/api/tradovate/status');
+      const data = await response.json();
+      setTvConnections(data.connections || []);
+      setTvConnectionsUsed(data.connectionsUsed || 0);
+      setTvConnectionLimit(data.connectionLimit || 0);
+      setTvCanUseBrokerSync(data.canUseBrokerSync || false);
+    } catch (err) {
+      console.error('Failed to fetch Tradovate status:', err);
+    }
+  }, []);
+
+  // =============================================
+  // ProjectX data fetching
+  // =============================================
+  const fetchPxStatus = useCallback(async () => {
+    try {
+      const response = await authFetch('/api/projectx/status');
+      const data = await response.json();
+      setPxConnections(data.connections || []);
+      setPxConnectionsUsed(data.connectionsUsed || 0);
+      setPxConnectionLimit(data.connectionLimit || 0);
+      setPxCanUseBrokerSync(data.canUseBrokerSync || false);
+    } catch (err) {
+      console.error('Failed to fetch ProjectX status:', err);
+    }
+  }, []);
+
+  useEffect(() => { fetchTvStatus(); fetchPxStatus(); }, []);
+
+  // =============================================
+  // Tradovate OAuth callback detection
+  // =============================================
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get('tv_code');
-    const env = params.get('tv_env');
+    const connId = params.get('tv_conn');
     const error = params.get('tv_error');
 
     // Clear OAuth params from URL immediately
@@ -53,67 +110,138 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
       return;
     }
 
-    if (!code) return;
+    if (!code || !connId) return;
 
     const exchangeCode = async () => {
-      setSaving(true);
+      setTvConnecting(true);
       setMessage(null);
       try {
         const response = await authFetch('/api/tradovate/exchange', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code, environment: env || 'demo' }),
+          body: JSON.stringify({ code, connectionId: connId }),
         });
         const data = await response.json();
         if (data.error) {
           setMessage({ type: 'error', text: data.error });
         } else {
           setMessage({ type: 'success', text: 'Tradovate connected successfully!' });
-          if (data.accounts) {
-            setTvAccounts(data.accounts);
-            setTvEnabledAccounts(data.accounts.map(a => a.id));
-          }
-          setTvShowImportPrompt(true);
+          setTvShowImportPrompt(connId);
           setExpandedBroker('tradovate');
-          fetchStatus();
+          fetchTvStatus();
         }
       } catch (err) {
         setMessage({ type: 'error', text: 'Failed to connect Tradovate' });
       }
-      setSaving(false);
+      setTvConnecting(false);
     };
     exchangeCode();
   }, []);
 
-  const fetchStatus = async () => {
+  // =============================================
+  // Tradovate handlers
+  // =============================================
+  const handleTvConnect = async () => {
+    setTvConnecting(true);
+    setMessage(null);
     try {
-      const response = await authFetch('/api/tradovate/status');
+      const response = await authFetch('/api/tradovate/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ environment: tvEnvironment }),
+      });
       const data = await response.json();
-      setTvStatus(data);
-      if (data.environment) setTvEnvironment(data.environment);
+      if (data.error) {
+        setMessage({ type: 'error', text: data.error });
+        setTvConnecting(false);
+      } else if (data.authUrl) {
+        window.location.href = data.authUrl;
+      }
     } catch (err) {
-      console.error('Failed to fetch Tradovate status:', err);
+      setMessage({ type: 'error', text: 'Failed to start Tradovate connection' });
+      setTvConnecting(false);
     }
   };
 
-  const handleConnect = () => {
-    window.location.href = `/api/tradovate/connect?environment=${tvEnvironment}`;
+  const handleTvSync = async (connectionId) => {
+    setTvSyncingId(connectionId);
+    setMessage(null);
+    try {
+      const response = await authFetch('/api/tradovate/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connectionId }),
+      });
+      const data = await response.json();
+      if (data.error) {
+        setMessage({ type: 'error', text: data.error });
+      } else {
+        setMessage({ type: 'success', text: data.message || 'Sync complete' });
+        fetchTvStatus();
+        if (onSyncComplete) onSyncComplete();
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Sync failed' });
+    }
+    setTvSyncingId(null);
   };
 
-  const handleSync = async ({ useDateRange = false } = {}) => {
-    setSyncing(true);
+  const handleTvSyncAll = async () => {
+    setTvSyncingId('all');
     setMessage(null);
-    let success = false;
     try {
-      const body = {};
-      if (tvEnabledAccounts.length > 0 && tvEnabledAccounts.length < tvAccounts.length) {
-        body.accountIds = tvEnabledAccounts;
+      const response = await authFetch('/api/tradovate/sync-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await response.json();
+      if (data.error) {
+        setMessage({ type: 'error', text: data.error });
+      } else {
+        const results = data.results || [];
+        const total = results.reduce((sum, r) => sum + (r.tradesImported || 0), 0);
+        const errors = results.filter(r => r.error);
+        if (errors.length > 0) {
+          setMessage({ type: 'error', text: `Synced ${total} trades. ${errors.length} connection(s) had errors.` });
+        } else {
+          setMessage({ type: 'success', text: `Synced ${total} trades across ${results.length} connections.` });
+        }
+        fetchTvStatus();
+        if (onSyncComplete) onSyncComplete();
       }
-      if (useDateRange) {
-        if (tvSyncStartDate) body.startDate = tvSyncStartDate;
-        if (tvSyncEndDate) body.endDate = tvSyncEndDate;
-      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Sync all failed' });
+    }
+    setTvSyncingId(null);
+  };
 
+  const handleTvDisconnect = async (connectionId) => {
+    if (!confirm('Disconnect this Tradovate connection?')) return;
+    setMessage(null);
+    try {
+      const response = await authFetch(`/api/tradovate/connections/${connectionId}`, { method: 'DELETE' });
+      const data = await response.json();
+      if (data.error) {
+        setMessage({ type: 'error', text: data.error });
+      } else {
+        setMessage({ type: 'success', text: 'Connection removed' });
+        fetchTvStatus();
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to disconnect' });
+    }
+  };
+
+  const handleTvImportNow = async (connectionId, todayOnly = false) => {
+    setTvSyncingId(connectionId);
+    setMessage(null);
+    try {
+      const body = { connectionId };
+      if (todayOnly) {
+        const today = new Date().toISOString().split('T')[0];
+        body.startDate = today;
+        body.endDate = today;
+      }
       const response = await authFetch('/api/tradovate/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -123,95 +251,20 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
       if (data.error) {
         setMessage({ type: 'error', text: data.error });
       } else {
-        setMessage({ type: 'success', text: data.message });
-        fetchStatus();
+        setMessage({ type: 'success', text: data.message || 'Import complete' });
+        setTvShowImportPrompt(null);
+        fetchTvStatus();
         if (onSyncComplete) onSyncComplete();
-        success = true;
       }
     } catch (err) {
-      setMessage({ type: 'error', text: 'Sync failed' });
+      setMessage({ type: 'error', text: 'Import failed' });
     }
-    setSyncing(false);
-    return success;
+    setTvSyncingId(null);
   };
 
-  const fetchTvAccounts = async () => {
-    setTvAccountsLoading(true);
-    try {
-      const response = await authFetch('/api/tradovate/accounts');
-      const data = await response.json();
-      if (data.accounts) {
-        setTvAccounts(data.accounts);
-        setTvEnabledAccounts(data.accounts.map(a => a.id));
-      }
-    } catch (err) {
-      console.error('Failed to fetch Tradovate accounts:', err);
-    }
-    setTvAccountsLoading(false);
-  };
-
-  const handleImportNow = async (todayOnly = false) => {
-    if (todayOnly) {
-      const today = new Date().toISOString().split('T')[0];
-      setTvSyncStartDate(today);
-      setTvSyncEndDate(today);
-    } else {
-      setTvSyncStartDate('');
-      setTvSyncEndDate('');
-    }
-    const success = await handleSync({ useDateRange: todayOnly });
-    if (success) setTvShowImportPrompt(false);
-  };
-
-  const handleDeleteCredentials = async () => {
-    setMessage(null);
-    try {
-      const response = await authFetch('/api/tradovate/credentials', { method: 'DELETE' });
-      const data = await response.json();
-      if (data.error) {
-        setMessage({ type: 'error', text: data.error });
-      } else {
-        setMessage({ type: 'success', text: data.message });
-        setTvAccounts([]);
-        setTvShowImportPrompt(false);
-        setTvSelectedAccounts([]);
-        setTvEnabledAccounts([]);
-        setTvSyncStartDate('');
-        setTvSyncEndDate('');
-        fetchStatus();
-      }
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to delete credentials' });
-    }
-  };
-
-  const handleEnableSelected = () => {
-    setTvEnabledAccounts(prev => [...new Set([...prev, ...tvSelectedAccounts])]);
-    setTvSelectedAccounts([]);
-  };
-
-  const handleDisableSelected = () => {
-    setTvEnabledAccounts(prev => prev.filter(id => !tvSelectedAccounts.includes(id)));
-    setTvSelectedAccounts([]);
-  };
-
-  const fetchPxStatus = async () => {
-    try {
-      const response = await authFetch('/api/projectx/status');
-      const data = await response.json();
-      setPxStatus(data);
-      if (data.accounts) setPxAccounts(data.accounts);
-      if (data.selectedAccounts) setPxSelectedAccounts(data.selectedAccounts);
-      if (data.copytradeConfig) {
-        setPxCopytradeEnabled(true);
-        setPxLeadAccount(data.copytradeConfig.leadAccountId);
-        setPxMultiplier(data.copytradeConfig.multiplier);
-      }
-    } catch (err) {
-      console.error('Failed to fetch ProjectX status:', err);
-    }
-  };
-
+  // =============================================
+  // ProjectX handlers
+  // =============================================
   const handlePxConnect = async () => {
     if (!pxUsername.trim() || !pxApiKey.trim()) {
       setMessage({ type: 'error', text: 'Username and API key are required' });
@@ -230,8 +283,17 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
         setMessage({ type: 'error', text: data.error });
       } else {
         setMessage({ type: 'success', text: 'Connected to ProjectX!' });
-        setPxAccounts(data.accounts || []);
         setPxApiKey('');
+        setPxUsername('');
+        setPxShowNewForm(false);
+        // Open editing for the new connection
+        if (data.connectionId) {
+          setPxEditingConnId(data.connectionId);
+          setPxEditSelectedAccounts([]);
+          setPxEditCopytradeEnabled(false);
+          setPxEditLeadAccount(null);
+          setPxEditMultiplier(1);
+        }
         fetchPxStatus();
       }
     } catch (err) {
@@ -240,26 +302,27 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
     setPxConnecting(false);
   };
 
-  const handlePxSaveAccounts = async () => {
-    if (pxSelectedAccounts.length === 0) {
+  const handlePxSaveAccounts = async (connectionId) => {
+    if (pxEditSelectedAccounts.length === 0) {
       setMessage({ type: 'error', text: 'Select at least one account' });
       return;
     }
     setMessage(null);
     try {
-      const copytradeConfig = pxCopytradeEnabled && pxLeadAccount
-        ? { leadAccountId: pxLeadAccount, multiplier: pxMultiplier }
+      const copytradeConfig = pxEditCopytradeEnabled && pxEditLeadAccount
+        ? { leadAccountId: pxEditLeadAccount, multiplier: pxEditMultiplier }
         : null;
       const response = await authFetch('/api/projectx/accounts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ selectedAccounts: pxSelectedAccounts, copytradeConfig }),
+        body: JSON.stringify({ connectionId, selectedAccounts: pxEditSelectedAccounts, copytradeConfig }),
       });
       const data = await response.json();
       if (data.error) {
         setMessage({ type: 'error', text: data.error });
       } else {
         setMessage({ type: 'success', text: 'Account settings saved' });
+        setPxEditingConnId(null);
         fetchPxStatus();
       }
     } catch (err) {
@@ -267,43 +330,40 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
     }
   };
 
-  const handlePxSync = async () => {
-    setPxSyncing(true);
+  const handlePxSync = async (connectionId) => {
+    setPxSyncingId(connectionId);
     setMessage(null);
     try {
       const response = await authFetch('/api/projectx/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connectionId }),
       });
       const data = await response.json();
       if (data.error) {
         setMessage({ type: 'error', text: data.error });
       } else {
-        setMessage({ type: 'success', text: data.message });
+        setMessage({ type: 'success', text: data.message || 'Sync complete' });
         fetchPxStatus();
         if (onSyncComplete) onSyncComplete();
       }
     } catch (err) {
       setMessage({ type: 'error', text: 'Sync failed' });
     }
-    setPxSyncing(false);
+    setPxSyncingId(null);
   };
 
-  const handlePxDisconnect = async () => {
+  const handlePxDisconnect = async (connectionId) => {
+    if (!confirm('Disconnect this ProjectX connection?')) return;
     setMessage(null);
     try {
-      const response = await authFetch('/api/projectx/credentials', { method: 'DELETE' });
+      const response = await authFetch(`/api/projectx/connections/${connectionId}`, { method: 'DELETE' });
       const data = await response.json();
       if (data.error) {
         setMessage({ type: 'error', text: data.error });
       } else {
-        setMessage({ type: 'success', text: data.message });
-        setPxStatus(null);
-        setPxAccounts([]);
-        setPxSelectedAccounts([]);
-        setPxCopytradeEnabled(false);
-        setPxLeadAccount(null);
-        setPxMultiplier(1);
+        setMessage({ type: 'success', text: 'Connection removed' });
+        if (pxEditingConnId === connectionId) setPxEditingConnId(null);
         fetchPxStatus();
       }
     } catch (err) {
@@ -311,14 +371,31 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
     }
   };
 
-  const togglePxAccount = (accountId) => {
-    setPxSelectedAccounts(prev =>
+  const startEditingPxConnection = (conn) => {
+    setPxEditingConnId(conn.connectionId);
+    setPxEditSelectedAccounts(conn.selectedAccounts || []);
+    if (conn.copytradeConfig) {
+      setPxEditCopytradeEnabled(true);
+      setPxEditLeadAccount(conn.copytradeConfig.leadAccountId);
+      setPxEditMultiplier(conn.copytradeConfig.multiplier || 1);
+    } else {
+      setPxEditCopytradeEnabled(false);
+      setPxEditLeadAccount(null);
+      setPxEditMultiplier(1);
+    }
+  };
+
+  const togglePxEditAccount = (accountId) => {
+    setPxEditSelectedAccounts(prev =>
       prev.includes(accountId)
         ? prev.filter(id => id !== accountId)
         : [...prev, accountId]
     );
   };
 
+  // =============================================
+  // Tag handlers (unchanged)
+  // =============================================
   const handleCreateTag = async () => {
     if (!newTagName.trim()) return;
     try {
@@ -379,6 +456,9 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
     }
   };
 
+  // =============================================
+  // UI helpers
+  // =============================================
   const tabs = [
     { id: 'brokers', label: 'Broker Connections' },
     { id: 'tags', label: 'Tags' },
@@ -386,15 +466,48 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
     { id: 'preferences', label: 'Preferences' },
   ];
 
-  const [expandedBroker, setExpandedBroker] = useState(null);
-
-  useEffect(() => {
-    if (expandedBroker === 'tradovate' && tvStatus?.configured && tvAccounts.length === 0) {
-      fetchTvAccounts();
-    }
-  }, [expandedBroker, tvStatus, tvAccounts.length]);
-
   const toggleBroker = (id) => setExpandedBroker(expandedBroker === id ? null : id);
+
+  // Status dot color for a connection
+  const statusDot = (conn) => {
+    if (conn.configured && !conn.expired) return 'bg-positive';
+    if (conn.expired) return 'bg-warning';
+    return 'bg-negative';
+  };
+
+  // Badge for broker accordion header based on connections
+  const brokerHeaderBadge = (connections) => {
+    const configured = connections.filter(c => c.configured && !c.expired).length;
+    const expired = connections.filter(c => c.expired).length;
+    if (configured > 0 && expired === 0) {
+      return (
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-positive/10 text-positive">
+          {configured} Connected
+        </div>
+      );
+    }
+    if (configured > 0 && expired > 0) {
+      return (
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-warning/10 text-warning">
+          {configured} Connected, {expired} Expired
+        </div>
+      );
+    }
+    if (expired > 0) {
+      return (
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-warning/10 text-warning">
+          {expired} Expired
+        </div>
+      );
+    }
+    return (
+      <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-text-secondary/10 text-text-secondary">
+        Not Connected
+      </div>
+    );
+  };
+
+  const atConnectionLimit = tvConnectionsUsed >= tvConnectionLimit && tvConnectionLimit > 0;
 
   return (
     <div className="space-y-6">
@@ -434,7 +547,16 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
             </div>
           )}
 
-          {/* Tradovate */}
+          {/* Shared pool counter */}
+          {(tvConnectionsUsed > 0 || pxConnectionsUsed > 0) && (
+            <div className="flex items-center gap-2 text-xs text-text-secondary">
+              <span className="px-2 py-1 bg-bg-surface border border-border rounded-md font-medium">
+                {tvConnectionsUsed} / {tvConnectionLimit} broker connections
+              </span>
+            </div>
+          )}
+
+          {/* ============== Tradovate ============== */}
           <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
             <button
               onClick={() => toggleBroker('tradovate')}
@@ -448,26 +570,14 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                {tvStatus?.configured ? (
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-positive/10 text-positive">
-                    Connected
-                  </div>
-                ) : tvStatus?.expired ? (
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-warning/10 text-warning">
-                    Expired
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-text-secondary/10 text-text-secondary">
-                    Not Connected
-                  </div>
-                )}
+                {brokerHeaderBadge(tvConnections)}
                 {expandedBroker === 'tradovate' ? <Icons.ChevronUp className="w-4 h-4 text-text-secondary" /> : <Icons.ChevronDown className="w-4 h-4 text-text-secondary" />}
               </div>
             </button>
 
             {expandedBroker === 'tradovate' && (
               <div className="px-5 pb-5 border-t border-border pt-4 space-y-4">
-                {subscriptionStatus && subscriptionStatus.plan !== 'pro' && subscriptionStatus.plan !== 'elite' ? (
+                {!tvCanUseBrokerSync ? (
                   <div className="bg-accent/5 border border-accent/20 rounded-lg p-4 text-center">
                     <p className="text-sm text-text-primary font-medium mb-1">Pro or Elite plan required</p>
                     <p className="text-xs text-text-secondary mb-3">Broker sync is available on Pro and Elite plans.</p>
@@ -478,153 +588,158 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                       Upgrade Now
                     </button>
                   </div>
-                ) : !tvStatus?.configured ? (
-                  <>
-                    <div className="bg-bg-page/50 rounded-lg p-3">
-                      <p className="text-xs text-text-secondary leading-relaxed">
-                        {tvStatus?.expired
-                          ? 'Your Tradovate session has expired. Reconnect to resume automatic trade sync.'
-                          : 'Connect your Tradovate account to automatically sync your fills into RR Metrics.'}
-                      </p>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-text-secondary mb-1">Environment</label>
-                      <select
-                        value={tvEnvironment}
-                        onChange={(e) => setTvEnvironment(e.target.value)}
-                        className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-accent"
-                      >
-                        <option value="demo">Demo</option>
-                        <option value="live">Live</option>
-                      </select>
-                    </div>
-                    <button
-                      onClick={handleConnect}
-                      disabled={saving}
-                      className="px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
-                    >
-                      {saving ? 'Connecting...' : 'Connect with Tradovate'}
-                    </button>
-                  </>
                 ) : (
                   <>
-                    <div className="bg-bg-page/50 rounded-lg p-3 space-y-1">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-text-secondary">Environment</span>
-                        <span className="text-text-primary font-medium capitalize">{tvStatus.environment}</span>
-                      </div>
-                      {tvStatus.lastSyncTime && (
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-text-secondary">Last synced</span>
-                          <span className="text-text-primary">{new Date(tvStatus.lastSyncTime).toLocaleString()}</span>
-                        </div>
-                      )}
-                    </div>
+                    {/* Sync All button — show when 2+ connections */}
+                    {tvConnections.filter(c => c.configured && !c.expired).length >= 2 && (
+                      <button
+                        onClick={handleTvSyncAll}
+                        disabled={tvSyncingId !== null}
+                        className="w-full px-4 py-2.5 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                      >
+                        <Icons.RefreshCw className={`w-4 h-4 ${tvSyncingId === 'all' ? 'animate-spin' : ''}`} />
+                        {tvSyncingId === 'all' ? 'Syncing all...' : 'Sync All Connections'}
+                      </button>
+                    )}
 
-                    {tvAccountsLoading ? (
-                      <p className="text-xs text-text-secondary">Loading accounts...</p>
-                    ) : tvAccounts.length > 0 ? (
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <h4 className="text-xs font-medium text-text-secondary">Accounts</h4>
-                          {tvSelectedAccounts.length > 0 && (
-                            <div className="flex gap-1">
+                    {/* Connection cards */}
+                    {tvConnections.map(conn => (
+                      <div key={conn.connectionId} className="bg-bg-page/50 border border-border rounded-lg p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${statusDot(conn)}`}></span>
+                            <span className="text-sm text-text-primary font-medium">
+                              Tradovate <span className="capitalize">{conn.environment}</span>
+                            </span>
+                            {conn.label && (
+                              <span className="text-xs text-text-secondary">— {conn.label}</span>
+                            )}
+                          </div>
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${
+                            conn.configured && !conn.expired ? 'bg-positive/10 text-positive' :
+                            conn.expired ? 'bg-warning/10 text-warning' :
+                            'bg-text-secondary/10 text-text-secondary'
+                          }`}>
+                            {conn.configured && !conn.expired ? 'Active' : conn.expired ? 'Expired' : 'Inactive'}
+                          </span>
+                        </div>
+
+                        {conn.lastSyncTime && (
+                          <p className="text-xs text-text-muted">
+                            Last sync: {relativeTime(conn.lastSyncTime)}
+                          </p>
+                        )}
+
+                        {/* Import prompt for just-connected connections */}
+                        {tvShowImportPrompt === conn.connectionId && (
+                          <div className="bg-accent/5 border border-accent/20 rounded-lg p-3">
+                            <p className="text-sm text-text-primary font-medium mb-1">Import trades</p>
+                            <p className="text-xs text-text-secondary mb-3">
+                              Import all your past fills from Tradovate, or just today's trades.
+                            </p>
+                            <div className="flex gap-2">
                               <button
-                                onClick={handleEnableSelected}
-                                className="text-xs px-2 py-0.5 rounded bg-positive/10 text-positive hover:bg-positive/20 transition-colors"
+                                onClick={() => handleTvImportNow(conn.connectionId, false)}
+                                disabled={tvSyncingId !== null}
+                                className="flex-1 px-3 py-2 bg-accent text-accent-text text-xs font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
                               >
-                                Enable
+                                {tvSyncingId === conn.connectionId ? 'Importing...' : 'Import all trades'}
                               </button>
                               <button
-                                onClick={handleDisableSelected}
-                                className="text-xs px-2 py-0.5 rounded bg-text-secondary/10 text-text-secondary hover:bg-text-secondary/20 transition-colors"
+                                onClick={() => handleTvImportNow(conn.connectionId, true)}
+                                disabled={tvSyncingId !== null}
+                                className="flex-1 px-3 py-2 border border-border text-text-secondary text-xs font-medium rounded-lg hover:text-text-primary transition-colors disabled:opacity-50"
                               >
-                                Disable
+                                {tvSyncingId === conn.connectionId ? 'Importing...' : "Today's trades"}
                               </button>
                             </div>
-                          )}
-                        </div>
-                        <div className="space-y-1.5">
-                          {tvAccounts.map(account => {
-                            const selected = tvSelectedAccounts.includes(account.id);
-                            const enabled = tvEnabledAccounts.includes(account.id);
-                            return (
-                              <label
-                                key={account.id}
-                                className={`flex items-center gap-3 rounded-lg px-3 py-2 cursor-pointer transition-colors border ${
-                                  selected
-                                    ? 'bg-accent/10 border-accent/30'
-                                    : 'bg-bg-page/50 border-border hover:border-border/80'
-                                }`}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={selected}
-                                  onChange={() => setTvSelectedAccounts(prev =>
-                                    selected ? prev.filter(id => id !== account.id) : [...prev, account.id]
-                                  )}
-                                  className="sr-only"
-                                />
-                                <div className={`w-4 h-4 rounded flex-shrink-0 flex items-center justify-center border transition-colors ${
-                                  selected ? 'bg-accent border-accent' : 'border-border bg-bg-input'
-                                }`}>
-                                  {selected && (
-                                    <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-                                      <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                                    </svg>
-                                  )}
-                                </div>
-                                <span className="text-sm text-text-primary flex-1">{account.name}</span>
-                                <span className={`text-xs px-2 py-0.5 rounded-full ${
-                                  enabled ? 'bg-positive/10 text-positive' : 'bg-text-secondary/10 text-text-secondary'
-                                }`}>
-                                  {enabled ? 'Active' : 'Inactive'}
-                                </span>
-                              </label>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ) : null}
+                          </div>
+                        )}
 
-                    {tvShowImportPrompt ? (
-                      <div className="bg-info/5 border border-info/20 rounded-lg p-4">
-                        <p className="text-sm text-text-primary font-medium mb-1">Import trades</p>
-                        <p className="text-xs text-text-secondary mb-3">
-                          Import all your past fills from Tradovate, or just today's trades.
-                        </p>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => handleImportNow(false)}
-                            disabled={syncing}
-                            className="flex-1 px-3 py-2 bg-accent text-accent-text text-xs font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
+                        {/* Action buttons */}
+                        {tvShowImportPrompt !== conn.connectionId && (
+                          <div className="flex items-center gap-2">
+                            {conn.expired ? (
+                              <button
+                                onClick={handleTvConnect}
+                                disabled={tvConnecting}
+                                className="px-3 py-1.5 bg-warning/10 text-warning text-xs font-medium rounded-lg hover:bg-warning/20 transition-colors disabled:opacity-50"
+                              >
+                                {tvConnecting ? 'Reconnecting...' : 'Reconnect'}
+                              </button>
+                            ) : conn.configured ? (
+                              <button
+                                onClick={() => handleTvSync(conn.connectionId)}
+                                disabled={tvSyncingId !== null}
+                                className="px-3 py-1.5 bg-accent text-accent-text text-xs font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50 flex items-center gap-1.5"
+                              >
+                                <Icons.RefreshCw className={`w-3.5 h-3.5 ${tvSyncingId === conn.connectionId ? 'animate-spin' : ''}`} />
+                                {tvSyncingId === conn.connectionId ? 'Syncing...' : 'Sync Now'}
+                              </button>
+                            ) : null}
+                            <button
+                              onClick={() => handleTvDisconnect(conn.connectionId)}
+                              className="px-3 py-1.5 text-text-secondary text-xs font-medium hover:text-negative hover:bg-negative/10 rounded-lg transition-colors"
+                            >
+                              Disconnect
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+
+                    {/* Connect new / not connected state */}
+                    {tvConnections.length === 0 ? (
+                      <>
+                        <div className="bg-bg-page/50 rounded-lg p-3">
+                          <p className="text-xs text-text-secondary leading-relaxed">
+                            Connect your Tradovate account to automatically sync your fills into RR Metrics.
+                          </p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-text-secondary mb-1">Environment</label>
+                          <select
+                            value={tvEnvironment}
+                            onChange={(e) => setTvEnvironment(e.target.value)}
+                            className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-accent"
                           >
-                            {syncing ? 'Importing...' : 'Import all trades'}
-                          </button>
-                          <button
-                            onClick={() => handleImportNow(true)}
-                            disabled={syncing}
-                            className="flex-1 px-3 py-2 border border-border text-text-secondary text-xs font-medium rounded-lg hover:text-text-primary transition-colors disabled:opacity-50"
+                            <option value="demo">Demo</option>
+                            <option value="live">Live</option>
+                          </select>
+                        </div>
+                        <button
+                          onClick={handleTvConnect}
+                          disabled={tvConnecting}
+                          className="px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
+                        >
+                          {tvConnecting ? 'Connecting...' : 'Connect with Tradovate'}
+                        </button>
+                      </>
+                    ) : (
+                      /* "+ Connect Another" button */
+                      <div className="flex items-center justify-between pt-2 border-t border-border">
+                        <span className="text-xs text-text-muted">
+                          {tvConnectionsUsed} / {tvConnectionLimit} broker connections
+                        </span>
+                        <div className="flex items-center gap-3">
+                          <select
+                            value={tvEnvironment}
+                            onChange={(e) => setTvEnvironment(e.target.value)}
+                            className="px-2 py-1.5 bg-bg-input border border-border rounded-lg text-xs text-text-primary focus:outline-none focus:border-accent"
                           >
-                            {syncing ? 'Importing...' : "Import today's trades"}
+                            <option value="demo">Demo</option>
+                            <option value="live">Live</option>
+                          </select>
+                          <button
+                            onClick={handleTvConnect}
+                            disabled={tvConnecting || atConnectionLimit}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-input border border-border text-text-primary text-xs font-medium rounded-lg hover:border-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            title={atConnectionLimit ? 'Connection limit reached' : 'Add another Tradovate connection'}
+                          >
+                            <Icons.Plus className="w-3.5 h-3.5" />
+                            Connect Another
                           </button>
                         </div>
-                      </div>
-                    ) : (
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleSync()}
-                          disabled={syncing}
-                          className="flex-1 px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
-                        >
-                          {syncing ? 'Syncing...' : 'Sync Now'}
-                        </button>
-                        <button
-                          onClick={handleDeleteCredentials}
-                          className="px-4 py-2 border border-border text-text-secondary text-sm font-medium rounded-lg hover:border-negative hover:text-negative transition-colors"
-                        >
-                          Disconnect
-                        </button>
                       </div>
                     )}
                   </>
@@ -633,7 +748,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
             )}
           </div>
 
-          {/* ProjectX / Topstep */}
+          {/* ============== ProjectX / Topstep ============== */}
           <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
             <button
               onClick={() => toggleBroker('projectx')}
@@ -647,25 +762,17 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                {pxStatus?.configured ? (
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-positive/10 text-positive">
-                    Connected
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-text-secondary/10 text-text-secondary">
-                    Not Connected
-                  </div>
-                )}
+                {brokerHeaderBadge(pxConnections)}
                 {expandedBroker === 'projectx' ? <Icons.ChevronUp className="w-4 h-4 text-text-secondary" /> : <Icons.ChevronDown className="w-4 h-4 text-text-secondary" />}
               </div>
             </button>
 
             {expandedBroker === 'projectx' && (
               <div className="px-5 pb-5 border-t border-border pt-4 space-y-4">
-                {pxStatus && !pxStatus.canUseBrokerSync ? (
+                {!pxCanUseBrokerSync ? (
                   <div className="bg-accent/5 border border-accent/20 rounded-lg p-4 text-center">
                     <p className="text-sm text-text-primary font-medium mb-1">Pro or Elite plan required</p>
-                    <p className="text-xs text-text-secondary mb-3">Broker sync is available on Pro (up to 3 accounts) and Elite (unlimited) plans.</p>
+                    <p className="text-xs text-text-secondary mb-3">Broker sync is available on Pro and Elite plans.</p>
                     <button
                       onClick={() => window.location.href = '/upgrade'}
                       className="px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all"
@@ -673,176 +780,277 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                       Upgrade Now
                     </button>
                   </div>
-                ) : !pxStatus?.configured ? (
-                  <>
-                    <div className="bg-bg-page/50 rounded-lg p-3">
-                      <p className="text-xs text-text-secondary leading-relaxed">
-                        Connect your Topstep account via the ProjectX API to automatically sync trades. You'll need a paid API subscription from Topstep ($29/month).
-                      </p>
-                    </div>
-                    <div className="space-y-3">
-                      <div>
-                        <label className="block text-xs font-medium text-text-secondary mb-1">Username</label>
-                        <input
-                          type="text"
-                          value={pxUsername}
-                          onChange={(e) => setPxUsername(e.target.value)}
-                          placeholder="Your Topstep username"
-                          className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-text-secondary mb-1">API Key</label>
-                        <input
-                          type="password"
-                          value={pxApiKey}
-                          onChange={(e) => setPxApiKey(e.target.value)}
-                          placeholder="Your ProjectX API key"
-                          className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent"
-                        />
-                      </div>
-                      <button
-                        onClick={handlePxConnect}
-                        disabled={pxConnecting}
-                        className="px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
-                      >
-                        {pxConnecting ? 'Connecting...' : 'Connect'}
-                      </button>
-                    </div>
-                    <a
-                      href="https://help.topstep.com/en/articles/11187768-topstepx-api-access"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 text-accent text-xs hover:underline"
-                    >
-                      <Icons.FileText className="w-3.5 h-3.5" />
-                      How to get your API key
-                    </a>
-                  </>
                 ) : (
                   <>
-                    {/* Account Selection */}
-                    {pxAccounts.length > 0 && (
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <h4 className="text-sm font-medium text-text-primary">Accounts</h4>
-                          {pxStatus?.accountLimit !== Infinity && (
-                            <span className="text-xs text-text-muted">
-                              {pxSelectedAccounts.length} / {pxStatus?.accountLimit || 0} accounts
+                    {/* Existing connection cards */}
+                    {pxConnections.map(conn => (
+                      <div key={conn.connectionId} className="bg-bg-page/50 border border-border rounded-lg p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${statusDot(conn)}`}></span>
+                            <span className="text-sm text-text-primary font-medium">
+                              ProjectX <span className="capitalize">{conn.environment}</span>
                             </span>
-                          )}
+                            {conn.label && (
+                              <span className="text-xs text-text-secondary">— {conn.label}</span>
+                            )}
+                          </div>
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${
+                            conn.configured && !conn.expired ? 'bg-positive/10 text-positive' :
+                            conn.expired ? 'bg-warning/10 text-warning' :
+                            'bg-text-secondary/10 text-text-secondary'
+                          }`}>
+                            {conn.configured && !conn.expired ? 'Active' : conn.expired ? 'Expired' : 'Inactive'}
+                          </span>
                         </div>
-                        <div className="space-y-2">
-                          {pxAccounts.map(account => (
-                            <label key={account.id} className="flex items-center gap-3 p-2.5 bg-bg-page/50 rounded-lg cursor-pointer hover:bg-bg-page transition-colors">
-                              <input
-                                type="checkbox"
-                                checked={pxSelectedAccounts.includes(account.id)}
-                                onChange={() => togglePxAccount(account.id)}
-                                disabled={!pxSelectedAccounts.includes(account.id) && pxStatus?.accountLimit !== Infinity && pxSelectedAccounts.length >= (pxStatus?.accountLimit || 0)}
-                                className="w-4 h-4 rounded border-border text-accent focus:ring-accent disabled:opacity-40"
-                              />
-                              <div className="flex-1">
-                                <span className="text-sm text-text-primary font-medium">{account.name}</span>
-                                <span className="text-xs text-text-secondary ml-2">${account.balance?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+
+                        {conn.lastSyncTime && (
+                          <p className="text-xs text-text-muted">
+                            Last sync: {relativeTime(conn.lastSyncTime)}
+                          </p>
+                        )}
+
+                        {/* Account settings editing for this connection */}
+                        {pxEditingConnId === conn.connectionId && (
+                          <div className="space-y-3 pt-2 border-t border-border">
+                            {/* Account Selection */}
+                            {(conn.accounts || []).length > 0 && (
+                              <div>
+                                <div className="flex items-center justify-between mb-2">
+                                  <h4 className="text-sm font-medium text-text-primary">Accounts</h4>
+                                </div>
+                                <div className="space-y-2">
+                                  {(conn.accounts || []).map(account => (
+                                    <label key={account.id} className="flex items-center gap-3 p-2.5 bg-bg-surface/50 rounded-lg cursor-pointer hover:bg-bg-surface transition-colors">
+                                      <input
+                                        type="checkbox"
+                                        checked={pxEditSelectedAccounts.includes(account.id)}
+                                        onChange={() => togglePxEditAccount(account.id)}
+                                        className="w-4 h-4 rounded border-border text-accent focus:ring-accent disabled:opacity-40"
+                                      />
+                                      <div className="flex-1">
+                                        <span className="text-sm text-text-primary font-medium">{account.name}</span>
+                                        {account.balance !== undefined && (
+                                          <span className="text-xs text-text-secondary ml-2">
+                                            ${account.balance?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                          </span>
+                                        )}
+                                      </div>
+                                      {account.canTrade && (
+                                        <span className="text-xs text-positive bg-positive/10 px-2 py-0.5 rounded-full">Active</span>
+                                      )}
+                                    </label>
+                                  ))}
+                                </div>
                               </div>
-                              {account.canTrade && (
-                                <span className="text-xs text-positive bg-positive/10 px-2 py-0.5 rounded-full">Active</span>
+                            )}
+
+                            {/* Copytrading Toggle */}
+                            <div className="border border-border rounded-lg p-4 space-y-3">
+                              <label className="flex items-center gap-3 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={pxEditCopytradeEnabled}
+                                  onChange={(e) => {
+                                    setPxEditCopytradeEnabled(e.target.checked);
+                                    if (!e.target.checked) {
+                                      setPxEditLeadAccount(null);
+                                      setPxEditMultiplier(1);
+                                    }
+                                  }}
+                                  className="w-4 h-4 rounded border-border text-accent focus:ring-accent"
+                                />
+                                <div>
+                                  <span className="text-sm text-text-primary font-medium">I am copytrading / tradesyncing</span>
+                                  <p className="text-xs text-text-secondary mt-0.5">Only sync from a lead account and multiply quantity and P&L</p>
+                                </div>
+                              </label>
+
+                              {pxEditCopytradeEnabled && (
+                                <div className="pl-7 space-y-3">
+                                  <div>
+                                    <label className="block text-xs font-medium text-text-secondary mb-1">Lead Account</label>
+                                    <select
+                                      value={pxEditLeadAccount || ''}
+                                      onChange={(e) => setPxEditLeadAccount(Number(e.target.value))}
+                                      className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-accent"
+                                    >
+                                      <option value="">Select lead account</option>
+                                      {(conn.accounts || []).filter(a => pxEditSelectedAccounts.includes(a.id)).map(account => (
+                                        <option key={account.id} value={account.id}>{account.name}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-medium text-text-secondary mb-1">Total Accounts (multiplier)</label>
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      max="50"
+                                      value={pxEditMultiplier}
+                                      onChange={(e) => setPxEditMultiplier(Math.max(1, parseInt(e.target.value) || 1))}
+                                      className="w-24 px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-accent"
+                                    />
+                                    <p className="text-xs text-text-muted mt-1">Quantity and P&L will be multiplied by this number</p>
+                                  </div>
+                                </div>
                               )}
-                            </label>
-                          ))}
+                            </div>
+
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => handlePxSaveAccounts(conn.connectionId)}
+                                className="px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all"
+                              >
+                                Save Settings
+                              </button>
+                              <button
+                                onClick={() => setPxEditingConnId(null)}
+                                className="px-4 py-2 text-text-secondary text-sm font-medium hover:text-text-primary transition-colors"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Action buttons */}
+                        {pxEditingConnId !== conn.connectionId && (
+                          <div className="flex items-center gap-2">
+                            {conn.configured && !conn.expired && (
+                              <>
+                                <button
+                                  onClick={() => handlePxSync(conn.connectionId)}
+                                  disabled={pxSyncingId !== null}
+                                  className="px-3 py-1.5 bg-accent text-accent-text text-xs font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50 flex items-center gap-1.5"
+                                >
+                                  <Icons.RefreshCw className={`w-3.5 h-3.5 ${pxSyncingId === conn.connectionId ? 'animate-spin' : ''}`} />
+                                  {pxSyncingId === conn.connectionId ? 'Syncing...' : 'Sync Now'}
+                                </button>
+                                <button
+                                  onClick={() => startEditingPxConnection(conn)}
+                                  className="px-3 py-1.5 text-text-secondary text-xs font-medium hover:text-text-primary hover:bg-bg-surface rounded-lg transition-colors"
+                                >
+                                  Settings
+                                </button>
+                              </>
+                            )}
+                            <button
+                              onClick={() => handlePxDisconnect(conn.connectionId)}
+                              className="px-3 py-1.5 text-text-secondary text-xs font-medium hover:text-negative hover:bg-negative/10 rounded-lg transition-colors"
+                            >
+                              Disconnect
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+
+                    {/* Connect new / not connected state */}
+                    {pxConnections.length === 0 ? (
+                      <>
+                        <div className="bg-bg-page/50 rounded-lg p-3">
+                          <p className="text-xs text-text-secondary leading-relaxed">
+                            Connect your Topstep account via the ProjectX API to automatically sync trades. You'll need a paid API subscription from Topstep ($29/month).
+                          </p>
                         </div>
+                        <div className="space-y-3">
+                          <div>
+                            <label className="block text-xs font-medium text-text-secondary mb-1">Username</label>
+                            <input
+                              type="text"
+                              value={pxUsername}
+                              onChange={(e) => setPxUsername(e.target.value)}
+                              placeholder="Your Topstep username"
+                              className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-text-secondary mb-1">API Key</label>
+                            <input
+                              type="password"
+                              value={pxApiKey}
+                              onChange={(e) => setPxApiKey(e.target.value)}
+                              placeholder="Your ProjectX API key"
+                              className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent"
+                            />
+                          </div>
+                          <button
+                            onClick={handlePxConnect}
+                            disabled={pxConnecting}
+                            className="px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
+                          >
+                            {pxConnecting ? 'Connecting...' : 'Connect'}
+                          </button>
+                        </div>
+                        <a
+                          href="https://help.topstep.com/en/articles/11187768-topstepx-api-access"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 text-accent text-xs hover:underline"
+                        >
+                          <Icons.FileText className="w-3.5 h-3.5" />
+                          How to get your API key
+                        </a>
+                      </>
+                    ) : (
+                      /* "+ Connect Another" for ProjectX */
+                      <div className="flex items-center justify-between pt-2 border-t border-border">
+                        <span className="text-xs text-text-muted">
+                          {pxConnectionsUsed} / {pxConnectionLimit} broker connections
+                        </span>
+                        <button
+                          onClick={() => setPxShowNewForm(true)}
+                          disabled={atConnectionLimit}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-input border border-border text-text-primary text-xs font-medium rounded-lg hover:border-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          title={atConnectionLimit ? 'Connection limit reached' : 'Add another ProjectX connection'}
+                        >
+                          <Icons.Plus className="w-3.5 h-3.5" />
+                          Connect Another
+                        </button>
                       </div>
                     )}
 
-                    {/* Copytrading Toggle */}
-                    <div className="border border-border rounded-lg p-4 space-y-3">
-                      <label className="flex items-center gap-3 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={pxCopytradeEnabled}
-                          onChange={(e) => {
-                            setPxCopytradeEnabled(e.target.checked);
-                            if (!e.target.checked) {
-                              setPxLeadAccount(null);
-                              setPxMultiplier(1);
-                            }
-                          }}
-                          className="w-4 h-4 rounded border-border text-accent focus:ring-accent"
-                        />
+                    {/* Inline connect form when adding another ProjectX connection */}
+                    {pxConnections.length > 0 && pxShowNewForm && (
+                      <div className="bg-bg-page/50 border border-border rounded-lg p-4 space-y-3">
+                        <h4 className="text-sm font-medium text-text-primary">New ProjectX Connection</h4>
                         <div>
-                          <span className="text-sm text-text-primary font-medium">I am copytrading / tradesyncing</span>
-                          <p className="text-xs text-text-secondary mt-0.5">Only sync from a lead account and multiply quantity and P&L</p>
+                          <label className="block text-xs font-medium text-text-secondary mb-1">Username</label>
+                          <input
+                            type="text"
+                            value={pxUsername}
+                            onChange={(e) => setPxUsername(e.target.value)}
+                            placeholder="Your Topstep username"
+                            className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent"
+                          />
                         </div>
-                      </label>
-
-                      {pxCopytradeEnabled && (
-                        <div className="pl-7 space-y-3">
-                          <div>
-                            <label className="block text-xs font-medium text-text-secondary mb-1">Lead Account</label>
-                            <select
-                              value={pxLeadAccount || ''}
-                              onChange={(e) => setPxLeadAccount(Number(e.target.value))}
-                              className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-accent"
-                            >
-                              <option value="">Select lead account</option>
-                              {pxAccounts.filter(a => pxSelectedAccounts.includes(a.id)).map(account => (
-                                <option key={account.id} value={account.id}>{account.name}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-text-secondary mb-1">Total Accounts (multiplier)</label>
-                            <input
-                              type="number"
-                              min="1"
-                              max="50"
-                              value={pxMultiplier}
-                              onChange={(e) => setPxMultiplier(Math.max(1, parseInt(e.target.value) || 1))}
-                              className="w-24 px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-accent"
-                            />
-                            <p className="text-xs text-text-muted mt-1">Quantity and P&L will be multiplied by this number</p>
-                          </div>
-                          <a
-                            href="/guides/copytrading"
-                            className="inline-flex items-center gap-1.5 text-accent text-xs hover:underline"
+                        <div>
+                          <label className="block text-xs font-medium text-text-secondary mb-1">API Key</label>
+                          <input
+                            type="password"
+                            value={pxApiKey}
+                            onChange={(e) => setPxApiKey(e.target.value)}
+                            placeholder="Your ProjectX API key"
+                            className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent"
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={handlePxConnect}
+                            disabled={pxConnecting}
+                            className="px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
                           >
-                            <Icons.FileText className="w-3.5 h-3.5" />
-                            Learn more about copytrading setup
-                          </a>
+                            {pxConnecting ? 'Connecting...' : 'Connect'}
+                          </button>
+                          <button
+                            onClick={() => setPxShowNewForm(false)}
+                            className="px-4 py-2 text-text-secondary text-sm font-medium hover:text-text-primary transition-colors"
+                          >
+                            Cancel
+                          </button>
                         </div>
-                      )}
-                    </div>
-
-                    {/* Action Buttons */}
-                    <div className="flex flex-wrap items-center gap-3">
-                      <button
-                        onClick={handlePxSaveAccounts}
-                        className="px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all"
-                      >
-                        Save Settings
-                      </button>
-                      <button
-                        onClick={handlePxSync}
-                        disabled={pxSyncing || pxSelectedAccounts.length === 0}
-                        className="px-4 py-2 bg-bg-page border border-border text-text-primary text-sm font-medium rounded-lg hover:bg-bg-input transition-colors disabled:opacity-50 flex items-center gap-2"
-                      >
-                        <Icons.RefreshCw className={`w-4 h-4 ${pxSyncing ? 'animate-spin' : ''}`} />
-                        {pxSyncing ? 'Syncing...' : 'Sync Now'}
-                      </button>
-                      <button
-                        onClick={handlePxDisconnect}
-                        className="px-4 py-2 text-negative text-sm font-medium hover:bg-negative/10 rounded-lg transition-colors"
-                      >
-                        Disconnect
-                      </button>
-                    </div>
-
-                    {/* Last Sync Time */}
-                    {pxStatus?.lastSyncTime && (
-                      <p className="text-xs text-text-muted">
-                        Last synced: {new Date(pxStatus.lastSyncTime).toLocaleString()}
-                      </p>
+                      </div>
                     )}
                   </>
                 )}
