@@ -672,24 +672,29 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                                 <span className="text-xs text-text-muted">{conn.selectedAccounts.length} of {conn.accounts.length} enabled</span>
                               )}
                             </div>
-                            {conn.accounts.map(acct => {
-                              const isEnabled = !conn.selectedAccounts || conn.selectedAccounts.length === 0 || conn.selectedAccounts.includes(acct.id);
-                              return (
-                                <label key={acct.id} className="flex items-center gap-2.5 p-2 bg-bg-surface/50 rounded-lg cursor-pointer hover:bg-bg-surface transition-colors">
-                                  <input
-                                    type="checkbox"
-                                    checked={isEnabled}
-                                    onChange={() => toggleTvAccount(conn.connectionId, acct.id)}
-                                    className="w-3.5 h-3.5 rounded border-border text-accent focus:ring-accent"
-                                  />
-                                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isEnabled ? (acct.active ? 'bg-positive' : 'bg-warning') : 'bg-text-muted/30'}`}></span>
-                                  <span className={`text-xs font-medium ${isEnabled ? 'text-text-primary' : 'text-text-muted'}`}>{acct.name}</span>
-                                  <span className={`text-xs ml-auto ${isEnabled ? (acct.active ? 'text-positive' : 'text-warning') : 'text-text-muted'}`}>
-                                    {isEnabled ? (acct.active ? 'Online' : 'Offline') : 'Disabled'}
-                                  </span>
-                                </label>
-                              );
-                            })}
+                            <div className="flex flex-wrap gap-1.5">
+                              {conn.accounts.map(acct => {
+                                const isEnabled = !conn.selectedAccounts || conn.selectedAccounts.length === 0 || conn.selectedAccounts.includes(acct.id);
+                                return (
+                                  <button
+                                    key={acct.id}
+                                    onClick={() => toggleTvAccount(conn.connectionId, acct.id)}
+                                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer border ${
+                                      isEnabled
+                                        ? 'bg-accent/10 border-accent/30 text-accent'
+                                        : 'bg-bg-surface/50 border-border text-text-muted'
+                                    }`}
+                                  >
+                                    <span className={`w-1.5 h-1.5 rounded-full ${
+                                      isEnabled
+                                        ? (acct.active ? 'bg-positive' : 'bg-warning')
+                                        : 'bg-text-muted/40'
+                                    }`}></span>
+                                    {acct.name}
+                                  </button>
+                                );
+                              })}
+                            </div>
                             <button
                               onClick={() => handleTvSaveAccounts(conn.connectionId)}
                               disabled={tvSavingAccounts === conn.connectionId}
