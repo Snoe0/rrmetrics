@@ -15,7 +15,10 @@ import strategyRoutes from './routes/strategy';
 import referralRoutes from './routes/referral';
 import backtestingRoutes from './routes/backtesting';
 import adminRoutes from './routes/admin';
+import syncerRoutes from './routes/syncer';
 import announcementRoutes from './routes/announcement';
+import emailRoutes from './routes/email';
+import { processEmailDrips } from './scheduled/email-drips';
 import pageRoutes from './routes/pages';
 
 type HonoEnv = {
@@ -45,7 +48,9 @@ app.route('/', strategyRoutes);
 app.route('/', referralRoutes);
 app.route('/', backtestingRoutes);
 app.route('/', adminRoutes);
+app.route('/', syncerRoutes);
 app.route('/', announcementRoutes);
+app.route('/', emailRoutes);
 
 // Page routes (HTML serving)
 app.route('/', pageRoutes);
@@ -54,5 +59,8 @@ export default {
   fetch: app.fetch,
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
     ctx.waitUntil(refreshExpiringBrokerTokens(env));
+    if (event.cron === '0 5 * * *') {
+      ctx.waitUntil(processEmailDrips(env));
+    }
   },
 };
