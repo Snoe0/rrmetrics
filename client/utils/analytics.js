@@ -144,6 +144,7 @@ const runMonteCarloSimulation = (trades, config = {}) => {
     let equity = 0;
     let peak = 0;
     let passed = false;
+    let resolved = false;
     const path = sim < collectPaths ? [0] : null;
 
     for (let day = 1; day <= maxDays; day++) {
@@ -156,15 +157,21 @@ const runMonteCarloSimulation = (trades, config = {}) => {
 
       if (path) path.push(equity);
 
-      // Check EOD trailing drawdown
-      const drawdown = peak - equity;
-      if (drawdown >= maxDrawdown) break;
+      if (!resolved) {
+        // Check EOD trailing drawdown
+        const drawdown = peak - equity;
+        if (drawdown >= maxDrawdown) {
+          resolved = true;
+          if (!path) break;
+        }
 
-      // Check profit target
-      if (equity >= profitTarget) {
-        passed = true;
-        daysToPass.push(day);
-        break;
+        // Check profit target
+        if (!resolved && equity >= profitTarget) {
+          passed = true;
+          resolved = true;
+          daysToPass.push(day);
+          if (!path) break;
+        }
       }
     }
 
