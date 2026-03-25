@@ -95,9 +95,17 @@ const WhatWeDoPage = ({ onNext, ready }) => (
   </div>
 );
 
+const ONBOARD_BROKERS = [
+  { key: 'tradovate', label: 'Tradovate', icon: '/assets/img/tradovate.png', subtitle: 'Futures trading' },
+  { key: 'ninjatrader', label: 'NinjaTrader', icon: '/assets/img/ninjatrader.jpeg', subtitle: 'Advanced charting & trading' },
+  { key: 'alpha_futures', label: 'Alpha Futures', icon: '/assets/img/alphafutures.png', subtitle: 'Prop trading firm' },
+  { key: 'apex_trader_funding', label: 'Apex Trader Funding', icon: '/assets/img/apex.png', subtitle: 'Prop trading firm' },
+  { key: 'topstep', label: 'Topstep (ProjectX)', icon: '/assets/img/topstep.png', subtitle: 'Prop trading firm', separate: true },
+];
+
 const BrokerConnectPage = ({ onNext, onSkip, ready }) => {
-  const [showMore, setShowMore] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const [connectingBroker, setConnectingBroker] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [synced, setSynced] = useState(false);
   const [connectedAccounts, setConnectedAccounts] = useState([]);
@@ -109,19 +117,21 @@ const BrokerConnectPage = ({ onNext, onSkip, ready }) => {
     const params = new URLSearchParams(window.location.search);
     const tvCode = params.get('tv_code');
     const tvConn = params.get('tv_conn');
+    const tvBroker = params.get('tv_broker') || 'tradovate';
     if (tvCode && tvConn) {
-      handleOAuthCallback(tvCode, tvConn);
-      // Clean URL
+      handleOAuthCallback(tvCode, tvConn, tvBroker);
       const url = new URL(window.location);
       url.searchParams.delete('tv_code');
       url.searchParams.delete('tv_conn');
+      url.searchParams.delete('tv_broker');
       window.history.replaceState({}, '', url);
     }
   }, []);
 
-  const handleOAuthCallback = async (code, connectionId) => {
+  const handleOAuthCallback = async (code, connectionId, broker) => {
     setSyncing(true);
     setError(null);
+    const brokerLabel = ONBOARD_BROKERS.find(b => b.key === broker)?.label || broker;
     try {
       const exchangeRes = await authFetch('/api/tradovate/exchange', {
         method: 'POST',
@@ -131,7 +141,6 @@ const BrokerConnectPage = ({ onNext, onSkip, ready }) => {
       const exchangeData = await exchangeRes.json();
       if (exchangeData.error) throw new Error(exchangeData.error);
 
-      // Now sync trades
       await authFetch('/api/tradovate/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -140,27 +149,29 @@ const BrokerConnectPage = ({ onNext, onSkip, ready }) => {
 
       setSyncing(false);
       setSynced(true);
-      setConnectedAccounts((prev) => [...prev, { broker: 'Tradovate', environment }]);
+      setConnectedAccounts((prev) => [...prev, { broker: brokerLabel, environment }]);
     } catch (err) {
       setSyncing(false);
       setError(err.message || 'Connection failed. You can connect later in Settings.');
     }
   };
 
-  const handleConnect = async () => {
+  const handleConnect = async (brokerKey) => {
     setConnecting(true);
+    setConnectingBroker(brokerKey);
     setError(null);
     try {
       const res = await authFetch('/api/tradovate/connect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ environment }),
+        body: JSON.stringify({ environment, broker: brokerKey }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       if (data.authUrl) window.location.href = data.authUrl;
     } catch (err) {
       setConnecting(false);
+      setConnectingBroker(null);
       setError(err.message || 'Failed to start connection.');
     }
   };
@@ -181,6 +192,7 @@ const BrokerConnectPage = ({ onNext, onSkip, ready }) => {
     const handleConnectAnother = () => {
       setSynced(false);
       setConnecting(false);
+      setConnectingBroker(null);
       setError(null);
     };
 
@@ -192,7 +204,6 @@ const BrokerConnectPage = ({ onNext, onSkip, ready }) => {
         <h2 className="text-xl font-semibold text-text-primary mb-1">Synced!</h2>
         <p className="text-text-tertiary text-sm mb-6">Your trades have been imported</p>
 
-        {/* Connected accounts list */}
         <div className="w-full max-w-xs mx-auto mb-6 space-y-2">
           {connectedAccounts.map((acct, i) => (
             <div key={i} className="flex items-center gap-2 bg-positive/5 border border-positive/20 rounded-lg px-4 py-2.5">
@@ -220,73 +231,62 @@ const BrokerConnectPage = ({ onNext, onSkip, ready }) => {
       <h1 className="text-3xl font-bold mb-2">
         <span className="text-text-primary">We can </span><span className="text-accent">auto-sync</span><span className="text-text-primary"> your trades!</span>
       </h1>
-      <p className="text-text-secondary text-lg mb-8">Do you have an account to connect?</p>
+      <p className="text-text-secondary text-lg mb-8">Which broker do you use?</p>
 
-      {/* Tradovate - primary */}
-      <div className="w-full max-w-sm mx-auto mb-4">
-        <div className="bg-bg-surface border border-border rounded-xl p-5">
-          <div className="flex items-center justify-between mb-4">
+      {/* Broker cards */}
+      <div className="w-full max-w-sm mx-auto mb-4 space-y-3">
+        {ONBOARD_BROKERS.filter(b => !b.separate).map((broker) => (
+          <div key={broker.key} className="bg-bg-surface border border-border rounded-xl p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <img src={broker.icon} alt={broker.label} className="w-9 h-9 rounded-lg object-contain" />
+                <div className="text-left">
+                  <div className="text-text-primary font-semibold text-sm">{broker.label}</div>
+                  <div className="text-text-tertiary text-xs">{broker.subtitle}</div>
+                </div>
+              </div>
+              <button
+                onClick={() => handleConnect(broker.key)}
+                disabled={connecting}
+                className="px-4 py-2 bg-accent text-accent-text text-xs font-semibold rounded-lg hover:brightness-110 transition-all disabled:opacity-50 cursor-pointer"
+              >
+                {connectingBroker === broker.key ? 'Connecting...' : 'Connect'}
+              </button>
+            </div>
+          </div>
+        ))}
+
+        {/* Topstep — available but separate system */}
+        <div className="bg-bg-surface/50 border border-border/50 rounded-xl p-4">
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <img src="/assets/img/tradovate.png" alt="Tradovate" className="w-10 h-10 rounded-lg object-contain" />
-              <div>
-                <div className="text-text-primary font-semibold">Tradovate</div>
-                <div className="text-text-tertiary text-xs">Futures trading</div>
+              <img src="/assets/img/topstep.png" alt="Topstep" className="w-9 h-9 rounded-lg object-contain" />
+              <div className="text-left">
+                <div className="text-text-primary font-semibold text-sm">Topstep (ProjectX)</div>
+                <div className="text-text-tertiary text-xs">Prop trading firm</div>
               </div>
             </div>
-            <select
-              value={environment}
-              onChange={(e) => setEnvironment(e.target.value)}
-              className="bg-bg-input border border-border rounded-lg px-2 py-1 text-text-primary text-xs"
-            >
-              <option value="demo">Demo</option>
-              <option value="live">Live</option>
-            </select>
+            <span className="text-xs px-2.5 py-1 rounded-full bg-positive/10 text-positive">In Settings</span>
           </div>
-          <button
-            onClick={handleConnect}
-            disabled={connecting}
-            className="onboard-btn-primary w-full"
-          >
-            {connecting ? 'Connecting...' : 'Connect Tradovate'}
-          </button>
         </div>
+      </div>
+
+      {/* Environment selector */}
+      <div className="flex items-center gap-2 justify-center mb-4">
+        <span className="text-text-tertiary text-xs">Environment:</span>
+        <select
+          value={environment}
+          onChange={(e) => setEnvironment(e.target.value)}
+          className="bg-bg-input border border-border rounded-lg px-2 py-1 text-text-primary text-xs"
+        >
+          <option value="demo">Demo</option>
+          <option value="live">Live</option>
+        </select>
       </div>
 
       {error && (
         <p className="text-negative text-sm mb-4 max-w-sm mx-auto">{error}</p>
       )}
-
-      {/* Show more brokers */}
-      <div className="w-full max-w-sm mx-auto mb-6">
-        <button
-          onClick={() => setShowMore(!showMore)}
-          className="flex items-center gap-1 text-text-tertiary text-sm hover:text-text-secondary transition-colors cursor-pointer mx-auto"
-        >
-          {showMore ? 'Show less' : 'Show more brokers'}
-          <Icons.ChevronDown className={`w-4 h-4 transition-transform duration-200 ${showMore ? 'rotate-180' : ''}`} />
-        </button>
-        {showMore && (
-          <div className="mt-3 space-y-2 onboard-stagger" style={{ animationDelay: '0ms' }}>
-            {[
-              { name: 'Topstep (ProjectX)', status: 'available' },
-              { name: 'Webull', status: 'coming' },
-              { name: 'NinjaTrader', status: 'coming' },
-              { name: 'TradeStation', status: 'coming' },
-            ].map((broker) => (
-              <div key={broker.name} className="flex items-center justify-between bg-bg-surface/50 border border-border/50 rounded-lg px-4 py-3">
-                <span className="text-text-secondary text-sm">{broker.name}</span>
-                <span className={`text-xs px-2 py-0.5 rounded-full ${
-                  broker.status === 'available'
-                    ? 'bg-positive/10 text-positive'
-                    : 'bg-bg-input text-text-muted'
-                }`}>
-                  {broker.status === 'available' ? 'Available' : 'Coming soon'}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
 
       {/* Skip for now */}
       <button
