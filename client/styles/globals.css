@@ -136,10 +136,10 @@
 
 @keyframes marquee-left {
   0% { transform: translateX(0); }
-  100% { transform: translateX(-50%); }
+  100% { transform: translateX(calc(var(--marquee-distance) * -1)); }
 }
 @keyframes marquee-right {
-  0% { transform: translateX(-50%); }
+  0% { transform: translateX(calc(var(--marquee-distance) * -1)); }
   100% { transform: translateX(0); }
 }
 .animate-marquee-left {

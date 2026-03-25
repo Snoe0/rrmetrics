@@ -333,17 +333,23 @@ const BrokerMarquee = () => {
   ];
 
   const directions = ['left', 'right', 'left'];
+  // Each item is 48px (w-12) + 16px gap = 64px per item, 7 items per set = 448px
+  const setWidth = brokers.length * (48 + 16);
 
   return (
     <div className="mt-6 space-y-3 overflow-hidden">
       {rows.map((order, rowIdx) => {
         const items = order.map(i => brokers[i]);
         const doubled = [...items, ...items];
+        const isLeft = directions[rowIdx] === 'left';
         return (
           <div key={rowIdx} className="overflow-hidden">
             <div
-              className={`flex gap-4 w-max ${directions[rowIdx] === 'left' ? 'animate-marquee-left' : 'animate-marquee-right'}`}
-              style={{ animationDuration: '20s' }}
+              className={`flex gap-4 w-max ${isLeft ? 'animate-marquee-left' : 'animate-marquee-right'}`}
+              style={{
+                animationDuration: '20s',
+                '--marquee-distance': `${setWidth}px`,
+              }}
             >
               {doubled.map((broker, i) => (
                 <div
