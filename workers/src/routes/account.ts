@@ -130,6 +130,7 @@ account.get(
     const responseData: Record<string, unknown> = {
       isPremium: status.isPremium,
       plan: status.effectivePlan,
+      role: profile.role || 'user',
     };
 
     if (status.hasTradeLimit) {

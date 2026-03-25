@@ -37,6 +37,33 @@ export interface TvContract {
   name: string;
 }
 
+export interface TvOrder {
+  id: number;
+  accountId: number;
+  contractId: number;
+  action: 'Buy' | 'Sell';
+  ordType: string;
+  ordStatus: string;
+  orderQty: number;
+  price?: number;
+  stopPrice?: number;
+  limitPrice?: number;
+  triggerPrice?: number;
+  qty?: number;
+}
+
+export interface PlaceOrderParams {
+  accountSpec: string;
+  accountId: number;
+  action: 'Buy' | 'Sell';
+  symbol: string;
+  orderQty: number;
+  orderType: string;
+  price?: number;
+  stopPrice?: number;
+  isAutomated?: boolean;
+}
+
 export class TradovateAPI {
   private baseUrl: string;
 
@@ -200,5 +227,74 @@ export class TradovateAPI {
     });
     if (!response.ok) throw new Error(`Failed to fetch contract items: ${response.status}`);
     return response.json() as Promise<TvContract[]>;
+  }
+
+  /** Place an order on a Tradovate account. */
+  async placeOrder(token: string, params: PlaceOrderParams): Promise<TvOrder> {
+    const response = await fetch(`${this.baseUrl}/order/placeorder`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to place order: ${response.status} ${errorText}`);
+    }
+    return response.json() as Promise<TvOrder>;
+  }
+
+  /** Cancel an existing order by ID. */
+  async cancelOrder(token: string, orderId: number): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/order/cancelorder`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ orderId }),
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to cancel order: ${response.status} ${errorText}`);
+    }
+  }
+
+  /** Modify an existing order (price, stopPrice, orderQty). */
+  async modifyOrder(
+    token: string,
+    orderId: number,
+    params: Partial<{ orderQty: number; price: number; stopPrice: number }>,
+  ): Promise<TvOrder> {
+    const response = await fetch(`${this.baseUrl}/order/modifyorder`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ orderId, ...params }),
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to modify order: ${response.status} ${errorText}`);
+    }
+    return response.json() as Promise<TvOrder>;
+  }
+
+  /** Fetch a single order by ID. */
+  async getOrderItem(token: string, orderId: number): Promise<TvOrder> {
+    const response = await fetch(`${this.baseUrl}/order/item?id=${orderId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new Error(`Failed to fetch order: ${response.status}`);
+    return response.json() as Promise<TvOrder>;
+  }
+
+  /** Get open positions filtered by account ID. */
+  async getPositionsByAccount(token: string, accountId: number): Promise<TvPosition[]> {
+    const positions = await this.getPositions(token);
+    return positions.filter((p) => p.accountId === accountId);
   }
 }

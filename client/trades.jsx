@@ -31,6 +31,7 @@ const StrategyPage = require('./components/pages/StrategyPage');
 const BacktestingPage = require('./components/pages/BacktestingPage');
 const UpgradePage = require('./components/pages/UpgradePage');
 const ReferralPage = require('./components/pages/ReferralPage');
+const TradeSyncerPage = require('./components/pages/TradeSyncerPage');
 const DotGrid = require('./components/shared/DotGrid');
 
 const AnnouncementBanner = ({ announcement, onDismiss }) => {
@@ -73,6 +74,7 @@ const App = () => {
   const [brokerStatuses, setBrokerStatuses] = useState([]);
   const [toast, setToast] = useState(null);
   const [subscriptionStatus, setSubscriptionStatus] = useState(null);
+  const [userRole, setUserRole] = useState('user');
   const [syncNotification, setSyncNotification] = useState(null);
   const [showWelcome, setShowWelcome] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
@@ -231,6 +233,7 @@ const App = () => {
         const response = await authFetch('/api/subscriptionStatus');
         const data = await response.json();
         setSubscriptionStatus(data);
+        if (data.role) setUserRole(data.role);
       } catch (err) {
         console.error('Failed to fetch subscription status:', err);
       }
@@ -415,6 +418,8 @@ const App = () => {
         return <UpgradePage pricing={pricing} />;
       case 'referral':
         return <ReferralPage />;
+      case 'syncer':
+        return <TradeSyncerPage />;
       default:
         return <DashboardPage trades={trades} subscriptionStatus={subscriptionStatus} onOpenForm={openForm} onOpenImport={() => setCsvImportOpen(true)} onManualSync={handleManualSync} brokerStatuses={brokerStatuses} onOpenAddTrade={openFormWithDate} onEditTrade={openEditForm} dailyNotes={dailyNotes} onSaveNote={handleSaveNote} onDeleteNote={handleDeleteNote} tags={tags} strategyRules={strategyRules} evalFilter={evalFilter} setEvalFilter={setEvalFilter} sidebarCollapsed={sidebarCollapsed} />;
     }
@@ -430,6 +435,7 @@ const App = () => {
         onNavigate={setCurrentPage}
         subscriptionStatus={subscriptionStatus}
         onCollapsedChange={setSidebarCollapsed}
+        userRole={userRole}
       />
       <main className={`flex-1 min-h-screen transition-[margin] duration-300 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-60'}`} style={{ paddingRight: sidePanelOffset }}>
         <div className="p-6 lg:p-8">

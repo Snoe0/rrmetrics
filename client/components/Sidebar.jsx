@@ -6,7 +6,7 @@ const { supabase } = require('../helper');
 // =====================================================
 // SIDEBAR
 // =====================================================
-const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChange }) => {
+const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChange, userRole }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(
@@ -122,6 +122,44 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChang
               );
             })}
           </div>
+
+          {/* Developer-only tools */}
+          {(userRole === 'developer' || userRole === 'admin') && (
+            <div className="mt-4">
+              <div className="border-t border-border mx-2 mb-2" />
+              {!isCollapsed && (
+                <div className="px-3 mb-1">
+                  <span className="text-text-muted text-[10px] font-semibold uppercase tracking-wider">Dev Tools</span>
+                </div>
+              )}
+              <div className="space-y-1">
+                {[
+                  { id: 'syncer', label: 'Trade Syncer', icon: Icons.RefreshCw },
+                ].map(item => {
+                  const Icon = item.icon;
+                  const isActive = currentPage === item.id;
+                  return (
+                    <a
+                      key={item.id}
+                      href="#"
+                      title={isCollapsed ? item.label : undefined}
+                      className={`flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition-colors no-underline ${isCollapsed ? 'justify-center gap-0' : 'gap-3'} ${
+                        isActive
+                          ? 'bg-bg-surface text-accent border-l-2 border-accent'
+                          : 'text-text-secondary hover:text-text-primary hover:bg-bg-surface'
+                      }`}
+                      onClick={(e) => { e.preventDefault(); handleNav(item.id); }}
+                    >
+                      <Icon className="w-5 h-5 flex-shrink-0" />
+                      <span className={`transition-opacity duration-200 whitespace-nowrap ${isCollapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100'}`}>
+                        {item.label}
+                      </span>
+                    </a>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div className="mt-auto">
             <div className="border-t border-border mx-2 mb-2" />
