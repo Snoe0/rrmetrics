@@ -264,7 +264,7 @@ async function syncConnection(
       exitPrice: isLong ? fp.sellPrice : fp.buyPrice,
       quantity: isLong ? fp.qty : -fp.qty,
       tradovateOrderId,
-      comments: acctLabel ? `${BROKER_LABELS[brokerConn.broker] || brokerConn.broker} account: ${acctLabel}` : undefined,
+      account: acctLabel || null,
     });
   }
 

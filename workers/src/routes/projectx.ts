@@ -321,6 +321,10 @@ projectx.post(
         accountsToSync = [copytradeConfig.leadAccountId];
       }
 
+      // Resolve account IDs to names
+      const accounts = await api.getAccounts(token);
+      const accountNameMap = new Map(accounts.map((a: any) => [a.id, a.name]));
+
       // Fetch trades from each account
       const startTimestamp = brokerConn.last_sync_time || '2020-01-01T00:00:00Z';
       const allTrades: Array<{
@@ -335,10 +339,15 @@ projectx.post(
         orderId: number;
       }> = [];
 
+      const tradeAccountMap = new Map<number, number>();
+
       for (const accountId of accountsToSync) {
         const trades = await api.searchTrades(token, accountId, startTimestamp);
         // Filter: only completed trades (non-null P&L) and not voided
         const completedTrades = trades.filter((t) => t.profitAndLoss !== null && !t.voided);
+        for (const t of completedTrades) {
+          tradeAccountMap.set(t.id, accountId);
+        }
         allTrades.push(...(completedTrades as any[]));
       }
 
@@ -401,6 +410,7 @@ projectx.post(
         projectxTradeId: String(t.id),
         projectxSource: 'projectx',
         brokerConnectionId: connectionId,
+        account: accountNameMap.get(tradeAccountMap.get(t.id) || 0) || 'Topstep',
       }));
 
       const result = await tradesDb.bulkInsertTrades(supabase, user.id, tradesToInsert);
