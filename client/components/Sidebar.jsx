@@ -91,9 +91,6 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChang
             onClick={(e) => { e.preventDefault(); handleNav('dashboard'); }}
           >
             <img src="/assets/img/logo.svg" alt="RR Metrics" className="w-8 h-8 rounded-md flex-shrink-0" />
-            <span className={`text-text-primary font-semibold text-[15px] tracking-[3px] uppercase transition-opacity duration-200 whitespace-nowrap ${isCollapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100'}`}>
-              RR Metrics
-            </span>
           </a>
         </div>
 
