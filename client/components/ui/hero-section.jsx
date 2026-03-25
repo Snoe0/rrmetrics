@@ -27,7 +27,7 @@ const HeroSection = () => (
         </h1>
 
         <p className="mx-auto my-8 max-w-2xl text-lg text-text-secondary sm:text-xl leading-relaxed">
-          Stop losing trades to messy notebooks and dead spreadsheets. RR Metrics auto-syncs your broker, tracks your stats, and shows you exactly where you make — and lose — money. Starting at just $5/mo.
+          Stop losing trades to messy notebooks and dead spreadsheets. RR Metrics auto-syncs your broker, tracks your stats, and shows you exactly where you make (and lose) money. Starting at just $12/mo.
         </p>
 
         <Button asChild size="lg" className="bg-accent text-accent-text hover:bg-accent/90 shadow-lg shadow-accent/20 font-semibold">
@@ -40,8 +40,8 @@ const HeroSection = () => (
     </div>
 
     {/* Perspective dashboard preview */}
-    <div className="mx-auto -mt-16 max-w-7xl [mask-image:linear-gradient(to_bottom,black_50%,transparent_100%)]">
-      <div className="[perspective:1200px] -mr-16 pl-16 lg:-mr-56 lg:pl-56">
+    <div className="-mt-16 [mask-image:linear-gradient(to_bottom,black_50%,transparent_100%)]">
+      <div className="[perspective:1200px] [mask-image:linear-gradient(to_right,black_60%,transparent_100%)] -mr-16 pl-16 lg:-mr-56 lg:pl-56">
         <div className="[transform:rotateX(20deg)]">
           <div className="lg:h-[44rem] relative skew-x-[.36rad]">
             <div className="relative z-[2] rounded-xl border border-border overflow-hidden bg-bg-surface shadow-2xl shadow-black/30">
