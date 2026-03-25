@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Workflow
+
+- **Commit after every change:** Always commit all changes after they are made. Do not wait for the user to ask.
+
 ## Project Memory Vault
 
 This project has an Obsidian vault at `.claude/RR-Metrics/`. **Read it at the start of every session and write to it as you work.**

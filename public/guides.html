@@ -31,6 +31,26 @@
       <p class="text-accent text-sm font-semibold uppercase tracking-widest mb-3">Documentation</p>
       <h1 class="text-4xl font-bold mb-4">Guides &amp; Tutorials</h1>
       <p class="text-text-secondary text-base max-w-2xl">Step-by-step guides for getting the most out of RR Metrics — from connecting your broker API to analyzing your trading performance.</p>
+      <!-- Search Bar -->
+      <div class="mt-6 relative max-w-md">
+        <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input
+          id="guide-search"
+          type="text"
+          placeholder="Search guides... (e.g. CSV, import, analytics)"
+          class="w-full pl-10 pr-10 py-2.5 bg-bg-input border border-border rounded-lg text-sm text-text-primary placeholder-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
+        />
+        <button id="guide-search-clear" class="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary transition-colors hidden" aria-label="Clear search">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <p id="guide-search-status" class="mt-2 text-xs text-text-muted hidden"></p>
     </div>
   </div>
 
@@ -42,7 +62,7 @@
       <h2 class="text-xs font-semibold uppercase tracking-widest text-text-muted mb-6">Getting Started</h2>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-        <a href="/guides/getting-started" class="group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors">
+        <a href="/guides/getting-started" class="guide-card group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors" data-tags="getting started, first trade, beginner, setup, onboarding, quick start, basics, log trade, manual entry">
           <div class="flex items-start gap-4">
             <div class="w-10 h-10 bg-bg-input border border-border rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
               <svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -57,7 +77,7 @@
           </div>
         </a>
 
-        <a href="/guides/dashboard-walkthrough" class="group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors">
+        <a href="/guides/dashboard-walkthrough" class="guide-card group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors" data-tags="dashboard, walkthrough, tour, sidebar, metrics, trade table, overview, navigation, pages">
           <div class="flex items-start gap-4">
             <div class="w-10 h-10 bg-bg-input border border-border rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
               <svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -83,7 +103,7 @@
       <h2 class="text-xs font-semibold uppercase tracking-widest text-text-muted mb-6">Broker Integrations</h2>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-        <a href="/guides/tradovate-import" class="group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors">
+        <a href="/guides/tradovate-import" class="guide-card group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors" data-tags="tradovate, import, csv, broker, export, trade history, futures, auto-detect, columns">
           <div class="flex items-start gap-4">
             <div class="w-10 h-10 bg-bg-input border border-border rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
               <svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -102,7 +122,7 @@
           </div>
         </a>
 
-        <a href="/guides/topstep-import" class="group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors">
+        <a href="/guides/topstep-import" class="guide-card group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors" data-tags="topstep, import, csv, broker, funded account, trade history, prop firm, export, mapping">
           <div class="flex items-start gap-4">
             <div class="w-10 h-10 bg-bg-input border border-border rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
               <svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -121,7 +141,7 @@
           </div>
         </a>
 
-        <a href="/guides/ninjatrader-api" class="group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors">
+        <a href="/guides/ninjatrader-api" class="guide-card group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors" data-tags="ninjatrader, api, broker, connection, sync, NT8, license key, remote access, auto-sync, executions">
           <div class="flex items-start gap-4">
             <div class="w-10 h-10 bg-bg-input border border-border rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
               <svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -140,7 +160,7 @@
           </div>
         </a>
 
-        <a href="/guides/generic-csv" class="group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors">
+        <a href="/guides/generic-csv" class="guide-card group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors" data-tags="csv, generic, format, reference, columns, any broker, export, import, mapping, custom">
           <div class="flex items-start gap-4">
             <div class="w-10 h-10 bg-bg-input border border-border rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
               <svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -162,7 +182,7 @@
           </div>
         </a>
 
-        <a href="/guides/copytrading" class="group block bg-bg-surface border border-border rounded-xl p-5 no-underline hover:border-accent transition-colors">
+        <a href="/guides/copytrading" class="guide-card group block bg-bg-surface border border-border rounded-xl p-5 no-underline hover:border-accent transition-colors" data-tags="copytrading, tradesyncing, multiple accounts, topstep, prop firm, duplicate trades, sync">
           <span class="text-xs text-accent font-semibold uppercase tracking-wider">Broker Integrations</span>
           <h4 class="text-text-primary font-semibold mt-1 mb-1 group-hover:text-accent transition-colors">Copytrading / Tradesyncing</h4>
           <p class="text-text-secondary text-xs leading-relaxed">Learn how to set up RR Metrics if you are copytrading across multiple Topstep accounts.</p>
@@ -176,7 +196,7 @@
       <h2 class="text-xs font-semibold uppercase tracking-widest text-text-muted mb-6">Features &amp; Workflow</h2>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-        <a href="/guides/tags" class="group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors">
+        <a href="/guides/tags" class="guide-card group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors" data-tags="tags, categorize, filter, setup, mistakes, conditions, compare, performance, labels, organize">
           <div class="flex items-start gap-4">
             <div class="w-10 h-10 bg-bg-input border border-border rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
               <svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -192,7 +212,7 @@
           </div>
         </a>
 
-        <a href="/guides/analytics" class="group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors">
+        <a href="/guides/analytics" class="guide-card group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors" data-tags="analytics, charts, metrics, win rate, R-multiple, equity curve, performance, statistics, time of day, reports">
           <div class="flex items-start gap-4">
             <div class="w-10 h-10 bg-bg-input border border-border rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
               <svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -209,7 +229,7 @@
           </div>
         </a>
 
-        <a href="/guides/premarket" class="group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors">
+        <a href="/guides/premarket" class="guide-card group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors" data-tags="premarket, pre-market, planner, game plan, bias, watchlist, levels, daily note, preparation, morning routine">
           <div class="flex items-start gap-4">
             <div class="w-10 h-10 bg-bg-input border border-border rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
               <svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -231,7 +251,7 @@
           </div>
         </a>
 
-        <a href="/guides/strategy" class="group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors">
+        <a href="/guides/strategy" class="guide-card group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors" data-tags="strategy, playbook, setups, trading plan, compare, setup type, document, define, rules">
           <div class="flex items-start gap-4">
             <div class="w-10 h-10 bg-bg-input border border-border rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
               <svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -256,7 +276,7 @@
       <h2 class="text-xs font-semibold uppercase tracking-widest text-text-muted mb-6">Account &amp; Billing</h2>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-        <a href="/guides/subscription" class="group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors">
+        <a href="/guides/subscription" class="guide-card group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors" data-tags="subscription, plans, billing, upgrade, pro, elite, pricing, payment, stripe, cancel, refund">
           <div class="flex items-start gap-4">
             <div class="w-10 h-10 bg-bg-input border border-border rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
               <svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -271,7 +291,7 @@
           </div>
         </a>
 
-        <a href="/guides/data-export" class="group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors">
+        <a href="/guides/data-export" class="guide-card group block bg-bg-surface border border-border rounded-xl p-6 no-underline hover:border-accent transition-colors" data-tags="export, download, csv, trade history, data, backup, external tools">
           <div class="flex items-start gap-4">
             <div class="w-10 h-10 bg-bg-input border border-border rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
               <svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
