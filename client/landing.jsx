@@ -314,26 +314,54 @@ const ChecklistVisual = () => {
   );
 };
 
-const BrokerOrbitVisual = () => {
+const BrokerMarquee = () => {
   const brokers = [
-    { name: 'Tradovate', src: '/assets/img/tradovate.png', color: '#3b82f6' },
-    { name: 'NinjaTrader', src: '/assets/img/ninjatrader.jpeg', color: '#f59e0b' },
-    { name: 'TopstepX', src: '/assets/img/topstep.png', color: '#8b5cf6' },
-    { name: 'Webull', src: '/assets/img/webull.png', color: '#10b981' },
+    { name: 'Tradovate', src: '/assets/img/tradovate.png' },
+    { name: 'NinjaTrader', src: '/assets/img/ninjatrader.jpeg' },
+    { name: 'TopstepX', src: '/assets/img/topstep.png' },
+    { name: 'Webull', src: '/assets/img/webull.svg' },
+    { name: 'Robinhood', src: '/assets/img/robinhood.svg' },
+    { name: 'Alpha Futures', src: '/assets/img/alphafutures.png' },
+    { name: 'Apex Trader', src: '/assets/img/apex.png' },
   ];
+
+  // Three rows with different shuffled orders
+  const rows = [
+    [0, 3, 5, 1, 6, 2, 4], // Row 1: left
+    [6, 2, 0, 4, 5, 3, 1], // Row 2: right
+    [4, 5, 3, 0, 1, 6, 2], // Row 3: left
+  ];
+
+  const directions = ['left', 'right', 'left'];
+
   return (
-    <div className="mt-6 flex items-center justify-center gap-5 flex-wrap">
-      {brokers.map((broker) => (
-        <div key={broker.name} className="flex flex-col items-center gap-2">
-          <div
-            className="w-16 h-16 rounded-full bg-bg-input border border-border flex items-center justify-center overflow-hidden shadow-lg"
-            style={{ boxShadow: `0 0 20px ${broker.color}20` }}
-          >
-            <img src={broker.src} alt={broker.name} className="w-10 h-10 object-contain rounded" />
+    <div className="mt-6 space-y-3 overflow-hidden">
+      {rows.map((order, rowIdx) => {
+        const items = order.map(i => brokers[i]);
+        const doubled = [...items, ...items];
+        return (
+          <div key={rowIdx} className="overflow-hidden">
+            <div
+              className={`flex gap-4 w-max ${directions[rowIdx] === 'left' ? 'animate-marquee-left' : 'animate-marquee-right'}`}
+              style={{ animationDuration: '20s' }}
+            >
+              {doubled.map((broker, i) => (
+                <div
+                  key={`${rowIdx}-${i}`}
+                  className="w-12 h-12 rounded-xl bg-bg-input border border-border flex items-center justify-center overflow-hidden flex-shrink-0"
+                >
+                  <img
+                    src={broker.src}
+                    alt={broker.name}
+                    className="w-8 h-8 object-contain"
+                    loading="lazy"
+                  />
+                </div>
+              ))}
+            </div>
           </div>
-          <span className="text-text-muted text-xs">{broker.name}</span>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 };
@@ -474,7 +502,7 @@ const BentoFeaturesGrid = () => {
               <h3 className="text-xl font-bold text-text-primary">Automatic Trade Syncing</h3>
               <p className="mt-2 text-text-secondary text-sm">Connect your broker once and your trades import automatically. No manual entry. No CSV uploads. Just trade.</p>
             </div>
-            <BrokerOrbitVisual />
+            <BrokerMarquee />
           </BentoItem>
 
           {/* Premarket Rules */}
