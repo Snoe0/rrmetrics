@@ -62,6 +62,7 @@ const makeTradeHandler = async (c: any) => {
       screenshot: body.screenshot || null,
       comments: body.comments || '',
       isEval: body.isEval || false,
+      account: body.account || null,
       tags: body.tags || [],
     });
 
@@ -126,6 +127,7 @@ trade.post('/api/updateTrade', requiresLogin, async (c) => {
       screenshot: body.screenshot || null,
       comments: body.comments || '',
       isEval: body.isEval || false,
+      account: body.account || null,
       tags: body.tags || [],
     });
 
@@ -188,6 +190,7 @@ trade.post('/api/importTrades', requiresLogin, async (c) => {
       manualPL: t.manualPL != null ? parseFloat(t.manualPL) : null,
       comments: t.comments || '',
       tags: t.tags || [],
+      account: t.account || null,
     }));
 
     const result = await tradesDb.bulkInsertTrades(supabase, user.id, tradeDocs);
