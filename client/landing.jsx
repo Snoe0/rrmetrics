@@ -856,54 +856,6 @@ const Footer = () => (
 );
 
 // =====================================================
-// CONNECTIONS SECTION
-// =====================================================
-const ConnectionsSection = () => {
-  const headerRef = useScrollReveal();
-  const connections = [
-    { name: 'Tradovate', src: '/assets/img/tradovate.png', status: 'live' },
-    { name: 'NinjaTrader', src: '/assets/img/ninjatrader.jpeg', status: 'live' },
-    { name: 'TopstepX', src: '/assets/img/topstep.png', status: 'live' },
-    { name: 'Apex Trader Funding', src: '/assets/img/apex.png', status: 'live' },
-    { name: 'Alpha Futures', src: '/assets/img/alphafutures.png', status: 'live' },
-    { name: 'Webull', src: '/assets/img/webull.svg', status: 'coming' },
-    { name: 'Robinhood', src: '/assets/img/robinhood.svg', status: 'coming' },
-  ];
-
-  return (
-    <section className="py-20 px-6">
-      <div className="max-w-5xl mx-auto">
-        <div ref={headerRef} className="text-center mb-14">
-          <p className="text-accent text-sm font-semibold uppercase tracking-wider mb-3">Integrations</p>
-          <h2 className="text-3xl sm:text-4xl font-bold text-text-primary mb-4">Supported Connections</h2>
-          <p className="text-text-secondary max-w-2xl mx-auto">Connect your broker for automatic trade syncing, or import from any platform via CSV.</p>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-4">
-          {connections.map((broker) => (
-            <ScrollReveal key={broker.name}>
-              <div className="group flex flex-col items-center gap-3 p-4 rounded-2xl bg-bg-card border border-border hover:border-accent/40 transition-all duration-300">
-                <div className="w-14 h-14 rounded-xl bg-bg-input border border-border flex items-center justify-center overflow-hidden group-hover:border-accent/30 transition-colors">
-                  <img
-                    src={broker.src}
-                    alt={broker.name}
-                    className="w-10 h-10 object-contain"
-                    loading="lazy"
-                  />
-                </div>
-                <span className="text-text-primary text-xs font-medium text-center leading-tight">{broker.name}</span>
-                {broker.status === 'coming' && (
-                  <span className="text-[10px] text-text-muted bg-bg-input px-2 py-0.5 rounded-full">Coming Soon</span>
-                )}
-              </div>
-            </ScrollReveal>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-};
-
-// =====================================================
 // APP
 // =====================================================
 const App = () => (
@@ -913,7 +865,6 @@ const App = () => (
     <SocialProofBar />
     <BentoFeaturesGrid />
     <HowItWorks />
-    <ConnectionsSection />
     <PricingSection />
     <FAQSection />
     <FinalCTA />
