@@ -269,15 +269,31 @@ async function syncConnection(
     });
   }
 
-  // Step 5b: Merge trades with identical entry time, exit time, and account.
-  // Combines quantities and averages exit prices (quantity-weighted).
-  const mergeKey = (t: RoundTrip) => `${t.enterTime}|${t.exitTime}|${t.account ?? ''}`;
+  // Step 5b: Merge trades with entry/exit times within 2 seconds and same account.
+  // Combines quantities and averages prices (quantity-weighted).
+  const MERGE_THRESHOLD_MS = 2000;
   const mergeGroups = new Map<string, RoundTrip[]>();
   for (const t of roundTrips) {
-    const key = mergeKey(t);
-    const group = mergeGroups.get(key);
-    if (group) group.push(t);
-    else mergeGroups.set(key, [t]);
+    const enterMs = new Date(t.enterTime).getTime();
+    const exitMs = new Date(t.exitTime).getTime();
+    const acct = t.account ?? '';
+    let merged = false;
+    // Try to find an existing group this trade belongs to
+    for (const [, group] of mergeGroups) {
+      const ref = group[0];
+      if ((ref.account ?? '') !== acct) continue;
+      const refEnterMs = new Date(ref.enterTime).getTime();
+      const refExitMs = new Date(ref.exitTime).getTime();
+      if (Math.abs(enterMs - refEnterMs) <= MERGE_THRESHOLD_MS &&
+          Math.abs(exitMs - refExitMs) <= MERGE_THRESHOLD_MS) {
+        group.push(t);
+        merged = true;
+        break;
+      }
+    }
+    if (!merged) {
+      mergeGroups.set(`${enterMs}|${exitMs}|${acct}|${mergeGroups.size}`, [t]);
+    }
   }
   const mergedTrips: RoundTrip[] = [];
   for (const group of mergeGroups.values()) {
