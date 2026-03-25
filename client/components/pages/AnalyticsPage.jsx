@@ -22,6 +22,7 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
   const timeBarRects = useRef([]);
   const [hoveredDayIndex, setHoveredDayIndex] = useState(null);
   const [hoveredTimeIndex, setHoveredTimeIndex] = useState(null);
+  const [showTimeTable, setShowTimeTable] = useState(false);
   const [period, setPeriod] = useState('all');
 
   const baseTradesForPeriod = applyEvalFilter(allTrades, evalFilter);
@@ -258,7 +259,8 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
       ctx.roundRect(x, y, barWidth, barH, 4);
       ctx.fill();
 
-      rects.push({ x, y, w: barWidth, h: barH, index: i });
+      // Store full column rect for hover hit detection
+      rects.push({ x: padding.left + barGap * i, y: padding.top, w: barGap, h: chartH, barX: x, barY: y, barW: barWidth, barH, index: i });
 
       // Day label
       ctx.fillStyle = textTertiary;
@@ -277,7 +279,7 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
       const avgW = dayWins[i] > 0 ? (dayWinPL[i] / dayWins[i]).toFixed(2) : '0.00';
       const avgL = dayLosses[i] > 0 ? (dayLossPL[i] / dayLosses[i]).toFixed(2) : '0.00';
       const r = rects[i];
-      drawTooltip(ctx, r.x + r.w / 2, r.y, dayNames[i], [
+      drawTooltip(ctx, r.barX + r.barW / 2, r.barY, dayNames[i], [
         { label: 'Trades', value: `${dayCounts[i]}` },
         { label: 'Win Rate', value: `${wr}%` },
         { label: 'Profit Factor', value: pf },
@@ -365,32 +367,46 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
     return runMonteCarloSimulation(trades);
   }, [trades]);
 
-  // Performance by time of day (30-min intervals)
-  const timeOfDayStats = (() => {
+  // Performance by time of day — 30-min detail + hourly summary
+  const { timeOfDayStats } = (() => {
+    // Build 30-min buckets with trade data
     const buckets = {};
     trades.forEach(t => {
       const estParts = toEST(t.enterTime);
       const h = estParts.hours;
       const m = estParts.minutes < 30 ? 0 : 30;
       const key = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
-      if (!buckets[key]) buckets[key] = { totalPL: 0, wins: 0, losses: 0, count: 0 };
+      if (!buckets[key]) buckets[key] = { totalPL: 0, wins: 0, losses: 0, count: 0, winPL: 0, lossPL: 0 };
       const pl = getTradePL(t);
       buckets[key].totalPL += pl;
       buckets[key].count++;
-      if (pl > 0) buckets[key].wins++;
-      else buckets[key].losses++;
+      if (pl > 0) { buckets[key].wins++; buckets[key].winPL += pl; }
+      else { buckets[key].losses++; buckets[key].lossPL += Math.abs(pl); }
     });
-    return Object.entries(buckets)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([time, data]) => ({
-        time,
-        ...data,
-        winRate: data.count > 0 ? (data.wins / data.count * 100) : 0,
-        avgPL: data.count > 0 ? data.totalPL / data.count : 0,
-      }));
+
+    // Generate all 30-min slots for futures session: 18:00-23:30 then 00:00-16:30 EST
+    const allSlots = [];
+    const sessionHours = [];
+    for (let h = 18; h <= 23; h++) sessionHours.push(h);
+    for (let h = 0; h <= 16; h++) sessionHours.push(h);
+    for (const h of sessionHours) {
+      for (const m of [0, 30]) {
+        if (h === 16 && m === 30) continue; // session ends at 17:00, last slot is 16:30
+        const key = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+        const data = buckets[key] || { totalPL: 0, wins: 0, losses: 0, count: 0, winPL: 0, lossPL: 0 };
+        allSlots.push({
+          time: key,
+          ...data,
+          winRate: data.count > 0 ? (data.wins / data.count * 100) : 0,
+          avgPL: data.count > 0 ? data.totalPL / data.count : 0,
+        });
+      }
+    }
+
+    return { timeOfDayStats: allSlots };
   })();
 
-  // Time of day bar chart
+  // Time of day bar chart — always 30-min detail
   useEffect(() => {
     if (!timeCanvasRef.current || timeOfDayStats.length === 0) return;
 
@@ -409,8 +425,8 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
     const h = 320;
     const padding = { top: 20, right: 20, bottom: 90, left: 60 };
 
-    const values = timeOfDayStats.map(s => s.totalPL);
-    const maxVal = Math.max(...values.map(Math.abs), 1);
+    const values = timeOfDayStats.map(s => Math.abs(s.avgPL));
+    const maxVal = Math.max(...values, 1);
     const chartW = w - padding.left - padding.right;
     const chartH = h - padding.top - padding.bottom;
 
@@ -461,17 +477,20 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
 
     timeOfDayStats.forEach((stat, i) => {
       const x = padding.left + barGap * i + (barGap - barWidth) / 2;
-      const barH = (Math.abs(stat.totalPL) / maxVal) * (chartH / 2);
-      const y = stat.totalPL >= 0 ? zeroY - barH : zeroY;
+      const barH = (Math.abs(stat.avgPL) / maxVal) * (chartH / 2);
+      const y = stat.avgPL >= 0 ? zeroY - barH : zeroY;
 
       const isHovered = hoveredTimeIndex === i;
-      const timeBaseColor = stat.totalPL >= 0 ? timePosColor : timeNegColor;
-      ctx.fillStyle = isHovered ? timeBaseColor + 'CC' : timeBaseColor;
-      ctx.beginPath();
-      ctx.roundRect(x, y, barWidth, barH, 3);
-      ctx.fill();
+      const timeBaseColor = stat.avgPL >= 0 ? timePosColor : timeNegColor;
+      ctx.fillStyle = stat.count === 0 ? 'transparent' : (isHovered ? timeBaseColor + 'CC' : timeBaseColor);
+      if (stat.count > 0) {
+        ctx.beginPath();
+        ctx.roundRect(x, y, barWidth, barH, 3);
+        ctx.fill();
+      }
 
-      rects.push({ x, y, w: barWidth, h: barH, index: i });
+      // Store full column rect for hover hit detection
+      rects.push({ x: padding.left + barGap * i, y: padding.top, w: barGap, h: chartH, barX: x, barY: y, barW: barWidth, barH, index: i });
 
       // Time label
       ctx.fillStyle = textTertiary;
@@ -491,23 +510,9 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
     // Draw tooltip for hovered time bucket
     if (hoveredTimeIndex !== null && hoveredTimeIndex < timeOfDayStats.length) {
       const stat = timeOfDayStats[hoveredTimeIndex];
-      const pf = (() => {
-        const gw = stat.wins > 0 ? stat.totalPL > 0 ? stat.totalPL : 0 : 0;
-        let grossW = 0, grossL = 0;
-        trades.forEach(t => {
-          const estParts = toEST(t.enterTime);
-          const hh = estParts.hours;
-          const mm = estParts.minutes < 30 ? 0 : 30;
-          const key = `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
-          if (key === stat.time) {
-            const pl = getTradePL(t);
-            if (pl > 0) grossW += pl; else grossL += Math.abs(pl);
-          }
-        });
-        return grossL === 0 ? (grossW > 0 ? '∞' : '0.00') : (grossW / grossL).toFixed(2);
-      })();
+      const pf = stat.lossPL === 0 ? (stat.winPL > 0 ? '∞' : '0.00') : (stat.winPL / stat.lossPL).toFixed(2);
       const r = rects[hoveredTimeIndex];
-      drawTooltip(ctx, r.x + r.w / 2, r.y, stat.time, [
+      drawTooltip(ctx, r.barX + r.barW / 2, r.barY, stat.time, [
         { label: 'Trades', value: `${stat.count}` },
         { label: 'Win Rate', value: `${stat.winRate.toFixed(1)}%` },
         { label: 'Profit Factor', value: pf },
@@ -517,18 +522,16 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
     }
   }, [trades, hoveredTimeIndex, document.documentElement.dataset.theme]);
 
-  // Canvas hover listeners for bar charts
+  // Canvas hover listeners for bar charts — column-based hit detection (x-range only)
   useEffect(() => {
     const handleBarHover = (canvas, barRects, setIndex) => {
       if (!canvas) return () => {};
-      const dpr = window.devicePixelRatio || 1;
       const onMove = (e) => {
         const rect = canvas.getBoundingClientRect();
-        const mx = (e.clientX - rect.left);
-        const my = (e.clientY - rect.top);
+        const mx = e.clientX - rect.left;
         let found = null;
         for (const r of barRects.current) {
-          if (mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h) {
+          if (mx >= r.x && mx <= r.x + r.w) {
             found = r.index;
             break;
           }
@@ -732,44 +735,52 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
       </div>
 
       {/* Performance by Time of Day */}
-      {timeOfDayStats.length > 0 && (
+      {trades.length > 0 && (
         <div className="bg-bg-surface border border-border rounded-xl p-6">
           <h3 className="text-text-primary font-semibold mb-4">Performance by Entry Time (30-Min)</h3>
-          <div className="mb-6">
+          <div className={showTimeTable ? 'mb-4' : ''}>
             <canvas ref={timeCanvasRef} className="w-full"></canvas>
           </div>
-          <div className="max-h-[300px] overflow-y-auto">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-bg-surface">
-                <tr className="border-b border-border">
-                  <th className="text-left px-3 py-2 text-xs font-medium text-text-tertiary uppercase tracking-wider">Time</th>
-                  <th className="text-right px-3 py-2 text-xs font-medium text-text-tertiary uppercase tracking-wider">Trades</th>
-                  <th className="text-right px-3 py-2 text-xs font-medium text-text-tertiary uppercase tracking-wider">Wins</th>
-                  <th className="text-right px-3 py-2 text-xs font-medium text-text-tertiary uppercase tracking-wider">Losses</th>
-                  <th className="text-right px-3 py-2 text-xs font-medium text-text-tertiary uppercase tracking-wider">Win Rate</th>
-                  <th className="text-right px-3 py-2 text-xs font-medium text-text-tertiary uppercase tracking-wider">Total P/L</th>
-                  <th className="text-right px-3 py-2 text-xs font-medium text-text-tertiary uppercase tracking-wider">Avg P/L</th>
-                </tr>
-              </thead>
-              <tbody>
-                {timeOfDayStats.map(row => (
-                  <tr key={row.time} className="border-b border-border/50 hover:bg-bg-input/50 transition-colors">
-                    <td className="px-3 py-2 font-mono text-text-primary">{row.time}</td>
-                    <td className="text-right px-3 py-2 text-text-secondary">{row.count}</td>
-                    <td className="text-right px-3 py-2 text-positive">{row.wins}</td>
-                    <td className="text-right px-3 py-2 text-negative">{row.losses}</td>
-                    <td className="text-right px-3 py-2 text-text-secondary">{row.winRate.toFixed(1)}%</td>
-                    <td className={`text-right px-3 py-2 font-mono font-semibold ${row.totalPL >= 0 ? 'text-positive' : 'text-negative'}`}>
-                      {row.totalPL >= 0 ? '+' : ''}${row.totalPL.toFixed(2)}
-                    </td>
-                    <td className={`text-right px-3 py-2 font-mono ${row.avgPL >= 0 ? 'text-positive' : 'text-negative'}`}>
-                      {row.avgPL >= 0 ? '+' : ''}${row.avgPL.toFixed(2)}
-                    </td>
+          {showTimeTable && (
+            <div className="max-h-[300px] overflow-y-auto mb-4">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-bg-surface">
+                  <tr className="border-b border-border">
+                    <th className="text-left px-3 py-2 text-xs font-medium text-text-tertiary uppercase tracking-wider">Time</th>
+                    <th className="text-right px-3 py-2 text-xs font-medium text-text-tertiary uppercase tracking-wider">Trades</th>
+                    <th className="text-right px-3 py-2 text-xs font-medium text-text-tertiary uppercase tracking-wider">Wins</th>
+                    <th className="text-right px-3 py-2 text-xs font-medium text-text-tertiary uppercase tracking-wider">Losses</th>
+                    <th className="text-right px-3 py-2 text-xs font-medium text-text-tertiary uppercase tracking-wider">Win Rate</th>
+                    <th className="text-right px-3 py-2 text-xs font-medium text-text-tertiary uppercase tracking-wider">Total P/L</th>
+                    <th className="text-right px-3 py-2 text-xs font-medium text-text-tertiary uppercase tracking-wider">Avg P/L</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {timeOfDayStats.map(row => (
+                    <tr key={row.time} className="border-b border-border/50 hover:bg-bg-input/50 transition-colors">
+                      <td className="px-3 py-2 font-mono text-text-primary">{row.time}</td>
+                      <td className="text-right px-3 py-2 text-text-secondary">{row.count}</td>
+                      <td className="text-right px-3 py-2 text-positive">{row.wins}</td>
+                      <td className="text-right px-3 py-2 text-negative">{row.losses}</td>
+                      <td className="text-right px-3 py-2 text-text-secondary">{row.winRate.toFixed(1)}%</td>
+                      <td className={`text-right px-3 py-2 font-mono font-semibold ${row.totalPL >= 0 ? 'text-positive' : 'text-negative'}`}>
+                        {row.totalPL >= 0 ? '+' : ''}${row.totalPL.toFixed(2)}
+                      </td>
+                      <td className={`text-right px-3 py-2 font-mono ${row.avgPL >= 0 ? 'text-positive' : 'text-negative'}`}>
+                        {row.avgPL >= 0 ? '+' : ''}${row.avgPL.toFixed(2)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <button
+            onClick={() => setShowTimeTable(!showTimeTable)}
+            className="text-xs text-text-tertiary hover:text-text-primary transition-colors px-2 py-1 rounded border border-border hover:border-text-muted"
+          >
+            {showTimeTable ? 'Show Less' : 'Show More'}
+          </button>
         </div>
       )}
 
