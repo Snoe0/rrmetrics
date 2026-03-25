@@ -18,6 +18,7 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
   const canvasRef = useRef(null);
   const barCanvasRef = useRef(null);
   const timeCanvasRef = useRef(null);
+  const monteCarloCanvasRef = useRef(null);
   const dayBarRects = useRef([]);
   const timeBarRects = useRef([]);
   const [hoveredDayIndex, setHoveredDayIndex] = useState(null);
@@ -552,6 +553,142 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
     return () => { cleanupDay(); cleanupTime(); };
   }, [trades]);
 
+  // Monte Carlo paths chart
+  useEffect(() => {
+    if (!monteCarloCanvasRef.current || !monteCarloResults || !monteCarloResults.paths) return;
+
+    const canvas = monteCarloCanvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+
+    const rect = canvas.parentElement.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = 300 * dpr;
+    canvas.style.width = rect.width + 'px';
+    canvas.style.height = '300px';
+    ctx.scale(dpr, dpr);
+
+    const w = rect.width;
+    const h = 300;
+    const padding = { top: 20, right: 20, bottom: 30, left: 60 };
+    const chartW = w - padding.left - padding.right;
+    const chartH = h - padding.top - padding.bottom;
+
+    const bgSurface = getCSSVar('--bg-surface');
+    const textTertiary = getCSSVar('--text-tertiary');
+    const borderColor = getCSSVar('--border');
+    const posColor = getCSSVar('--positive');
+    const negColor = getCSSVar('--negative');
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = bgSurface;
+    ctx.fillRect(0, 0, w, h);
+
+    const { paths, profitTarget, maxDrawdown } = monteCarloResults;
+
+    // Find max day count and value range across all paths
+    let maxDay = 0;
+    let minVal = 0;
+    let maxVal = 0;
+    paths.forEach(p => {
+      if (p.points.length > maxDay) maxDay = p.points.length;
+      p.points.forEach(v => {
+        if (v < minVal) minVal = v;
+        if (v > maxVal) maxVal = v;
+      });
+    });
+    // Include profit target and negative drawdown in range
+    maxVal = Math.max(maxVal, profitTarget * 1.05);
+    minVal = Math.min(minVal, -maxDrawdown * 1.05);
+    const range = maxVal - minVal || 1;
+
+    const toX = (day) => padding.left + (day / (maxDay - 1)) * chartW;
+    const toY = (val) => padding.top + ((maxVal - val) / range) * chartH;
+
+    // Grid lines
+    ctx.strokeStyle = borderColor;
+    ctx.lineWidth = 1;
+    const gridLines = 5;
+    for (let i = 0; i <= gridLines; i++) {
+      const y = padding.top + (chartH / gridLines) * i;
+      ctx.beginPath();
+      ctx.moveTo(padding.left, y);
+      ctx.lineTo(w - padding.right, y);
+      ctx.stroke();
+
+      const val = maxVal - (range / gridLines) * i;
+      ctx.fillStyle = textTertiary;
+      ctx.font = '10px JetBrains Mono, monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText('$' + val.toFixed(0), padding.left - 8, y + 4);
+    }
+
+    // X-axis day labels
+    const dayStep = Math.max(1, Math.floor(maxDay / 8));
+    for (let d = 0; d < maxDay; d += dayStep) {
+      const x = toX(d);
+      ctx.fillStyle = textTertiary;
+      ctx.font = '10px JetBrains Mono, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(`D${d}`, x, h - 8);
+    }
+
+    // Profit target line
+    const targetY = toY(profitTarget);
+    ctx.strokeStyle = posColor;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.moveTo(padding.left, targetY);
+    ctx.lineTo(w - padding.right, targetY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = posColor;
+    ctx.font = '10px Inter, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(`$${profitTarget.toLocaleString()} target`, padding.left + 4, targetY - 5);
+
+    // Drawdown line
+    const ddY = toY(-maxDrawdown);
+    ctx.strokeStyle = negColor;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.moveTo(padding.left, ddY);
+    ctx.lineTo(w - padding.right, ddY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = negColor;
+    ctx.font = '10px Inter, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(`-$${maxDrawdown.toLocaleString()} drawdown`, padding.left + 4, ddY + 13);
+
+    // Draw paths
+    paths.forEach(p => {
+      ctx.beginPath();
+      p.points.forEach((val, i) => {
+        const x = toX(i);
+        const y = toY(val);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.strokeStyle = p.passed ? colorToRgba(posColor, 0.25) : colorToRgba(negColor, 0.2);
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    });
+
+    // Zero line
+    const zeroY = toY(0);
+    ctx.strokeStyle = textTertiary;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(padding.left, zeroY);
+    ctx.lineTo(w - padding.right, zeroY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }, [monteCarloResults, document.documentElement.dataset.theme]);
+
   if (trades.length === 0 && period === 'all') {
     return (
       <div className="space-y-6">
@@ -586,7 +723,7 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
       ) : (<>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard label="Total P/L" value={`$${stats.totalPL.toFixed(2)}`} color={stats.totalPL >= 0 ? 'text-positive' : 'text-negative'}
           change={showChange ? calcPercentChange(stats.totalPL, prevStats.totalPL) : null} />
         <WinRateCard wins={stats.wins} losses={stats.losses} breakevens={stats.breakevens} total={stats.totalTrades}
@@ -595,7 +732,12 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
           change={showChange ? calcPercentChange(profitFactor, prevProfitFactor) : null} />
         <StatCard label="Expectancy" value={`$${expectancy.toFixed(2)}`} color={expectancy >= 0 ? 'text-positive' : 'text-negative'}
           change={showChange ? calcPercentChange(expectancy, prevExpectancy) : null} />
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard label="Max Drawdown" value={`$${maxDrawdown.toFixed(2)}`} color="text-negative" />
+        <StatCard label="Breakeven Rate" value={`${stats.breakevenPct.toFixed(1)}%`} subValue={`${stats.breakevens} trades`} color="text-text-primary" />
+        <StatCard label="Sharpe Ratio" value={sharpeRatio === Infinity ? '∞' : sharpeRatio.toFixed(2)} color={sharpeRatio > 0 ? 'text-positive' : 'text-negative'} />
+        <StatCard label="Sortino Ratio" value={sortinoRatio === Infinity ? '∞' : sortinoRatio.toFixed(2)} color={sortinoRatio > 0 ? 'text-positive' : 'text-negative'} />
       </div>
 
       {/* Long vs Short Breakdown */}
@@ -714,7 +856,6 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
               ['Total Trades', stats.totalTrades],
               ['Winning Trades', stats.wins],
               ['Losing Trades', stats.losses],
-              ['Breakeven Trades', `${stats.breakevens} (${stats.breakevenPct.toFixed(1)}%)`],
               ['Avg Win', `$${stats.avgWin.toFixed(2)}`],
               ['Avg Loss', `$${stats.avgLoss.toFixed(2)}`],
               ['Best Trade', `$${stats.bestTrade.toFixed(2)}`],
@@ -722,8 +863,6 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
               ['Best Win Streak', bestWinStreak],
               ['Worst Loss Streak', bestLossStreak],
               ['Avg Duration', formatDuration(stats.avgDuration)],
-              ['Sharpe Ratio', sharpeRatio === Infinity ? '∞' : sharpeRatio.toFixed(2)],
-              ['Sortino Ratio', sortinoRatio === Infinity ? '∞' : sortinoRatio.toFixed(2)],
             ].map(([label, value]) => (
               <div key={label} className="flex items-center justify-between py-1.5 border-b border-border/50">
                 <span className="text-text-secondary text-sm">{label}</span>
@@ -791,7 +930,7 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
           <p className="text-text-tertiary text-xs mb-4">
             {monteCarloResults.totalSimulations.toLocaleString()} simulations | $3,000 profit target | $2,000 EOD trailing drawdown
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             <div className="bg-bg-page rounded-lg p-4 text-center">
               <div className="text-text-secondary text-xs font-medium uppercase tracking-wider mb-1">Pass Rate</div>
               <div className={`font-mono text-2xl font-bold ${monteCarloResults.passRate >= 50 ? 'text-positive' : 'text-negative'}`}>
@@ -810,6 +949,9 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
                 {monteCarloResults.medianDaysToPass > 0 ? monteCarloResults.medianDaysToPass : '—'}
               </div>
             </div>
+          </div>
+          <div>
+            <canvas ref={monteCarloCanvasRef} className="w-full"></canvas>
           </div>
         </div>
       )}

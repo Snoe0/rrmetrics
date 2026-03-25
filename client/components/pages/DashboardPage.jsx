@@ -102,11 +102,12 @@ const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, onOpenImport, o
       </div>
 
       {/* Secondary stats */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <AvgWinLossCard avgWin={stats.avgWin} avgLoss={stats.avgLoss} />
         <StatCard label="Best Trade" value={`$${stats.bestTrade.toFixed(2)}`} color="text-positive"
           change={showChange ? calcPercentChange(stats.bestTrade, prevStats.bestTrade) : null} />
         <StatCard label="Worst Trade" value={`$${stats.worstTrade.toFixed(2)}`} color="text-negative" />
+        <StatCard label="Breakeven Rate" value={`${stats.breakevenPct.toFixed(1)}%`} subValue={`${stats.breakevens} trades`} color="text-text-primary" />
       </div>
 
       {/* Calendar */}

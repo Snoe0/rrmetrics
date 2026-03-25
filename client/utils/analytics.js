@@ -86,13 +86,14 @@ const getDailyReturns = (trades) => {
 };
 
 // Monte Carlo simulation for eval pass rate
-// Config: { profitTarget, maxDrawdown, simulations, tradesPerDay }
+// Config: { profitTarget, maxDrawdown, simulations, tradesPerDay, samplePaths }
 const runMonteCarloSimulation = (trades, config = {}) => {
   const {
     profitTarget = 3000,
     maxDrawdown = 2000,
     simulations = 10000,
     maxDays = 100,
+    samplePaths = 50,
   } = config;
 
   if (!trades || trades.length === 0) return { passRate: 0, avgDaysToPass: 0, medianDaysToPass: 0 };
@@ -108,11 +109,15 @@ const runMonteCarloSimulation = (trades, config = {}) => {
 
   let passes = 0;
   const daysToPass = [];
+  // Collect equity paths for first N simulations to chart
+  const paths = [];
+  const collectPaths = Math.min(samplePaths, simulations);
 
   for (let sim = 0; sim < simulations; sim++) {
     let equity = 0;
     let peak = 0;
     let passed = false;
+    const path = sim < collectPaths ? [0] : null;
 
     for (let day = 1; day <= maxDays; day++) {
       // Simulate a day of trading
@@ -121,6 +126,8 @@ const runMonteCarloSimulation = (trades, config = {}) => {
         equity += pl;
         if (equity > peak) peak = equity;
       }
+
+      if (path) path.push(equity);
 
       // Check EOD trailing drawdown
       const drawdown = peak - equity;
@@ -134,6 +141,7 @@ const runMonteCarloSimulation = (trades, config = {}) => {
       }
     }
 
+    if (path) paths.push({ points: path, passed });
     if (passed) passes++;
   }
 
@@ -142,7 +150,7 @@ const runMonteCarloSimulation = (trades, config = {}) => {
   const avgDaysToPass = sorted.length > 0 ? sorted.reduce((s, d) => s + d, 0) / sorted.length : 0;
   const medianDaysToPass = sorted.length > 0 ? sorted[Math.floor(sorted.length / 2)] : 0;
 
-  return { passRate, avgDaysToPass, medianDaysToPass, totalSimulations: simulations };
+  return { passRate, avgDaysToPass, medianDaysToPass, totalSimulations: simulations, paths, profitTarget, maxDrawdown };
 };
 
 const groupTradesByDate = (trades) => {
