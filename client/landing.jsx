@@ -5,7 +5,7 @@ const { supabase } = require('./supabase.js');
 require('./styles/globals.css');
 const { ContainerScroll } = require('./components/ui/container-scroll-animation');
 const { HeroSection } = require('./components/ui/hero-section');
-const { AnimatedBackground } = require('./components/ui/animated-background');
+const { BackgroundPaths } = require('./components/ui/background-paths');
 
 const APP_URL = '';
 
@@ -867,9 +867,7 @@ const Footer = () => (
 // =====================================================
 const App = () => (
   <div className="relative min-h-screen bg-bg-page">
-    <div className="fixed inset-0 z-0">
-      <AnimatedBackground />
-    </div>
+    <BackgroundPaths />
     <div className="relative z-10">
     <Navbar />
     <HeroSection />
