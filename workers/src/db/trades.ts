@@ -18,6 +18,7 @@ interface TradeAPI {
   projectxTradeId: string | null;
   projectxSource: string | null;
   brokerConnectionId: string | null;
+  account: string | null;
   createdDate: string;
   tags: string[];
 }
@@ -41,6 +42,7 @@ function rowToAPI(row: any, tagIds: string[] = []): TradeAPI {
     projectxTradeId: row.projectx_trade_id || null,
     projectxSource: row.projectx_source || null,
     brokerConnectionId: row.broker_connection_id || null,
+    account: row.account || null,
     createdDate: row.created_date,
     tags: tagIds,
   };
@@ -97,6 +99,7 @@ export async function createTrade(
     screenshot?: string | null;
     comments?: string;
     isEval?: boolean;
+    account?: string | null;
     tags?: string[];
   },
 ): Promise<TradeAPI> {
@@ -115,6 +118,7 @@ export async function createTrade(
       screenshot: data.screenshot || null,
       comments: data.comments || '',
       is_eval: data.isEval || false,
+      account: data.account || null,
     })
     .select()
     .single();
@@ -147,6 +151,7 @@ export async function updateTrade(
     screenshot?: string | null;
     comments?: string;
     isEval?: boolean;
+    account?: string | null;
     tags?: string[];
   },
 ): Promise<TradeAPI> {
@@ -163,6 +168,7 @@ export async function updateTrade(
       screenshot: data.screenshot || null,
       comments: data.comments || '',
       is_eval: data.isEval || false,
+      account: data.account || null,
     })
     .eq('id', data._id)
     .eq('user_id', userId)
@@ -215,30 +221,31 @@ export async function bulkInsertTrades(
     projectxTradeId?: string | null;
     projectxSource?: string | null;
     brokerConnectionId?: string | null;
+    account?: string | null;
   }>,
 ): Promise<{ imported: number; skipped: number }> {
   // Dedup: fetch existing trades that share any of the incoming enter_times
   const enterTimes = [...new Set(trades.map((t) => t.enterTime))];
   const { data: existing } = await supabase
     .from('trades')
-    .select('ticker, enter_time, exit_time, quantity')
+    .select('ticker, enter_time, exit_time, quantity, account')
     .eq('user_id', userId)
     .in('enter_time', enterTimes);
 
   // Normalize timestamps to second precision (strips ms + tz offset differences)
   const normalizeTime = (t: string) => new Date(t).toISOString().slice(0, 19);
 
-  const tradeKey = (ticker: string, enterTime: string, exitTime: string, quantity: number) =>
-    `${ticker}|${normalizeTime(enterTime)}|${normalizeTime(exitTime)}|${Number(quantity).toFixed(0)}`;
+  const tradeKey = (ticker: string, enterTime: string, exitTime: string, quantity: number, account?: string | null) =>
+    `${ticker}|${normalizeTime(enterTime)}|${normalizeTime(exitTime)}|${Number(quantity).toFixed(0)}|${account || ''}`;
 
   const existingKeys = new Set<string>(
     (existing || []).map(
-      (r: any) => tradeKey(r.ticker, r.enter_time, r.exit_time, r.quantity),
+      (r: any) => tradeKey(r.ticker, r.enter_time, r.exit_time, r.quantity, r.account),
     ),
   );
 
   const newTrades = trades.filter(
-    (t) => !existingKeys.has(tradeKey(t.ticker, t.enterTime, t.exitTime, t.quantity)),
+    (t) => !existingKeys.has(tradeKey(t.ticker, t.enterTime, t.exitTime, t.quantity, t.account)),
   );
 
   const skipped = trades.length - newTrades.length;
@@ -260,6 +267,7 @@ export async function bulkInsertTrades(
     projectx_trade_id: t.projectxTradeId || null,
     projectx_source: t.projectxSource || null,
     broker_connection_id: t.brokerConnectionId || null,
+    account: t.account || null,
   }));
 
   const { data: inserted, error } = await supabase
