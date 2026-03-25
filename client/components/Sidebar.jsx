@@ -1,12 +1,14 @@
 const React = require('react');
 const { useState } = React;
 const Icons = require('./shared/Icons');
+const AccountSwitcher = require('./shared/AccountSwitcher');
+const { cn } = require('../lib/utils');
 const { supabase } = require('../helper');
 
 // =====================================================
 // SIDEBAR
 // =====================================================
-const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChange, userRole }) => {
+const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChange, userRole, trades, selectedAccounts, setSelectedAccounts }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(
@@ -97,6 +99,14 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChang
 
         {/* Nav links */}
         <div className="flex-1 py-4 px-3 flex flex-col">
+          <div className={cn('px-3 mb-3', isCollapsed && 'px-2')}>
+            <AccountSwitcher
+              trades={trades}
+              selectedAccounts={selectedAccounts}
+              setSelectedAccounts={setSelectedAccounts}
+              collapsed={isCollapsed}
+            />
+          </div>
           <div className="space-y-1">
             {navItems.map(item => {
               const Icon = item.icon;
