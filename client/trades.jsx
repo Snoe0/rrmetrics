@@ -484,6 +484,28 @@ const App = () => {
 };
 
 const init = async () => {
+  // If URL has hash fragments (OAuth redirect), let Supabase parse them first
+  if (window.location.hash && window.location.hash.includes('access_token')) {
+    const { data, error } = await supabase.auth.getSession();
+    if (!error && data.session) {
+      // Clean up the URL hash
+      window.history.replaceState(null, '', window.location.pathname);
+      const root = createRoot(document.getElementById('app'));
+      root.render(<App />);
+      return;
+    }
+    // If hash parsing didn't produce a session, wait for auth state change
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        listener.subscription.unsubscribe();
+        window.history.replaceState(null, '', window.location.pathname);
+        const root = createRoot(document.getElementById('app'));
+        root.render(<App />);
+      }
+    });
+    return;
+  }
+
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) {
     window.location = '/login';

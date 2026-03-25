@@ -415,8 +415,8 @@ const App = () => {
             <div className="text-text-secondary text-sm mt-1">User Satisfaction</div>
           </div>
           <div className="bg-bg-input rounded-xl p-4 border border-border">
-            <div className="text-accent font-mono text-2xl font-bold">50+</div>
-            <div className="text-text-secondary text-sm mt-1">Broker Integrations</div>
+            <div className="text-accent font-mono text-2xl font-bold">100%</div>
+            <div className="text-text-secondary text-sm mt-1">Secure</div>
           </div>
         </div>
       </div>
