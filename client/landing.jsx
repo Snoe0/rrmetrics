@@ -289,23 +289,25 @@ const BentoItem = ({ className = '', children }) => {
 // BENTO FEATURE VISUALS
 // =====================================================
 const ChecklistVisual = () => {
-  const rules = [
-    { label: 'Review pre-market levels', checked: true },
-    { label: 'Check key support/resistance levels', checked: true },
-    { label: 'Set stop-loss before entry', checked: true },
-    { label: 'Max 3 trades per session', checked: false },
-    { label: 'No revenge trading', checked: false },
+  const [checks, setChecks] = useState([true, true, true, false, false]);
+  const labels = [
+    'Review pre-market levels',
+    'Check key support/resistance levels',
+    'Set stop-loss before entry',
+    'Max 3 trades per session',
+    'No revenge trading',
   ];
+  const toggle = (i) => setChecks((prev) => prev.map((v, j) => (j === i ? !v : v)));
   return (
     <div className="mt-4 space-y-2.5">
-      {rules.map((rule) => (
-        <div key={rule.label} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-bg-input/50">
-          <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 ${
-            rule.checked ? 'bg-accent' : 'border border-text-muted'
+      {labels.map((label, i) => (
+        <div key={label} onClick={() => toggle(i)} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-bg-input/50 cursor-pointer select-none transition-colors hover:bg-bg-input/80">
+          <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 transition-colors ${
+            checks[i] ? 'bg-accent' : 'border border-text-muted'
           }`}>
-            {rule.checked && <Icons.Check className="w-3 h-3 text-accent-text" />}
+            {checks[i] && <Icons.Check className="w-3 h-3 text-accent-text" />}
           </div>
-          <span className={`text-sm ${rule.checked ? 'text-text-primary' : 'text-text-secondary'}`}>{rule.label}</span>
+          <span className={`text-sm ${checks[i] ? 'text-text-primary' : 'text-text-secondary'}`}>{label}</span>
         </div>
       ))}
     </div>
