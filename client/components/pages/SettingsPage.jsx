@@ -380,6 +380,10 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
 
   const [expandedBroker, setExpandedBroker] = useState(null);
 
+  // --- Billing details state (fetched from Stripe when Account tab is active) ---
+  const [billingData, setBillingData] = useState(null);
+  const [billingLoading, setBillingLoading] = useState(false);
+
   // --- Broker hooks (must be top-level, not in a loop) ---
   const hookOpts = { onSyncComplete, setMessage, setExpandedBroker };
   const tradovateHook = useBrokerConnection('tradovate', hookOpts);
@@ -418,6 +422,17 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
     Object.values(brokerHooks).forEach(h => h.fetchStatus());
     fetchPxStatus();
   }, []);
+
+  // Fetch billing details when Account tab is active and user has a paid plan
+  useEffect(() => {
+    if (activeTab !== 'account' || !subscriptionStatus?.isPremium || billingData) return;
+    setBillingLoading(true);
+    authFetch('/api/stripe/subscription')
+      .then(r => r.json())
+      .then(data => { if (data.subscription) setBillingData(data); })
+      .catch(() => {})
+      .finally(() => setBillingLoading(false));
+  }, [activeTab, subscriptionStatus]);
 
   // =============================================
   // OAuth callback detection (shared across all Tradovate-compatible brokers)
@@ -1310,48 +1325,128 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
       {activeTab === 'account' && (
         <div className="space-y-6">
           {/* Subscription section */}
-          <div className="bg-bg-surface border border-border rounded-xl p-6 space-y-6">
-            <h3 className="text-text-primary font-semibold">Subscription</h3>
-            <div className="flex items-center gap-4">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold uppercase ${
-                    subscriptionStatus && subscriptionStatus.isPremium
-                      ? 'bg-accent/15 text-accent'
-                      : 'bg-text-muted/15 text-text-secondary'
+          <div className="bg-bg-surface border border-border rounded-xl p-6 space-y-5">
+            {/* Header row: plan badge + status */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <h3 className="text-text-primary font-semibold">Subscription</h3>
+                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold uppercase ${
+                  subscriptionStatus && subscriptionStatus.isPremium
+                    ? 'bg-accent/15 text-accent'
+                    : 'bg-text-muted/15 text-text-secondary'
+                }`}>
+                  {subscriptionStatus && subscriptionStatus.isPremium
+                    ? (subscriptionStatus.plan || 'Pro')
+                    : 'Free'}
+                </span>
+                {subscriptionStatus && subscriptionStatus.subscriptionStatus && (
+                  <span className={`text-xs font-medium ${
+                    subscriptionStatus.subscriptionStatus === 'active' ? 'text-positive'
+                      : subscriptionStatus.subscriptionStatus === 'canceled' ? 'text-negative'
+                        : 'text-warning'
                   }`}>
-                    {subscriptionStatus && subscriptionStatus.isPremium
-                      ? (subscriptionStatus.plan || 'Pro')
-                      : 'Free'}
+                    {subscriptionStatus.subscriptionStatus.charAt(0).toUpperCase() + subscriptionStatus.subscriptionStatus.slice(1)}
                   </span>
-                  {subscriptionStatus && subscriptionStatus.subscriptionStatus && (
-                    <span className={`text-xs ${
-                      subscriptionStatus.subscriptionStatus === 'active' ? 'text-positive'
-                        : subscriptionStatus.subscriptionStatus === 'canceled' ? 'text-negative'
-                          : 'text-warning'
-                    }`}>
-                      {subscriptionStatus.subscriptionStatus.charAt(0).toUpperCase() + subscriptionStatus.subscriptionStatus.slice(1)}
-                    </span>
-                  )}
-                </div>
-                {subscriptionStatus && subscriptionStatus.createdDate && (
-                  <p className="text-text-muted text-xs mt-1">
-                    Account created: {new Date(subscriptionStatus.createdDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-                  </p>
                 )}
               </div>
-            </div>
-
-            <div className="border-t border-border pt-4 space-y-3">
-              {subscriptionStatus && subscriptionStatus.isPremium ? (
+              {subscriptionStatus && subscriptionStatus.isPremium && (
                 <button
-                  className="flex items-center gap-2 px-4 py-2.5 bg-bg-input border border-border text-text-primary text-sm font-semibold rounded-lg hover:border-accent transition-all"
+                  className="text-xs text-accent hover:underline font-medium"
                   onClick={() => { window.location.href = '/upgrade'; }}
                 >
-                  <Icons.Settings className="w-4 h-4" />
-                  Manage Subscription
+                  Manage
                 </button>
-              ) : (
+              )}
+            </div>
+
+            {/* Billing details grid (premium users only) */}
+            {subscriptionStatus && subscriptionStatus.isPremium && billingData && billingData.subscription && (
+              <>
+                {/* Canceling banner */}
+                {billingData.subscription.cancelAtPeriodEnd && (
+                  <div className="flex items-center gap-2 px-3 py-2 bg-warning/10 border border-warning/20 rounded-lg">
+                    <Icons.AlertTriangle className="w-4 h-4 text-warning flex-shrink-0" />
+                    <p className="text-xs text-warning">
+                      Your subscription is set to cancel on{' '}
+                      <span className="font-semibold">
+                        {new Date(billingData.subscription.currentPeriodEnd * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                      </span>. You can resume from the{' '}
+                      <button className="underline font-medium" onClick={() => { window.location.href = '/upgrade'; }}>manage page</button>.
+                    </p>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {/* Next billing date */}
+                  <div className="flex items-start gap-3 p-3 bg-bg-input/50 rounded-lg">
+                    <Icons.Calendar className="w-4 h-4 text-text-tertiary mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-xs text-text-muted uppercase tracking-wider font-medium mb-1">
+                        {billingData.subscription.cancelAtPeriodEnd ? 'Access Until' : 'Next Billing'}
+                      </p>
+                      <p className="text-sm text-text-primary font-medium">
+                        {new Date(billingData.subscription.currentPeriodEnd * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </p>
+                      <p className="text-xs text-text-muted mt-0.5 capitalize">{billingData.subscription.billingInterval}ly</p>
+                    </div>
+                  </div>
+
+                  {/* Amount */}
+                  <div className="flex items-start gap-3 p-3 bg-bg-input/50 rounded-lg">
+                    <Icons.DollarSign className="w-4 h-4 text-text-tertiary mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-xs text-text-muted uppercase tracking-wider font-medium mb-1">
+                        {billingData.subscription.cancelAtPeriodEnd ? 'Last Amount' : 'Next Amount'}
+                      </p>
+                      <p className="text-sm text-text-primary font-medium">
+                        {billingData.upcomingInvoice
+                          ? `$${(billingData.upcomingInvoice.amountDue / 100).toFixed(2)}`
+                          : '—'}
+                      </p>
+                      {billingData.upcomingInvoice && (
+                        <p className="text-xs text-text-muted mt-0.5 uppercase">{billingData.upcomingInvoice.currency}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Payment method */}
+                  <div className="flex items-start gap-3 p-3 bg-bg-input/50 rounded-lg">
+                    <Icons.CreditCard className="w-4 h-4 text-text-tertiary mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-xs text-text-muted uppercase tracking-wider font-medium mb-1">Payment Method</p>
+                      {billingData.paymentMethod ? (
+                        <>
+                          <p className="text-sm text-text-primary font-medium capitalize">
+                            {billingData.paymentMethod.brand} •••• {billingData.paymentMethod.last4}
+                          </p>
+                          <p className={`text-xs mt-0.5 ${billingData.paymentMethod.isExpired ? 'text-negative font-medium' : 'text-text-muted'}`}>
+                            {billingData.paymentMethod.isExpired ? 'Expired' : `Exp ${billingData.paymentMethod.expMonth}/${billingData.paymentMethod.expYear}`}
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-sm text-text-muted">No card on file</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Loading state */}
+            {subscriptionStatus && subscriptionStatus.isPremium && billingLoading && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {[0, 1, 2].map(i => (
+                  <div key={i} className="p-3 bg-bg-input/50 rounded-lg animate-pulse">
+                    <div className="h-3 w-16 bg-border rounded mb-2"></div>
+                    <div className="h-4 w-24 bg-border rounded"></div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Free/trial user — upgrade CTA */}
+            {(!subscriptionStatus || !subscriptionStatus.isPremium) && (
+              <div className="border-t border-border pt-4">
                 <button
                   className="flex items-center gap-2 px-4 py-2.5 bg-accent text-accent-text text-sm font-semibold rounded-lg hover:brightness-110 transition-all"
                   onClick={() => { window.location.href = '/upgrade'; }}
@@ -1359,8 +1454,8 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                   <Icons.Zap className="w-4 h-4" />
                   Upgrade Now
                 </button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
           {/* Account settings section */}
