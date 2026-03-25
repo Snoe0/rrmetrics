@@ -83,17 +83,6 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChang
 
       {/* Sidebar */}
       <nav className={`fixed top-0 left-0 h-full bg-bg-page border-r border-border flex flex-col z-50 transition-[width] duration-300 overflow-hidden lg:translate-x-0 ${isCollapsed ? 'w-16' : 'w-60'} ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        {/* Logo */}
-        <div className={`border-b border-border flex items-center ${isCollapsed ? 'px-0 py-6 justify-center' : 'px-5 py-6'}`}>
-          <a
-            href="/trades"
-            className={`flex items-center no-underline ${isCollapsed ? 'gap-0' : 'gap-3'}`}
-            onClick={(e) => { e.preventDefault(); handleNav('dashboard'); }}
-          >
-            <img src="/assets/img/logo.svg" alt="RR Metrics" className="w-8 h-8 rounded-md flex-shrink-0" />
-          </a>
-        </div>
-
         {/* Nav links */}
         <div className="flex-1 py-4 px-3 flex flex-col">
           <div className={cn('px-3 mb-3', isCollapsed && 'px-2')}>
