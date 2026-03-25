@@ -3,6 +3,7 @@ const { useState, useEffect, useCallback } = React;
 const { authFetch, supabase } = require('../../helper.js');
 const { TAG_COLOR_PRESETS } = require('../../utils/tagConstants');
 const Icons = require('../shared/Icons');
+const { useBrokerConnection, TRADOVATE_BROKERS } = require('../../hooks/useBrokerConnection');
 
 // Helper: relative time string from ISO date
 const relativeTime = (iso) => {
@@ -17,21 +18,204 @@ const relativeTime = (iso) => {
   return `${days}d ago`;
 };
 
+const TradovateBrokerSection = ({ hook, expandedBroker, toggleBroker, brokerHeaderBadge, statusDot }) => {
+  const { config, label, connections, connectionsUsed, connectionLimit, canUseBrokerSync,
+    atConnectionLimit, syncingId, showImportPrompt, environment, setEnvironment,
+    connecting, selectedAcctIds, setSelectedAcctIds, savingAccounts,
+    handleConnect, handleSync, handleSyncAll, handleDisconnect,
+    handleImportNow, toggleAcctSelection, handleEnableDisable } = hook;
+
+  return (
+    <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
+      <button
+        onClick={() => toggleBroker(config.key)}
+        className="w-full flex items-center justify-between p-5 hover:bg-bg-page/50 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <img src={config.icon} alt={label} className="w-10 h-10 rounded-lg object-contain" />
+          <div className="text-left">
+            <h3 className="text-text-primary font-semibold text-sm">{label}</h3>
+            <p className="text-text-tertiary text-xs">{config.subtitle}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          {brokerHeaderBadge(connections)}
+          {expandedBroker === config.key
+            ? <Icons.ChevronUp className="w-4 h-4 text-text-secondary" />
+            : <Icons.ChevronDown className="w-4 h-4 text-text-secondary" />}
+        </div>
+      </button>
+
+      {expandedBroker === config.key && (
+        <div className="px-5 pb-5 border-t border-border pt-4 space-y-4">
+          {!canUseBrokerSync ? (
+            <div className="bg-accent/5 border border-accent/20 rounded-lg p-4 text-center">
+              <p className="text-sm text-text-primary font-medium mb-1">Pro or Elite plan required</p>
+              <p className="text-xs text-text-secondary mb-3">Broker sync is available on Pro and Elite plans.</p>
+              <button onClick={() => window.location.href = '/upgrade'} className="px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all">Upgrade Now</button>
+            </div>
+          ) : (
+            <>
+              {connections.filter(c => c.configured && !c.expired).length >= 2 && (
+                <button onClick={handleSyncAll} disabled={syncingId !== null} className="w-full px-4 py-2.5 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                  <Icons.RefreshCw className={`w-4 h-4 ${syncingId === 'all' ? 'animate-spin' : ''}`} />
+                  {syncingId === 'all' ? 'Syncing all...' : 'Sync All Connections'}
+                </button>
+              )}
+
+              {connections.map(conn => (
+                <div key={conn.connectionId} className="bg-bg-page/50 border border-border rounded-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${statusDot(conn)}`}></span>
+                      <span className="text-sm text-text-primary font-medium">
+                        {label} <span className="capitalize">{conn.environment}</span>
+                      </span>
+                      {conn.label && <span className="text-xs text-text-secondary">— {conn.label}</span>}
+                    </div>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      conn.configured && !conn.expired ? 'bg-positive/10 text-positive' :
+                      conn.expired ? 'bg-warning/10 text-warning' : 'bg-text-secondary/10 text-text-secondary'
+                    }`}>
+                      {conn.configured && !conn.expired ? 'Active' : conn.expired ? 'Expired' : 'Inactive'}
+                    </span>
+                  </div>
+
+                  {conn.accounts && conn.accounts.length > 0 && conn.configured && !conn.expired && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-text-secondary">Accounts</span>
+                        {conn.selectedAccounts && conn.selectedAccounts.length > 0 && conn.selectedAccounts.length < conn.accounts.length && (
+                          <span className="text-xs text-text-muted">{conn.selectedAccounts.length} of {conn.accounts.length} enabled</span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {conn.accounts.map(acct => {
+                          const isEnabled = !conn.selectedAccounts || conn.selectedAccounts.length === 0 || conn.selectedAccounts.includes(acct.id);
+                          const isSelected = selectedAcctIds.includes(acct.id);
+                          return (
+                            <button key={acct.id} onClick={() => toggleAcctSelection(acct.id)}
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer border ${
+                                isSelected ? 'bg-accent/15 border-accent text-accent ring-1 ring-accent/30'
+                                  : isEnabled ? 'bg-bg-surface border-border text-text-primary hover:border-accent/50'
+                                    : 'bg-bg-surface/30 border-border/50 text-text-muted hover:border-border'
+                              }`}>
+                              <span className={`w-2 h-2 rounded-full ${isEnabled ? (acct.active ? 'bg-positive' : 'bg-warning') : 'bg-text-muted/30'}`}></span>
+                              {acct.name}
+                              {acct.balance != null && (
+                                <span className={`text-[10px] font-mono ${isEnabled ? 'text-text-secondary' : 'text-text-muted/60'}`}>
+                                  ${acct.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {selectedAcctIds.length > 0 && (
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => handleEnableDisable(conn.connectionId, true)} disabled={savingAccounts === conn.connectionId}
+                            className="px-3 py-1.5 bg-positive/10 text-positive text-xs font-medium rounded-lg hover:bg-positive/20 transition-colors disabled:opacity-50">
+                            {savingAccounts === conn.connectionId ? 'Saving...' : `Enable (${selectedAcctIds.length})`}
+                          </button>
+                          <button onClick={() => handleEnableDisable(conn.connectionId, false)} disabled={savingAccounts === conn.connectionId}
+                            className="px-3 py-1.5 bg-negative/10 text-negative text-xs font-medium rounded-lg hover:bg-negative/20 transition-colors disabled:opacity-50">
+                            {savingAccounts === conn.connectionId ? 'Saving...' : `Disable (${selectedAcctIds.length})`}
+                          </button>
+                          <button onClick={() => setSelectedAcctIds([])} className="px-2 py-1.5 text-text-muted text-xs hover:text-text-secondary transition-colors">Clear</button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {conn.lastSyncTime && <p className="text-xs text-text-muted">Last sync: {relativeTime(conn.lastSyncTime)}</p>}
+
+                  {showImportPrompt === conn.connectionId && (
+                    <div className="bg-accent/5 border border-accent/20 rounded-lg p-3">
+                      <p className="text-sm text-text-primary font-medium mb-1">Import trades</p>
+                      <p className="text-xs text-text-secondary mb-3">Import all your past fills from {label}, or just today's trades.</p>
+                      <div className="flex gap-2">
+                        <button onClick={() => handleImportNow(conn.connectionId, false)} disabled={syncingId !== null}
+                          className="flex-1 px-3 py-2 bg-accent text-accent-text text-xs font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50">
+                          {syncingId === conn.connectionId ? 'Importing...' : 'Import all trades'}
+                        </button>
+                        <button onClick={() => handleImportNow(conn.connectionId, true)} disabled={syncingId !== null}
+                          className="flex-1 px-3 py-2 border border-border text-text-secondary text-xs font-medium rounded-lg hover:text-text-primary transition-colors disabled:opacity-50">
+                          {syncingId === conn.connectionId ? 'Importing...' : "Today's trades"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {showImportPrompt !== conn.connectionId && (
+                    <div className="flex items-center gap-2">
+                      {conn.expired ? (
+                        <button onClick={handleConnect} disabled={connecting}
+                          className="px-3 py-1.5 bg-warning/10 text-warning text-xs font-medium rounded-lg hover:bg-warning/20 transition-colors disabled:opacity-50">
+                          {connecting ? 'Reconnecting...' : 'Reconnect'}
+                        </button>
+                      ) : conn.configured ? (
+                        <button onClick={() => handleSync(conn.connectionId)} disabled={syncingId !== null}
+                          className="px-3 py-1.5 bg-accent text-accent-text text-xs font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50 flex items-center gap-1.5">
+                          <Icons.RefreshCw className={`w-3.5 h-3.5 ${syncingId === conn.connectionId ? 'animate-spin' : ''}`} />
+                          {syncingId === conn.connectionId ? 'Syncing...' : 'Sync Now'}
+                        </button>
+                      ) : null}
+                      <button onClick={() => handleDisconnect(conn.connectionId)}
+                        className="px-3 py-1.5 text-text-secondary text-xs font-medium hover:text-negative hover:bg-negative/10 rounded-lg transition-colors">
+                        Disconnect
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {connections.length === 0 ? (
+                <>
+                  <div className="bg-bg-page/50 rounded-lg p-3">
+                    <p className="text-xs text-text-secondary leading-relaxed">Connect your {label} account to automatically sync your fills into RR Metrics.</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-text-secondary mb-1">Environment</label>
+                    <select value={environment} onChange={(e) => setEnvironment(e.target.value)}
+                      className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-accent">
+                      <option value="demo">Demo</option>
+                      <option value="live">Live</option>
+                    </select>
+                  </div>
+                  <button onClick={handleConnect} disabled={connecting}
+                    className="px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50">
+                    {connecting ? 'Connecting...' : `Connect with ${label}`}
+                  </button>
+                </>
+              ) : (
+                <div className="flex items-center justify-between pt-2 border-t border-border">
+                  <span className="text-xs text-text-muted">{connectionsUsed} / {connectionLimit} broker connections</span>
+                  <div className="flex items-center gap-3">
+                    <select value={environment} onChange={(e) => setEnvironment(e.target.value)}
+                      className="px-2 py-1.5 bg-bg-input border border-border rounded-lg text-xs text-text-primary focus:outline-none focus:border-accent">
+                      <option value="demo">Demo</option>
+                      <option value="live">Live</option>
+                    </select>
+                    <button onClick={handleConnect} disabled={connecting || atConnectionLimit}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-input border border-border text-text-primary text-xs font-medium rounded-lg hover:border-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      title={atConnectionLimit ? 'Connection limit reached' : `Add another ${label} connection`}>
+                      <Icons.Plus className="w-3.5 h-3.5" />
+                      Connect Another
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, customColors, tags, triggerReload, subscriptionStatus }) => {
   const [activeTab, setActiveTab] = useState('brokers');
   const [message, setMessage] = useState(null);
-
-  // --- Tradovate multi-connection state ---
-  const [tvConnections, setTvConnections] = useState([]);
-  const [tvConnectionsUsed, setTvConnectionsUsed] = useState(0);
-  const [tvConnectionLimit, setTvConnectionLimit] = useState(0);
-  const [tvCanUseBrokerSync, setTvCanUseBrokerSync] = useState(false);
-  const [tvEnvironment, setTvEnvironment] = useState('demo');
-  const [tvConnecting, setTvConnecting] = useState(false);
-  const [tvSyncingId, setTvSyncingId] = useState(null); // connectionId currently syncing, or 'all'
-  const [tvShowImportPrompt, setTvShowImportPrompt] = useState(null); // connectionId that just connected
-  const [tvSavingAccounts, setTvSavingAccounts] = useState(null); // connectionId currently saving
-  const [tvSelectedAcctIds, setTvSelectedAcctIds] = useState([]); // UI-selected account IDs (for enable/disable action)
 
   // --- ProjectX multi-connection state ---
   const [pxConnections, setPxConnections] = useState([]);
@@ -59,21 +243,18 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
 
   const [expandedBroker, setExpandedBroker] = useState(null);
 
-  // =============================================
-  // Tradovate data fetching
-  // =============================================
-  const fetchTvStatus = useCallback(async () => {
-    try {
-      const response = await authFetch('/api/tradovate/status');
-      const data = await response.json();
-      setTvConnections(data.connections || []);
-      setTvConnectionsUsed(data.connectionsUsed || 0);
-      setTvConnectionLimit(data.connectionLimit || 0);
-      setTvCanUseBrokerSync(data.canUseBrokerSync || false);
-    } catch (err) {
-      console.error('Failed to fetch Tradovate status:', err);
-    }
-  }, []);
+  // --- Tradovate-compatible broker hooks (must be top-level, not in a loop) ---
+  const hookOpts = { onSyncComplete, setMessage, setExpandedBroker };
+  const tradovateHook = useBrokerConnection('tradovate', hookOpts);
+  const ninjatraderHook = useBrokerConnection('ninjatrader', hookOpts);
+  const alphaFuturesHook = useBrokerConnection('alpha_futures', hookOpts);
+  const apexHook = useBrokerConnection('apex_trader_funding', hookOpts);
+  const brokerHooks = {
+    tradovate: tradovateHook,
+    ninjatrader: ninjatraderHook,
+    alpha_futures: alphaFuturesHook,
+    apex_trader_funding: apexHook,
+  };
 
   // =============================================
   // ProjectX data fetching
@@ -91,31 +272,39 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
     }
   }, []);
 
-  useEffect(() => { fetchTvStatus(); fetchPxStatus(); }, []);
+  // Fetch all broker statuses on mount
+  useEffect(() => {
+    Object.values(brokerHooks).forEach(h => h.fetchStatus());
+    fetchPxStatus();
+  }, []);
 
   // =============================================
-  // Tradovate OAuth callback detection
+  // OAuth callback detection (shared across all Tradovate-compatible brokers)
   // =============================================
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code = params.get('tv_code');
     const connId = params.get('tv_conn');
+    const brokerParam = params.get('tv_broker') || 'tradovate';
     const error = params.get('tv_error');
 
-    // Clear OAuth params from URL immediately
     if (code || error) {
       window.history.replaceState({}, '', window.location.pathname);
     }
 
     if (error) {
-      setMessage({ type: 'error', text: 'Tradovate OAuth failed. Please try again.' });
+      const brokerLabel = TRADOVATE_BROKERS.find(b => b.key === brokerParam)?.label || 'Broker';
+      setMessage({ type: 'error', text: `${brokerLabel} OAuth failed. Please try again.` });
       return;
     }
 
     if (!code || !connId) return;
 
+    const hook = brokerHooks[brokerParam] || brokerHooks.tradovate;
+    const brokerLabel = TRADOVATE_BROKERS.find(b => b.key === brokerParam)?.label || 'Broker';
+
     const exchangeCode = async () => {
-      setTvConnecting(true);
+      hook.setConnecting(true);
       setMessage(null);
       try {
         const response = await authFetch('/api/tradovate/exchange', {
@@ -127,197 +316,19 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
         if (data.error) {
           setMessage({ type: 'error', text: data.error });
         } else {
-          setMessage({ type: 'success', text: 'Tradovate connected successfully!' });
-          setTvShowImportPrompt(connId);
-          setExpandedBroker('tradovate');
-          fetchTvStatus();
+          const actualBroker = data.broker || brokerParam;
+          setMessage({ type: 'success', text: `${brokerLabel} connected successfully!` });
+          hook.setShowImportPrompt(connId);
+          setExpandedBroker(actualBroker);
+          hook.fetchStatus();
         }
       } catch (err) {
-        setMessage({ type: 'error', text: 'Failed to connect Tradovate' });
+        setMessage({ type: 'error', text: `Failed to connect ${brokerLabel}` });
       }
-      setTvConnecting(false);
+      hook.setConnecting(false);
     };
     exchangeCode();
   }, []);
-
-  // =============================================
-  // Tradovate handlers
-  // =============================================
-  const handleTvConnect = async () => {
-    setTvConnecting(true);
-    setMessage(null);
-    try {
-      const response = await authFetch('/api/tradovate/connect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ environment: tvEnvironment }),
-      });
-      const data = await response.json();
-      if (data.error) {
-        setMessage({ type: 'error', text: data.error });
-        setTvConnecting(false);
-      } else if (data.authUrl) {
-        window.location.href = data.authUrl;
-      }
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to start Tradovate connection' });
-      setTvConnecting(false);
-    }
-  };
-
-  const handleTvSync = async (connectionId) => {
-    setTvSyncingId(connectionId);
-    setMessage(null);
-    try {
-      const response = await authFetch('/api/tradovate/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ connectionId }),
-      });
-      const data = await response.json();
-      if (data.error) {
-        setMessage({ type: 'error', text: data.error });
-      } else {
-        setMessage({ type: 'success', text: data.message || 'Sync complete' });
-        fetchTvStatus();
-        if (onSyncComplete) onSyncComplete();
-      }
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Sync failed' });
-    }
-    setTvSyncingId(null);
-  };
-
-  const handleTvSyncAll = async () => {
-    setTvSyncingId('all');
-    setMessage(null);
-    try {
-      const response = await authFetch('/api/tradovate/sync-all', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      const data = await response.json();
-      if (data.error) {
-        setMessage({ type: 'error', text: data.error });
-      } else {
-        const results = data.results || [];
-        const total = results.reduce((sum, r) => sum + (r.tradesImported || 0), 0);
-        const errors = results.filter(r => r.error);
-        if (errors.length > 0) {
-          setMessage({ type: 'error', text: `Synced ${total} trades. ${errors.length} connection(s) had errors.` });
-        } else {
-          setMessage({ type: 'success', text: `Synced ${total} trades across ${results.length} connections.` });
-        }
-        fetchTvStatus();
-        if (onSyncComplete) onSyncComplete();
-      }
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Sync all failed' });
-    }
-    setTvSyncingId(null);
-  };
-
-  const handleTvDisconnect = async (connectionId) => {
-    if (!confirm('Disconnect this Tradovate connection?')) return;
-    setMessage(null);
-    try {
-      const response = await authFetch(`/api/tradovate/connections/${connectionId}`, { method: 'DELETE' });
-      const data = await response.json();
-      if (data.error) {
-        setMessage({ type: 'error', text: data.error });
-      } else {
-        setMessage({ type: 'success', text: 'Connection removed' });
-        fetchTvStatus();
-      }
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to disconnect' });
-    }
-  };
-
-  const handleTvImportNow = async (connectionId, todayOnly = false) => {
-    setTvSyncingId(connectionId);
-    setMessage(null);
-    try {
-      const body = { connectionId };
-      if (todayOnly) {
-        const today = new Date().toISOString().split('T')[0];
-        body.startDate = today;
-        body.endDate = today;
-      }
-      const response = await authFetch('/api/tradovate/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const data = await response.json();
-      if (data.error) {
-        setMessage({ type: 'error', text: data.error });
-      } else {
-        setMessage({ type: 'success', text: data.message || 'Import complete' });
-        setTvShowImportPrompt(null);
-        fetchTvStatus();
-        if (onSyncComplete) onSyncComplete();
-      }
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Import failed' });
-    }
-    setTvSyncingId(null);
-  };
-
-  // Toggle UI selection of a Tradovate account (does not change enabled state)
-  const toggleTvAcctSelection = (accountId) => {
-    setTvSelectedAcctIds(prev =>
-      prev.includes(accountId) ? prev.filter(id => id !== accountId) : [...prev, accountId]
-    );
-  };
-
-  // Enable or disable the UI-selected accounts, then save
-  const handleTvEnableDisable = async (connectionId, enable) => {
-    if (tvSelectedAcctIds.length === 0) return;
-    const conn = tvConnections.find(c => c.connectionId === connectionId);
-    if (!conn) return;
-
-    const allAccountIds = (conn.accounts || []).map(a => a.id);
-    // Current enabled set — empty means all
-    const currentEnabled = (!conn.selectedAccounts || conn.selectedAccounts.length === 0)
-      ? allAccountIds
-      : [...conn.selectedAccounts];
-
-    let updated;
-    if (enable) {
-      // Add selected IDs to enabled set
-      updated = [...new Set([...currentEnabled, ...tvSelectedAcctIds])];
-    } else {
-      // Remove selected IDs from enabled set
-      updated = currentEnabled.filter(id => !tvSelectedAcctIds.includes(id));
-    }
-
-    // If all accounts are enabled, store empty array (means "all")
-    const toSave = updated.length === allAccountIds.length ? [] : updated;
-
-    setTvSavingAccounts(connectionId);
-    try {
-      const response = await authFetch('/api/tradovate/accounts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ connectionId, selectedAccounts: toSave }),
-      });
-      const data = await response.json();
-      if (data.error) {
-        setMessage({ type: 'error', text: data.error });
-      } else {
-        // Update local state
-        setTvConnections(prev => prev.map(c =>
-          c.connectionId === connectionId ? { ...c, selectedAccounts: toSave } : c
-        ));
-        setTvSelectedAcctIds([]);
-        setMessage({ type: 'success', text: enable ? 'Accounts enabled' : 'Accounts disabled' });
-      }
-    } catch {
-      setMessage({ type: 'error', text: 'Failed to update accounts' });
-    }
-    setTvSavingAccounts(null);
-  };
 
   // =============================================
   // ProjectX handlers
@@ -564,8 +575,6 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
     );
   };
 
-  const atConnectionLimit = tvConnectionsUsed >= tvConnectionLimit && tvConnectionLimit > 0;
-
   return (
     <div className="space-y-6">
       <div>
@@ -605,272 +614,25 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
           )}
 
           {/* Shared pool counter */}
-          {(tvConnectionsUsed > 0 || pxConnectionsUsed > 0) && (
+          {(brokerHooks.tradovate.connectionsUsed > 0 || pxConnectionsUsed > 0) && (
             <div className="flex items-center gap-2 text-xs text-text-secondary">
               <span className="px-2 py-1 bg-bg-surface border border-border rounded-md font-medium">
-                {tvConnectionsUsed} / {tvConnectionLimit} broker connections
+                {brokerHooks.tradovate.connectionsUsed} / {brokerHooks.tradovate.connectionLimit} broker connections
               </span>
             </div>
           )}
 
-          {/* ============== Tradovate ============== */}
-          <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
-            <button
-              onClick={() => toggleBroker('tradovate')}
-              className="w-full flex items-center justify-between p-5 hover:bg-bg-page/50 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <img src="/assets/img/tradovate.png" alt="Tradovate" className="w-10 h-10 rounded-lg object-contain" />
-                <div className="text-left">
-                  <h3 className="text-text-primary font-semibold text-sm">Tradovate</h3>
-                  <p className="text-text-tertiary text-xs">Futures trading platform</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                {brokerHeaderBadge(tvConnections)}
-                {expandedBroker === 'tradovate' ? <Icons.ChevronUp className="w-4 h-4 text-text-secondary" /> : <Icons.ChevronDown className="w-4 h-4 text-text-secondary" />}
-              </div>
-            </button>
-
-            {expandedBroker === 'tradovate' && (
-              <div className="px-5 pb-5 border-t border-border pt-4 space-y-4">
-                {!tvCanUseBrokerSync ? (
-                  <div className="bg-accent/5 border border-accent/20 rounded-lg p-4 text-center">
-                    <p className="text-sm text-text-primary font-medium mb-1">Pro or Elite plan required</p>
-                    <p className="text-xs text-text-secondary mb-3">Broker sync is available on Pro and Elite plans.</p>
-                    <button
-                      onClick={() => window.location.href = '/upgrade'}
-                      className="px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all"
-                    >
-                      Upgrade Now
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    {/* Sync All button — show when 2+ connections */}
-                    {tvConnections.filter(c => c.configured && !c.expired).length >= 2 && (
-                      <button
-                        onClick={handleTvSyncAll}
-                        disabled={tvSyncingId !== null}
-                        className="w-full px-4 py-2.5 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-                      >
-                        <Icons.RefreshCw className={`w-4 h-4 ${tvSyncingId === 'all' ? 'animate-spin' : ''}`} />
-                        {tvSyncingId === 'all' ? 'Syncing all...' : 'Sync All Connections'}
-                      </button>
-                    )}
-
-                    {/* Connection cards */}
-                    {tvConnections.map(conn => (
-                      <div key={conn.connectionId} className="bg-bg-page/50 border border-border rounded-lg p-4 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2.5">
-                            <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${statusDot(conn)}`}></span>
-                            <span className="text-sm text-text-primary font-medium">
-                              Tradovate <span className="capitalize">{conn.environment}</span>
-                            </span>
-                            {conn.label && (
-                              <span className="text-xs text-text-secondary">— {conn.label}</span>
-                            )}
-                          </div>
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${
-                            conn.configured && !conn.expired ? 'bg-positive/10 text-positive' :
-                            conn.expired ? 'bg-warning/10 text-warning' :
-                            'bg-text-secondary/10 text-text-secondary'
-                          }`}>
-                            {conn.configured && !conn.expired ? 'Active' : conn.expired ? 'Expired' : 'Inactive'}
-                          </span>
-                        </div>
-
-                        {/* Accounts with click-to-select + enable/disable */}
-                        {conn.accounts && conn.accounts.length > 0 && conn.configured && !conn.expired && (
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs font-medium text-text-secondary">Accounts</span>
-                              {conn.selectedAccounts && conn.selectedAccounts.length > 0 && conn.selectedAccounts.length < conn.accounts.length && (
-                                <span className="text-xs text-text-muted">{conn.selectedAccounts.length} of {conn.accounts.length} enabled</span>
-                              )}
-                            </div>
-                            <div className="flex flex-wrap gap-1.5">
-                              {conn.accounts.map(acct => {
-                                const isEnabled = !conn.selectedAccounts || conn.selectedAccounts.length === 0 || conn.selectedAccounts.includes(acct.id);
-                                const isSelected = tvSelectedAcctIds.includes(acct.id);
-                                return (
-                                  <button
-                                    key={acct.id}
-                                    onClick={() => toggleTvAcctSelection(acct.id)}
-                                    className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer border ${
-                                      isSelected
-                                        ? 'bg-accent/15 border-accent text-accent ring-1 ring-accent/30'
-                                        : isEnabled
-                                          ? 'bg-bg-surface border-border text-text-primary hover:border-accent/50'
-                                          : 'bg-bg-surface/30 border-border/50 text-text-muted hover:border-border'
-                                    }`}
-                                  >
-                                    <span className={`w-2 h-2 rounded-full ${
-                                      isEnabled
-                                        ? (acct.active ? 'bg-positive' : 'bg-warning')
-                                        : 'bg-text-muted/30'
-                                    }`}></span>
-                                    {acct.name}
-                                    {acct.balance != null && (
-                                      <span className={`text-[10px] font-mono ${isEnabled ? 'text-text-secondary' : 'text-text-muted/60'}`}>
-                                        ${acct.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                      </span>
-                                    )}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                            {tvSelectedAcctIds.length > 0 && (
-                              <div className="flex items-center gap-2">
-                                <button
-                                  onClick={() => handleTvEnableDisable(conn.connectionId, true)}
-                                  disabled={tvSavingAccounts === conn.connectionId}
-                                  className="px-3 py-1.5 bg-positive/10 text-positive text-xs font-medium rounded-lg hover:bg-positive/20 transition-colors disabled:opacity-50"
-                                >
-                                  {tvSavingAccounts === conn.connectionId ? 'Saving...' : `Enable (${tvSelectedAcctIds.length})`}
-                                </button>
-                                <button
-                                  onClick={() => handleTvEnableDisable(conn.connectionId, false)}
-                                  disabled={tvSavingAccounts === conn.connectionId}
-                                  className="px-3 py-1.5 bg-negative/10 text-negative text-xs font-medium rounded-lg hover:bg-negative/20 transition-colors disabled:opacity-50"
-                                >
-                                  {tvSavingAccounts === conn.connectionId ? 'Saving...' : `Disable (${tvSelectedAcctIds.length})`}
-                                </button>
-                                <button
-                                  onClick={() => setTvSelectedAcctIds([])}
-                                  className="px-2 py-1.5 text-text-muted text-xs hover:text-text-secondary transition-colors"
-                                >
-                                  Clear
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {conn.lastSyncTime && (
-                          <p className="text-xs text-text-muted">
-                            Last sync: {relativeTime(conn.lastSyncTime)}
-                          </p>
-                        )}
-
-                        {/* Import prompt for just-connected connections */}
-                        {tvShowImportPrompt === conn.connectionId && (
-                          <div className="bg-accent/5 border border-accent/20 rounded-lg p-3">
-                            <p className="text-sm text-text-primary font-medium mb-1">Import trades</p>
-                            <p className="text-xs text-text-secondary mb-3">
-                              Import all your past fills from Tradovate, or just today's trades.
-                            </p>
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => handleTvImportNow(conn.connectionId, false)}
-                                disabled={tvSyncingId !== null}
-                                className="flex-1 px-3 py-2 bg-accent text-accent-text text-xs font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
-                              >
-                                {tvSyncingId === conn.connectionId ? 'Importing...' : 'Import all trades'}
-                              </button>
-                              <button
-                                onClick={() => handleTvImportNow(conn.connectionId, true)}
-                                disabled={tvSyncingId !== null}
-                                className="flex-1 px-3 py-2 border border-border text-text-secondary text-xs font-medium rounded-lg hover:text-text-primary transition-colors disabled:opacity-50"
-                              >
-                                {tvSyncingId === conn.connectionId ? 'Importing...' : "Today's trades"}
-                              </button>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Action buttons */}
-                        {tvShowImportPrompt !== conn.connectionId && (
-                          <div className="flex items-center gap-2">
-                            {conn.expired ? (
-                              <button
-                                onClick={handleTvConnect}
-                                disabled={tvConnecting}
-                                className="px-3 py-1.5 bg-warning/10 text-warning text-xs font-medium rounded-lg hover:bg-warning/20 transition-colors disabled:opacity-50"
-                              >
-                                {tvConnecting ? 'Reconnecting...' : 'Reconnect'}
-                              </button>
-                            ) : conn.configured ? (
-                              <button
-                                onClick={() => handleTvSync(conn.connectionId)}
-                                disabled={tvSyncingId !== null}
-                                className="px-3 py-1.5 bg-accent text-accent-text text-xs font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50 flex items-center gap-1.5"
-                              >
-                                <Icons.RefreshCw className={`w-3.5 h-3.5 ${tvSyncingId === conn.connectionId ? 'animate-spin' : ''}`} />
-                                {tvSyncingId === conn.connectionId ? 'Syncing...' : 'Sync Now'}
-                              </button>
-                            ) : null}
-                            <button
-                              onClick={() => handleTvDisconnect(conn.connectionId)}
-                              className="px-3 py-1.5 text-text-secondary text-xs font-medium hover:text-negative hover:bg-negative/10 rounded-lg transition-colors"
-                            >
-                              Disconnect
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-
-                    {/* Connect new / not connected state */}
-                    {tvConnections.length === 0 ? (
-                      <>
-                        <div className="bg-bg-page/50 rounded-lg p-3">
-                          <p className="text-xs text-text-secondary leading-relaxed">
-                            Connect your Tradovate account to automatically sync your fills into RR Metrics.
-                          </p>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-text-secondary mb-1">Environment</label>
-                          <select
-                            value={tvEnvironment}
-                            onChange={(e) => setTvEnvironment(e.target.value)}
-                            className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-accent"
-                          >
-                            <option value="demo">Demo</option>
-                            <option value="live">Live</option>
-                          </select>
-                        </div>
-                        <button
-                          onClick={handleTvConnect}
-                          disabled={tvConnecting}
-                          className="px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
-                        >
-                          {tvConnecting ? 'Connecting...' : 'Connect with Tradovate'}
-                        </button>
-                      </>
-                    ) : (
-                      /* "+ Connect Another" button */
-                      <div className="flex items-center justify-between pt-2 border-t border-border">
-                        <span className="text-xs text-text-muted">
-                          {tvConnectionsUsed} / {tvConnectionLimit} broker connections
-                        </span>
-                        <div className="flex items-center gap-3">
-                          <select
-                            value={tvEnvironment}
-                            onChange={(e) => setTvEnvironment(e.target.value)}
-                            className="px-2 py-1.5 bg-bg-input border border-border rounded-lg text-xs text-text-primary focus:outline-none focus:border-accent"
-                          >
-                            <option value="demo">Demo</option>
-                            <option value="live">Live</option>
-                          </select>
-                          <button
-                            onClick={handleTvConnect}
-                            disabled={tvConnecting || atConnectionLimit}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-input border border-border text-text-primary text-xs font-medium rounded-lg hover:border-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            title={atConnectionLimit ? 'Connection limit reached' : 'Add another Tradovate connection'}
-                          >
-                            <Icons.Plus className="w-3.5 h-3.5" />
-                            Connect Another
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-          </div>
+          {/* Tradovate-compatible broker sections */}
+          {TRADOVATE_BROKERS.map(b => (
+            <TradovateBrokerSection
+              key={b.key}
+              hook={brokerHooks[b.key]}
+              expandedBroker={expandedBroker}
+              toggleBroker={toggleBroker}
+              brokerHeaderBadge={brokerHeaderBadge}
+              statusDot={statusDot}
+            />
+          ))}
 
           {/* ============== ProjectX / Topstep ============== */}
           <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
@@ -1182,44 +944,6 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
             )}
           </div>
 
-          {/* NinjaTrader */}
-          <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
-            <button
-              onClick={() => toggleBroker('ninjatrader')}
-              className="w-full flex items-center justify-between p-5 hover:bg-bg-page/50 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <img src="/assets/img/ninjatrader.jpeg" alt="NinjaTrader" className="w-10 h-10 rounded-lg object-contain" />
-                <div className="text-left">
-                  <h3 className="text-text-primary font-semibold text-sm">NinjaTrader</h3>
-                  <p className="text-text-tertiary text-xs">Advanced charting &amp; trading platform</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-warning/10 text-warning">
-                  Coming Soon
-                </div>
-                {expandedBroker === 'ninjatrader' ? <Icons.ChevronUp className="w-4 h-4 text-text-secondary" /> : <Icons.ChevronDown className="w-4 h-4 text-text-secondary" />}
-              </div>
-            </button>
-
-            {expandedBroker === 'ninjatrader' && (
-              <div className="px-5 pb-5 border-t border-border pt-4">
-                <div className="bg-bg-page/50 rounded-lg p-3 mb-3">
-                  <p className="text-xs text-text-secondary leading-relaxed">
-                    Direct API sync is coming soon. In the meantime, you can export your trades as a CSV and import them using the generic CSV format.
-                  </p>
-                </div>
-                <a
-                  href="/guides/generic-csv"
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-accent/10 text-accent text-sm font-medium rounded-lg hover:bg-accent/20 transition-colors"
-                >
-                  <Icons.FileText className="w-4 h-4" />
-                  CSV Format Reference
-                </a>
-              </div>
-            )}
-          </div>
         </div>
       )}
 
