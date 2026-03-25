@@ -207,7 +207,18 @@ stripeRoutes.post('/api/stripe/create-subscription', requiresLogin, async (c) =>
         subscriptionStatus: isAlreadyActive ? subscription.status : 'active',
         subscriptionPlan: effectivePlan,
       });
-      return c.json({ subscriptionId: subscription.id, status: 'complete' });
+
+      // Still collect a payment method for future billing (e.g. temporary 100% coupons)
+      const setupIntent = await stripe.setupIntents.create({
+        customer: customerId,
+        usage: 'off_session',
+      });
+
+      return c.json({
+        subscriptionId: subscription.id,
+        status: 'complete',
+        setupIntentSecret: setupIntent.client_secret,
+      });
     }
 
     // Payment required — return client secret for card confirmation
@@ -663,10 +674,13 @@ stripeRoutes.post('/api/stripe/confirm-payment-method', requiresLogin, async (c)
   }
 
   try {
-    // Attach payment method to customer
-    await stripe.paymentMethods.attach(paymentMethodId, {
-      customer: profile.stripe_customer_id,
-    });
+    // Attach payment method to customer (skip if already attached, e.g. via SetupIntent)
+    const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
+    if (!pm.customer) {
+      await stripe.paymentMethods.attach(paymentMethodId, {
+        customer: profile.stripe_customer_id,
+      });
+    }
 
     // Set as default on subscription
     await stripe.subscriptions.update(profile.stripe_subscription_id, {
@@ -678,8 +692,6 @@ stripeRoutes.post('/api/stripe/confirm-payment-method', requiresLogin, async (c)
       invoice_settings: { default_payment_method: paymentMethodId },
     });
 
-    // Retrieve payment method for card details
-    const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
     const card = pm.card;
 
     return c.json({

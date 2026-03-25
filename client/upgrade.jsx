@@ -210,8 +210,32 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
         return;
       }
 
-      // $0 invoice — subscription is already active, no payment confirmation needed
+      // $0 invoice — subscription is already active, but still collect payment method
+      // for future billing (e.g. temporary 100% coupons that expire after first period)
       if (data.status === 'complete') {
+        if (data.setupIntentSecret) {
+          const { setupIntent, error: setupError } = await stripeInstance.confirmCardSetup(data.setupIntentSecret, {
+            payment_method: {
+              card: cardEl,
+              billing_details: {
+                name: fullName,
+                email,
+                address: { line1: addressLine1, city, state: stateProvince, postal_code: postalCode, country },
+              },
+            },
+          });
+          if (setupError) {
+            setCardError(setupError.message);
+            setSubmitting(false);
+            return;
+          }
+          // Set the saved payment method as default on subscription and customer
+          await authFetch('/api/stripe/confirm-payment-method', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ paymentMethodId: setupIntent.payment_method }),
+          });
+        }
         onSuccess(plan.id);
         return;
       }
