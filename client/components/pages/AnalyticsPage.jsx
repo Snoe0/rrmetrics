@@ -1,5 +1,4 @@
 const React = require("react");
-const ReactDOM = require("react-dom");
 const { useState, useEffect, useRef, useMemo } = React;
 
 const { getTradePL, calculateAnalytics, applyEvalFilter, calculateSharpeRatio, calculateSortinoRatio, calculateKellyCriterion, runMonteCarloSimulation } = require("../../utils/analytics");
@@ -12,11 +11,6 @@ const ChangeIndicator = require("../shared/ChangeIndicator");
 const WinRateCard = require("../shared/WinRateCard");
 const PeriodFilter = require("../shared/PeriodFilter");
 const EvalFilterControl = require("../shared/EvalFilterControl");
-const LayoutControls = require("../shared/LayoutControls");
-
-const { useGridStack } = require("../../utils/useGridStack");
-const { useResizeObserver } = require("../../utils/hooks");
-const { ANALYTICS_WIDGETS } = require("../../utils/gridstackLayouts");
 
 
 
@@ -32,21 +26,6 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
   const [showTimeTable, setShowTimeTable] = useState(false);
   const [period, setPeriod] = useState('all');
   const [kellyDrawdown, setKellyDrawdown] = useState(2000);
-
-  // ResizeObserver refs for canvas parents
-  const equityWrapperRef = useRef(null);
-  const dayWrapperRef = useRef(null);
-  const timeWrapperRef = useRef(null);
-  const monteCarloWrapperRef = useRef(null);
-  const equitySize = useResizeObserver(equityWrapperRef);
-  const daySize = useResizeObserver(dayWrapperRef);
-  const timeSize = useResizeObserver(timeWrapperRef);
-  const monteCarloSize = useResizeObserver(monteCarloWrapperRef);
-
-  const {
-    containerRef, isLocked, setIsLocked,
-    widgetVisibility, toggleWidget, resetLayout, ready, portalTargets,
-  } = useGridStack('analytics', ANALYTICS_WIDGETS);
 
   const baseTradesForPeriod = applyEvalFilter(allTrades, evalFilter);
   const dateRange = getDateRange(period);
@@ -201,7 +180,7 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
       ctx.fill();
       ctx.restore();
     }
-  }, [trades, equitySize.width, document.documentElement.dataset.theme]);
+  }, [trades, document.documentElement.dataset.theme]);
 
   // Performance by day bar chart
   useEffect(() => {
@@ -317,7 +296,7 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
         { label: 'Total P/L', value: `$${dayPL[i].toFixed(2)}`, color: dayPL[i] >= 0 ? dayPosColor : dayNegColor },
       ], w, h);
     }
-  }, [trades, hoveredDayIndex, daySize.width, document.documentElement.dataset.theme]);
+  }, [trades, hoveredDayIndex, document.documentElement.dataset.theme]);
 
   // Win rate by ticker
   const tickerStats = {};
@@ -558,7 +537,7 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
         { label: 'Total P/L', value: `$${stat.totalPL.toFixed(2)}`, color: stat.totalPL >= 0 ? timePosColor : timeNegColor },
       ], w, h);
     }
-  }, [trades, hoveredTimeIndex, timeSize.width, document.documentElement.dataset.theme]);
+  }, [trades, hoveredTimeIndex, document.documentElement.dataset.theme]);
 
   // Canvas hover listeners for bar charts — column-based hit detection (x-range only)
   useEffect(() => {
@@ -693,7 +672,7 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
       ctx.lineWidth = 1;
       ctx.stroke();
     });
-  }, [monteCarloResults, monteCarloSize.width, document.documentElement.dataset.theme]);
+  }, [monteCarloResults, document.documentElement.dataset.theme]);
 
   if (trades.length === 0 && period === 'all') {
     return (
@@ -706,16 +685,30 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
     );
   }
 
-  // Long vs Short stats
-  const longTrades = trades.filter(t => t.quantity > 0);
-  const shortTrades = trades.filter(t => t.quantity < 0);
-  const longStats = calculateAnalytics(longTrades);
-  const shortStats = calculateAnalytics(shortTrades);
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-bold text-text-primary">Analytics</h1>
+        <p className="text-text-secondary text-sm mt-1">Detailed performance analysis</p>
+      </div>
 
-  // Widget content map
-  const widgetContent = {
-    'ana-primary-stats': (
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 h-full">
+      {/* Period Filter + Eval filter */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex-1 min-w-0">
+          <PeriodFilter value={period} onChange={setPeriod} trades={allTrades} />
+        </div>
+        <EvalFilterControl trades={allTrades} evalFilter={evalFilter} setEvalFilter={setEvalFilter} />
+      </div>
+
+      {trades.length === 0 ? (
+        <div className="bg-bg-surface border border-border rounded-xl p-8 text-center">
+          <p className="text-text-secondary text-sm">No trades found for this period</p>
+        </div>
+      ) : (<>
+
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard label="Total P/L" value={`$${stats.totalPL.toFixed(2)}`} color={stats.totalPL >= 0 ? 'text-positive' : 'text-negative'}
           change={showChange ? calcPercentChange(stats.totalPL, prevStats.totalPL) : null} />
         <WinRateCard wins={stats.wins} losses={stats.losses} breakevens={stats.breakevens} total={stats.totalTrades}
@@ -725,10 +718,7 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
         <StatCard label="Expectancy" value={`$${expectancy.toFixed(2)}`} color={expectancy >= 0 ? 'text-positive' : 'text-negative'}
           change={showChange ? calcPercentChange(expectancy, prevExpectancy) : null} />
       </div>
-    ),
-
-    'ana-secondary-stats': (
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 h-full">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <StatCard label="Max Drawdown" value={`$${maxDrawdown.toFixed(2)}`} color="text-negative" />
         <StatCard label="Breakeven Rate" value={`${stats.breakevenPct.toFixed(1)}%`} subValue={`${stats.breakevens} trades`} color="text-text-primary" />
         <StatCard label="Sharpe Ratio" value={sharpeRatio === Infinity ? '∞' : sharpeRatio.toFixed(2)} color={sharpeRatio > 0 ? 'text-positive' : 'text-negative'}
@@ -750,252 +740,224 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
           </div>
         </div>
       </div>
-    ),
 
-    'ana-long-short': (
-      <div className="bg-bg-surface border border-border rounded-xl p-6 h-full">
-        <h3 className="text-text-primary font-semibold mb-4">Long vs Short Breakdown</h3>
-        <div className="grid grid-cols-2 gap-6">
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase bg-positive/15 text-positive">LONG</span>
-              <span className="text-text-secondary text-sm">{longStats.totalTrades} trades</span>
-            </div>
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-text-secondary">Win Rate</span>
-                <span className="font-mono text-text-primary">{longStats.winRate.toFixed(1)}%</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-text-secondary">Avg P/L</span>
-                <span className={`font-mono font-semibold ${longStats.totalTrades > 0 ? (longStats.totalPL / longStats.totalTrades >= 0 ? 'text-positive' : 'text-negative') : 'text-text-primary'}`}>
-                  ${longStats.totalTrades > 0 ? (longStats.totalPL / longStats.totalTrades).toFixed(2) : '0.00'}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-text-secondary">Total P/L</span>
-                <span className={`font-mono font-semibold ${longStats.totalPL >= 0 ? 'text-positive' : 'text-negative'}`}>
-                  ${longStats.totalPL.toFixed(2)}
-                </span>
-              </div>
-            </div>
-          </div>
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase bg-negative/15 text-negative">SHORT</span>
-              <span className="text-text-secondary text-sm">{shortStats.totalTrades} trades</span>
-            </div>
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-text-secondary">Win Rate</span>
-                <span className="font-mono text-text-primary">{shortStats.winRate.toFixed(1)}%</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-text-secondary">Avg P/L</span>
-                <span className={`font-mono font-semibold ${shortStats.totalTrades > 0 ? (shortStats.totalPL / shortStats.totalTrades >= 0 ? 'text-positive' : 'text-negative') : 'text-text-primary'}`}>
-                  ${shortStats.totalTrades > 0 ? (shortStats.totalPL / shortStats.totalTrades).toFixed(2) : '0.00'}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-text-secondary">Total P/L</span>
-                <span className={`font-mono font-semibold ${shortStats.totalPL >= 0 ? 'text-positive' : 'text-negative'}`}>
-                  ${shortStats.totalPL.toFixed(2)}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    ),
-
-    'ana-equity-curve': (
-      <div className="bg-bg-surface border border-border rounded-xl p-6 h-full">
-        <h3 className="text-text-primary font-semibold mb-4">Equity Curve</h3>
-        <div ref={equityWrapperRef}>
-          <canvas ref={canvasRef}></canvas>
-        </div>
-      </div>
-    ),
-
-    'ana-detailed-stats': (
-      <div className="bg-bg-surface border border-border rounded-xl p-6 h-full overflow-y-auto">
-        <h3 className="text-text-primary font-semibold mb-4">Detailed Statistics</h3>
-        <div className="space-y-3">
-          {[
-            ['Total Trades', stats.totalTrades, 'text-text-primary'],
-            ['Winning Trades', stats.wins, 'text-positive'],
-            ['Losing Trades', stats.losses, 'text-negative'],
-            ['Avg Win', `$${stats.avgWin.toFixed(2)}`, 'text-positive'],
-            ['Avg Loss', `$${stats.avgLoss.toFixed(2)}`, 'text-negative'],
-            ['Best Trade', `$${stats.bestTrade.toFixed(2)}`, 'text-positive'],
-            ['Worst Trade', `$${stats.worstTrade.toFixed(2)}`, 'text-negative'],
-            ['Best Win Streak', bestWinStreak, 'text-positive'],
-            ['Worst Loss Streak', bestLossStreak, 'text-negative'],
-            ['Avg Duration', formatDuration(stats.avgDuration), 'text-text-primary'],
-          ].map(([label, value, color]) => (
-            <div key={label} className="flex items-center justify-between py-1.5 border-b border-border/50">
-              <span className="text-text-secondary text-sm">{label}</span>
-              <span className={`font-mono text-sm ${color}`}>{value}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    ),
-
-    'ana-ticker-pl': (
-      <div className="bg-bg-surface border border-border rounded-xl p-6 h-full">
-        <h3 className="text-text-primary font-semibold mb-4">P/L by Ticker</h3>
-        <div className="space-y-3 max-h-[280px] overflow-y-auto">
-          {Object.entries(tickerStats)
-            .sort((a, b) => Math.abs(b[1].totalPL) - Math.abs(a[1].totalPL))
-            .map(([ticker, data]) => {
-              const total = data.wins + data.losses;
-              const wr = total > 0 ? ((data.wins / total) * 100).toFixed(0) : 0;
-              return (
-                <div key={ticker} className="flex items-center justify-between py-2 border-b border-border/50">
-                  <div>
-                    <span className="font-mono text-sm font-semibold text-text-primary">{ticker}</span>
-                    <span className="text-text-tertiary text-xs ml-2">{total} trades | {wr}% WR</span>
-                  </div>
-                  <span className={`font-mono text-sm font-semibold ${data.totalPL >= 0 ? 'text-positive' : 'text-negative'}`}>
-                    {data.totalPL >= 0 ? '+' : ''}${data.totalPL.toFixed(2)}
-                  </span>
+      {/* Long vs Short Breakdown */}
+      {(() => {
+        const longTrades = trades.filter(t => t.quantity > 0);
+        const shortTrades = trades.filter(t => t.quantity < 0);
+        const longStats = calculateAnalytics(longTrades);
+        const shortStats = calculateAnalytics(shortTrades);
+        return (
+          <div className="bg-bg-surface border border-border rounded-xl p-6">
+            <h3 className="text-text-primary font-semibold mb-4">Long vs Short Breakdown</h3>
+            <div className="grid grid-cols-2 gap-6">
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase bg-positive/15 text-positive">LONG</span>
+                  <span className="text-text-secondary text-sm">{longStats.totalTrades} trades</span>
                 </div>
-              );
-            })}
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-text-secondary">Win Rate</span>
+                    <span className="font-mono text-text-primary">{longStats.winRate.toFixed(1)}%</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-text-secondary">Avg P/L</span>
+                    <span className={`font-mono font-semibold ${longStats.totalTrades > 0 ? (longStats.totalPL / longStats.totalTrades >= 0 ? 'text-positive' : 'text-negative') : 'text-text-primary'}`}>
+                      ${longStats.totalTrades > 0 ? (longStats.totalPL / longStats.totalTrades).toFixed(2) : '0.00'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-text-secondary">Total P/L</span>
+                    <span className={`font-mono font-semibold ${longStats.totalPL >= 0 ? 'text-positive' : 'text-negative'}`}>
+                      ${longStats.totalPL.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase bg-negative/15 text-negative">SHORT</span>
+                  <span className="text-text-secondary text-sm">{shortStats.totalTrades} trades</span>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-text-secondary">Win Rate</span>
+                    <span className="font-mono text-text-primary">{shortStats.winRate.toFixed(1)}%</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-text-secondary">Avg P/L</span>
+                    <span className={`font-mono font-semibold ${shortStats.totalTrades > 0 ? (shortStats.totalPL / shortStats.totalTrades >= 0 ? 'text-positive' : 'text-negative') : 'text-text-primary'}`}>
+                      ${shortStats.totalTrades > 0 ? (shortStats.totalPL / shortStats.totalTrades).toFixed(2) : '0.00'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-text-secondary">Total P/L</span>
+                    <span className={`font-mono font-semibold ${shortStats.totalPL >= 0 ? 'text-positive' : 'text-negative'}`}>
+                      ${shortStats.totalPL.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Charts row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Equity Curve */}
+        <div className="bg-bg-surface border border-border rounded-xl p-6">
+          <h3 className="text-text-primary font-semibold mb-4">Equity Curve</h3>
+          <div>
+            <canvas ref={canvasRef}></canvas>
+          </div>
+        </div>
+
+        {/* Detailed Statistics */}
+        <div className="bg-bg-surface border border-border rounded-xl p-6">
+          <h3 className="text-text-primary font-semibold mb-4">Detailed Statistics</h3>
+          <div className="space-y-3">
+            {[
+              ['Total Trades', stats.totalTrades, 'text-text-primary'],
+              ['Winning Trades', stats.wins, 'text-positive'],
+              ['Losing Trades', stats.losses, 'text-negative'],
+              ['Avg Win', `$${stats.avgWin.toFixed(2)}`, 'text-positive'],
+              ['Avg Loss', `$${stats.avgLoss.toFixed(2)}`, 'text-negative'],
+              ['Best Trade', `$${stats.bestTrade.toFixed(2)}`, 'text-positive'],
+              ['Worst Trade', `$${stats.worstTrade.toFixed(2)}`, 'text-negative'],
+              ['Best Win Streak', bestWinStreak, 'text-positive'],
+              ['Worst Loss Streak', bestLossStreak, 'text-negative'],
+              ['Avg Duration', formatDuration(stats.avgDuration), 'text-text-primary'],
+            ].map(([label, value, color]) => (
+              <div key={label} className="flex items-center justify-between py-1.5 border-b border-border/50">
+                <span className="text-text-secondary text-sm">{label}</span>
+                <span className={`font-mono text-sm ${color}`}>{value}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
-    ),
 
-    'ana-perf-day': (
-      <div className="bg-bg-surface border border-border rounded-xl p-6 h-full">
-        <h3 className="text-text-primary font-semibold mb-4">Performance by Day</h3>
-        <div ref={dayWrapperRef}>
-          <canvas ref={barCanvasRef}></canvas>
+      {/* P/L by Ticker + Performance by Day */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* P/L by Ticker */}
+        <div className="bg-bg-surface border border-border rounded-xl p-6">
+          <h3 className="text-text-primary font-semibold mb-4">P/L by Ticker</h3>
+          <div className="space-y-3 max-h-[280px] overflow-y-auto">
+            {Object.entries(tickerStats)
+              .sort((a, b) => Math.abs(b[1].totalPL) - Math.abs(a[1].totalPL))
+              .map(([ticker, data]) => {
+                const total = data.wins + data.losses;
+                const wr = total > 0 ? ((data.wins / total) * 100).toFixed(0) : 0;
+                return (
+                  <div key={ticker} className="flex items-center justify-between py-2 border-b border-border/50">
+                    <div>
+                      <span className="font-mono text-sm font-semibold text-text-primary">{ticker}</span>
+                      <span className="text-text-tertiary text-xs ml-2">{total} trades | {wr}% WR</span>
+                    </div>
+                    <span className={`font-mono text-sm font-semibold ${data.totalPL >= 0 ? 'text-positive' : 'text-negative'}`}>
+                      {data.totalPL >= 0 ? '+' : ''}${data.totalPL.toFixed(2)}
+                    </span>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+
+        {/* Performance by Day */}
+        <div className="bg-bg-surface border border-border rounded-xl p-6">
+          <h3 className="text-text-primary font-semibold mb-4">Performance by Day</h3>
+          <div>
+            <canvas ref={barCanvasRef}></canvas>
+          </div>
         </div>
       </div>
-    ),
 
-    'ana-perf-time': (
-      <div className="bg-bg-surface border border-border rounded-xl p-6 h-full">
-        <h3 className="text-text-primary font-semibold mb-4">Performance by Entry Time (30-Min)</h3>
-        <div ref={timeWrapperRef} className={showTimeTable ? 'mb-4' : ''}>
-          <canvas ref={timeCanvasRef} className="w-full"></canvas>
-        </div>
-        {showTimeTable && (
-          <div className="max-h-[300px] overflow-y-auto mb-4">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-bg-surface">
-                <tr className="border-b border-border">
-                  <th className="text-left px-3 py-2 text-xs font-medium text-text-tertiary uppercase tracking-wider">Time</th>
-                  <th className="text-right px-3 py-2 text-xs font-medium text-text-tertiary uppercase tracking-wider">Trades</th>
-                  <th className="text-right px-3 py-2 text-xs font-medium text-text-tertiary uppercase tracking-wider">Wins</th>
-                  <th className="text-right px-3 py-2 text-xs font-medium text-text-tertiary uppercase tracking-wider">Losses</th>
-                  <th className="text-right px-3 py-2 text-xs font-medium text-text-tertiary uppercase tracking-wider">Win Rate</th>
-                  <th className="text-right px-3 py-2 text-xs font-medium text-text-tertiary uppercase tracking-wider">Total P/L</th>
-                  <th className="text-right px-3 py-2 text-xs font-medium text-text-tertiary uppercase tracking-wider">Avg P/L</th>
-                </tr>
-              </thead>
-              <tbody>
-                {timeOfDayStats.map(row => (
-                  <tr key={row.time} className="border-b border-border/50 hover:bg-bg-input/50 transition-colors">
-                    <td className="px-3 py-2 font-mono text-text-primary">{row.time}</td>
-                    <td className="text-right px-3 py-2 text-text-secondary">{row.count}</td>
-                    <td className="text-right px-3 py-2 text-positive">{row.wins}</td>
-                    <td className="text-right px-3 py-2 text-negative">{row.losses}</td>
-                    <td className="text-right px-3 py-2 text-text-secondary">{row.winRate.toFixed(1)}%</td>
-                    <td className={`text-right px-3 py-2 font-mono font-semibold ${row.totalPL >= 0 ? 'text-positive' : 'text-negative'}`}>
-                      {row.totalPL >= 0 ? '+' : ''}${row.totalPL.toFixed(2)}
-                    </td>
-                    <td className={`text-right px-3 py-2 font-mono ${row.avgPL >= 0 ? 'text-positive' : 'text-negative'}`}>
-                      {row.avgPL >= 0 ? '+' : ''}${row.avgPL.toFixed(2)}
-                    </td>
+      {/* Performance by Time of Day */}
+      {trades.length > 0 && (
+        <div className="bg-bg-surface border border-border rounded-xl p-6">
+          <h3 className="text-text-primary font-semibold mb-4">Performance by Entry Time (30-Min)</h3>
+          <div className={showTimeTable ? 'mb-4' : ''}>
+            <canvas ref={timeCanvasRef} className="w-full"></canvas>
+          </div>
+          {showTimeTable && (
+            <div className="max-h-[300px] overflow-y-auto mb-4">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-bg-surface">
+                  <tr className="border-b border-border">
+                    <th className="text-left px-3 py-2 text-xs font-medium text-text-tertiary uppercase tracking-wider">Time</th>
+                    <th className="text-right px-3 py-2 text-xs font-medium text-text-tertiary uppercase tracking-wider">Trades</th>
+                    <th className="text-right px-3 py-2 text-xs font-medium text-text-tertiary uppercase tracking-wider">Wins</th>
+                    <th className="text-right px-3 py-2 text-xs font-medium text-text-tertiary uppercase tracking-wider">Losses</th>
+                    <th className="text-right px-3 py-2 text-xs font-medium text-text-tertiary uppercase tracking-wider">Win Rate</th>
+                    <th className="text-right px-3 py-2 text-xs font-medium text-text-tertiary uppercase tracking-wider">Total P/L</th>
+                    <th className="text-right px-3 py-2 text-xs font-medium text-text-tertiary uppercase tracking-wider">Avg P/L</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        <button
-          onClick={() => setShowTimeTable(!showTimeTable)}
-          className="text-xs text-text-tertiary hover:text-text-primary transition-colors px-2 py-1 rounded border border-border hover:border-text-muted"
-        >
-          {showTimeTable ? 'Show Less' : 'Show More'}
-        </button>
-      </div>
-    ),
-
-    'ana-monte-carlo': monteCarloResults ? (
-      <div className="bg-bg-surface border border-border rounded-xl p-6 h-full">
-        <h3 className="text-text-primary font-semibold mb-2">Monte Carlo Eval Simulation</h3>
-        <p className="text-text-tertiary text-xs mb-4">
-          {monteCarloResults.totalSimulations.toLocaleString()} simulations | $3,000 profit target | $2,000 EOD trailing drawdown | 100 sample paths
-        </p>
-        <div ref={monteCarloWrapperRef} className="mb-4">
-          <canvas ref={monteCarloCanvasRef} className="w-full"></canvas>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-bg-page rounded-lg p-4 text-center">
-            <div className="text-text-secondary text-xs font-medium uppercase tracking-wider mb-1">Pass Rate</div>
-            <div className={`font-mono text-2xl font-bold ${monteCarloResults.passRate >= 50 ? 'text-positive' : 'text-negative'}`}>
-              {monteCarloResults.passRate.toFixed(1)}%
+                </thead>
+                <tbody>
+                  {timeOfDayStats.map(row => (
+                    <tr key={row.time} className="border-b border-border/50 hover:bg-bg-input/50 transition-colors">
+                      <td className="px-3 py-2 font-mono text-text-primary">{row.time}</td>
+                      <td className="text-right px-3 py-2 text-text-secondary">{row.count}</td>
+                      <td className="text-right px-3 py-2 text-positive">{row.wins}</td>
+                      <td className="text-right px-3 py-2 text-negative">{row.losses}</td>
+                      <td className="text-right px-3 py-2 text-text-secondary">{row.winRate.toFixed(1)}%</td>
+                      <td className={`text-right px-3 py-2 font-mono font-semibold ${row.totalPL >= 0 ? 'text-positive' : 'text-negative'}`}>
+                        {row.totalPL >= 0 ? '+' : ''}${row.totalPL.toFixed(2)}
+                      </td>
+                      <td className={`text-right px-3 py-2 font-mono ${row.avgPL >= 0 ? 'text-positive' : 'text-negative'}`}>
+                        {row.avgPL >= 0 ? '+' : ''}${row.avgPL.toFixed(2)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          </div>
-          <div className="bg-bg-page rounded-lg p-4 text-center">
-            <div className="text-text-secondary text-xs font-medium uppercase tracking-wider mb-1">Avg Days to Pass</div>
-            <div className="font-mono text-2xl font-bold text-text-primary">
-              {monteCarloResults.avgDaysToPass > 0 ? monteCarloResults.avgDaysToPass.toFixed(1) : '—'}
-            </div>
-          </div>
-          <div className="bg-bg-page rounded-lg p-4 text-center">
-            <div className="text-text-secondary text-xs font-medium uppercase tracking-wider mb-1">Median Days to Pass</div>
-            <div className="font-mono text-2xl font-bold text-text-primary">
-              {monteCarloResults.medianDaysToPass > 0 ? monteCarloResults.medianDaysToPass : '—'}
-            </div>
-          </div>
-        </div>
-      </div>
-    ) : null,
-  };
-
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary">Analytics</h1>
-          <p className="text-text-secondary text-sm mt-1">Detailed performance analysis</p>
-        </div>
-        <LayoutControls
-          isLocked={isLocked} setIsLocked={setIsLocked}
-          widgetVisibility={widgetVisibility} toggleWidget={toggleWidget}
-          resetLayout={resetLayout} widgetDefs={ANALYTICS_WIDGETS}
-        />
-      </div>
-
-      {/* Period Filter + Eval filter */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex-1 min-w-0">
-          <PeriodFilter value={period} onChange={setPeriod} trades={allTrades} />
-        </div>
-        <EvalFilterControl trades={allTrades} evalFilter={evalFilter} setEvalFilter={setEvalFilter} />
-      </div>
-
-      {trades.length === 0 ? (
-        <div className="bg-bg-surface border border-border rounded-xl p-8 text-center">
-          <p className="text-text-secondary text-sm">No trades found for this period</p>
-        </div>
-      ) : (
-        <>
-          {/* GridStack container */}
-          <div ref={containerRef} className="grid-stack" />
-
-          {/* Portals: render widget content into GridStack items */}
-          {ready && Object.entries(portalTargets).map(([id, el]) =>
-            widgetContent[id] ? ReactDOM.createPortal(widgetContent[id], el) : null
           )}
-        </>
+          <button
+            onClick={() => setShowTimeTable(!showTimeTable)}
+            className="text-xs text-text-tertiary hover:text-text-primary transition-colors px-2 py-1 rounded border border-border hover:border-text-muted"
+          >
+            {showTimeTable ? 'Show Less' : 'Show More'}
+          </button>
+        </div>
       )}
+
+      {/* Monte Carlo Simulation */}
+      {monteCarloResults && (
+        <div className="bg-bg-surface border border-border rounded-xl p-6">
+          <h3 className="text-text-primary font-semibold mb-2">Monte Carlo Eval Simulation</h3>
+          <p className="text-text-tertiary text-xs mb-4">
+            {monteCarloResults.totalSimulations.toLocaleString()} simulations | $3,000 profit target | $2,000 EOD trailing drawdown | 100 sample paths
+          </p>
+          <div className="mb-4">
+            <canvas ref={monteCarloCanvasRef} className="w-full"></canvas>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-bg-page rounded-lg p-4 text-center">
+              <div className="text-text-secondary text-xs font-medium uppercase tracking-wider mb-1">Pass Rate</div>
+              <div className={`font-mono text-2xl font-bold ${monteCarloResults.passRate >= 50 ? 'text-positive' : 'text-negative'}`}>
+                {monteCarloResults.passRate.toFixed(1)}%
+              </div>
+            </div>
+            <div className="bg-bg-page rounded-lg p-4 text-center">
+              <div className="text-text-secondary text-xs font-medium uppercase tracking-wider mb-1">Avg Days to Pass</div>
+              <div className="font-mono text-2xl font-bold text-text-primary">
+                {monteCarloResults.avgDaysToPass > 0 ? monteCarloResults.avgDaysToPass.toFixed(1) : '—'}
+              </div>
+            </div>
+            <div className="bg-bg-page rounded-lg p-4 text-center">
+              <div className="text-text-secondary text-xs font-medium uppercase tracking-wider mb-1">Median Days to Pass</div>
+              <div className="font-mono text-2xl font-bold text-text-primary">
+                {monteCarloResults.medianDaysToPass > 0 ? monteCarloResults.medianDaysToPass : '—'}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      </>)}
     </div>
   );
 };

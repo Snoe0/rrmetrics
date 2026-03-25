@@ -73,3 +73,4 @@ public/assets/*.map
 # Local tool configs
 .serena/
 .claude/RR-Metrics/.obsidian/
+.superpowers/
