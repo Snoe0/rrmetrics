@@ -814,6 +814,33 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
           </div>
         </div>
 
+        {/* Detailed Statistics */}
+        <div className="bg-bg-surface border border-border rounded-xl p-6">
+          <h3 className="text-text-primary font-semibold mb-4">Detailed Statistics</h3>
+          <div className="space-y-3">
+            {[
+              ['Total Trades', stats.totalTrades, 'text-text-primary'],
+              ['Winning Trades', stats.wins, 'text-positive'],
+              ['Losing Trades', stats.losses, 'text-negative'],
+              ['Avg Win', `$${stats.avgWin.toFixed(2)}`, 'text-positive'],
+              ['Avg Loss', `$${stats.avgLoss.toFixed(2)}`, 'text-negative'],
+              ['Best Trade', `$${stats.bestTrade.toFixed(2)}`, 'text-positive'],
+              ['Worst Trade', `$${stats.worstTrade.toFixed(2)}`, 'text-negative'],
+              ['Best Win Streak', bestWinStreak, 'text-positive'],
+              ['Worst Loss Streak', bestLossStreak, 'text-negative'],
+              ['Avg Duration', formatDuration(stats.avgDuration), 'text-text-primary'],
+            ].map(([label, value, color]) => (
+              <div key={label} className="flex items-center justify-between py-1.5 border-b border-border/50">
+                <span className="text-text-secondary text-sm">{label}</span>
+                <span className={`font-mono text-sm ${color}`}>{value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* P/L by Ticker + Performance by Day */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* P/L by Ticker */}
         <div className="bg-bg-surface border border-border rounded-xl p-6">
           <h3 className="text-text-primary font-semibold mb-4">P/L by Ticker</h3>
@@ -837,39 +864,12 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
               })}
           </div>
         </div>
-      </div>
 
-      {/* Bottom row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Performance by Day */}
         <div className="bg-bg-surface border border-border rounded-xl p-6">
           <h3 className="text-text-primary font-semibold mb-4">Performance by Day</h3>
           <div>
             <canvas ref={barCanvasRef}></canvas>
-          </div>
-        </div>
-
-        {/* Detailed Statistics */}
-        <div className="bg-bg-surface border border-border rounded-xl p-6">
-          <h3 className="text-text-primary font-semibold mb-4">Detailed Statistics</h3>
-          <div className="space-y-3">
-            {[
-              ['Total Trades', stats.totalTrades, 'text-text-primary'],
-              ['Winning Trades', stats.wins, 'text-positive'],
-              ['Losing Trades', stats.losses, 'text-negative'],
-              ['Avg Win', `$${stats.avgWin.toFixed(2)}`, 'text-positive'],
-              ['Avg Loss', `$${stats.avgLoss.toFixed(2)}`, 'text-negative'],
-              ['Best Trade', `$${stats.bestTrade.toFixed(2)}`, 'text-positive'],
-              ['Worst Trade', `$${stats.worstTrade.toFixed(2)}`, 'text-negative'],
-              ['Best Win Streak', bestWinStreak, 'text-positive'],
-              ['Worst Loss Streak', bestLossStreak, 'text-negative'],
-              ['Avg Duration', formatDuration(stats.avgDuration), 'text-text-primary'],
-            ].map(([label, value, color]) => (
-              <div key={label} className="flex items-center justify-between py-1.5 border-b border-border/50">
-                <span className="text-text-secondary text-sm">{label}</span>
-                <span className={`font-mono text-sm ${color}`}>{value}</span>
-              </div>
-            ))}
           </div>
         </div>
       </div>
