@@ -24,10 +24,13 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChang
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Icons.Home },
-    { id: 'trades', label: 'Trades', icon: Icons.List },
     { id: 'analytics', label: 'Analytics', icon: Icons.BarChart },
     { id: 'strategy', label: 'Strategy', icon: Icons.Target },
     { id: 'premarket', label: 'Pre-Market', icon: Icons.Sunrise },
+  ];
+
+  const secondaryNavItems = [
+    { id: 'trades', label: 'Trades', icon: Icons.List },
     { id: 'settings', label: 'Settings', icon: Icons.Settings },
   ];
 
@@ -117,6 +120,34 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChang
                 </a>
               );
             })}
+          </div>
+
+          <div className="mt-4">
+            <div className="border-t border-border mx-2 mb-2" />
+            <div className="space-y-1">
+              {secondaryNavItems.map(item => {
+                const Icon = item.icon;
+                const isActive = currentPage === item.id;
+                return (
+                  <a
+                    key={item.id}
+                    href="#"
+                    title={isCollapsed ? item.label : undefined}
+                    className={`flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition-colors no-underline ${isCollapsed ? 'justify-center gap-0' : 'gap-3'} ${
+                      isActive
+                        ? 'bg-bg-surface text-accent border-l-2 border-accent'
+                        : 'text-text-secondary hover:text-text-primary hover:bg-bg-surface'
+                    }`}
+                    onClick={(e) => { e.preventDefault(); handleNav(item.id); }}
+                  >
+                    <Icon className="w-5 h-5 flex-shrink-0" />
+                    <span className={`transition-opacity duration-200 whitespace-nowrap ${isCollapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100'}`}>
+                      {item.label}
+                    </span>
+                  </a>
+                );
+              })}
+            </div>
           </div>
 
           {/* Developer-only tools */}
