@@ -20,14 +20,14 @@ const HeroSection = () => (
     <div className="relative mx-auto max-w-5xl px-6 py-28 lg:py-24">
       <div className="relative z-10 mx-auto max-w-2xl text-center">
         <h1 className="text-balance text-4xl font-semibold text-text-primary md:text-5xl lg:text-6xl">
-          Your Trading Edge{' '}
+          Ditch the Spreadsheet.{' '}
           <span className="bg-gradient-to-r from-accent to-[#8b5cf6] bg-clip-text text-transparent">
-            Starts Before the Bell
+            Find Your Edge Automatically.
           </span>
         </h1>
 
         <p className="mx-auto my-8 max-w-2xl text-lg text-text-secondary sm:text-xl leading-relaxed">
-          The all-in-one trading journal with pre-market preparation, auto broker sync, advanced analytics, and daily performance tracking. Build consistency. Find your edge.
+          Stop losing trades to messy notebooks and dead spreadsheets. RR Metrics auto-syncs your broker, tracks your stats, and shows you exactly where you make — and lose — money. Starting at just $5/mo.
         </p>
 
         <Button asChild size="lg" className="bg-accent text-accent-text hover:bg-accent/90 shadow-lg shadow-accent/20 font-semibold">
