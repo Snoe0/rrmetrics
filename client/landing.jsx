@@ -405,7 +405,7 @@ const PremarketVisual = () => (
     </div>
     <div className="bg-bg-input/50 rounded-lg p-3 flex items-start gap-3">
       <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-        <Icons.BarChart2 className="w-4 h-4 text-accent" />
+        <Icons.BarChart className="w-4 h-4 text-accent" />
       </div>
       <div>
         <p className="text-text-primary text-sm font-medium">Prep Consistency Stats</p>
