@@ -25,6 +25,7 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
   const [hoveredTimeIndex, setHoveredTimeIndex] = useState(null);
   const [showTimeTable, setShowTimeTable] = useState(false);
   const [period, setPeriod] = useState('all');
+  const [kellyDrawdown, setKellyDrawdown] = useState(2000);
 
   const baseTradesForPeriod = applyEvalFilter(allTrades, evalFilter);
   const dateRange = getDateRange(period);
@@ -369,7 +370,7 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
   const sortinoRatio = calculateSortinoRatio(trades);
 
   // Kelly Criterion (based on $2000 max drawdown as bankroll)
-  const kelly = calculateKellyCriterion(trades, 2000);
+  const kelly = calculateKellyCriterion(trades, kellyDrawdown);
 
   // Monte Carlo simulation (memoized to avoid re-running on every render)
   const monteCarloResults = useMemo(() => {
@@ -724,8 +725,20 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
           tooltip={"Risk-adjusted return measuring reward per unit of total volatility.\n\nFormula: (Mean Daily P/L / Std Dev of Daily P/L) x √252\n\nAbove 1.0 = good, above 2.0 = excellent, below 0 = losing money on average."} />
         <StatCard label="Sortino Ratio" value={sortinoRatio === Infinity ? '∞' : sortinoRatio.toFixed(2)} color={sortinoRatio > 0 ? 'text-positive' : 'text-negative'}
           tooltip={"Like Sharpe but only penalizes downside volatility, ignoring upside swings.\n\nFormula: (Mean Daily P/L / Downside Deviation) x √252\n\nHigher is better. A Sortino much higher than Sharpe means your volatility is mostly upside."} />
-        <StatCard label="Kelly Optimal Risk" value={`$${kelly.optimalRisk.toFixed(0)}`} subValue={`${kelly.kellyPct.toFixed(1)}% of $2,000`} color="text-text-primary"
-          tooltip={"Optimal risk per trade based on the Kelly Criterion and a $2,000 max drawdown.\n\nFormula: f* = p - (1-p) / (avgWin/avgLoss)\n\nRepresents the mathematically optimal fraction of your bankroll to risk on each trade to maximize long-term growth."} />
+        <div className="bg-bg-surface border border-border rounded-xl p-5">
+          <div className="text-text-secondary text-xs font-medium uppercase tracking-wider mb-2">Kelly Optimal Risk</div>
+          <div className="font-mono text-2xl font-bold text-text-primary">${kelly.optimalRisk.toFixed(0)}</div>
+          <div className="text-text-tertiary text-xs mt-1">{kelly.kellyPct.toFixed(1)}% of drawdown</div>
+          <div className="flex items-center gap-2 mt-2">
+            <span className="text-text-tertiary text-xs">Max DD $</span>
+            <input
+              type="number"
+              value={kellyDrawdown}
+              onChange={(e) => setKellyDrawdown(Math.max(0, Number(e.target.value)))}
+              className="w-20 bg-bg-input border border-border rounded px-2 py-1 text-xs font-mono text-text-primary focus:outline-none focus:border-accent"
+            />
+          </div>
+        </div>
       </div>
 
       {/* Long vs Short Breakdown */}
