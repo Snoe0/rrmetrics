@@ -1,6 +1,3 @@
 User-agent: *
 Allow: /
-Disallow: /trades
-Disallow: /changepass
-Disallow: /admin
 Sitemap: https://rrmetrics.com/sitemap.xml
