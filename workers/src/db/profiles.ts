@@ -66,6 +66,7 @@ export async function updateById(
     customColorsPositive: 'custom_colors_positive',
     customColorsNegative: 'custom_colors_negative',
     emailUnsubscribed: 'email_unsubscribed',
+    onboardingCompleted: 'onboarding_completed',
   };
 
   const updateData: Record<string, unknown> = {};

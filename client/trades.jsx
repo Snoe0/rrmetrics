@@ -33,6 +33,7 @@ const UpgradePage = require('./components/pages/UpgradePage');
 const ReferralPage = require('./components/pages/ReferralPage');
 const TradeSyncerPage = require('./components/pages/TradeSyncerPage');
 const DotGrid = require('./components/shared/DotGrid');
+const OnboardingFlow = require('./components/OnboardingFlow');
 
 const AnnouncementBanner = ({ announcement, onDismiss }) => {
   if (!announcement) return null;
@@ -76,7 +77,7 @@ const App = () => {
   const [subscriptionStatus, setSubscriptionStatus] = useState(null);
   const [userRole, setUserRole] = useState('user');
   const [syncNotification, setSyncNotification] = useState(null);
-  const [showWelcome, setShowWelcome] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
   const [customColors, setCustomColors] = useState(() => {
     try { return JSON.parse(localStorage.getItem('customColors')) || {}; } catch { return {}; }
@@ -195,17 +196,9 @@ const App = () => {
       const response = await authFetch('/api/getTrades');
       const data = await response.json();
       setTrades(data.trades);
-      if (data.trades && data.trades.length === 0 && !localStorage.getItem('rrmetrics_onboarded')) {
-        setShowWelcome(true);
-      }
     };
     loadTradesFromServer();
   }, [reloadTrades]);
-
-  const dismissWelcome = () => {
-    setShowWelcome(false);
-    localStorage.setItem('rrmetrics_onboarded', '1');
-  };
 
   const handleDismissAnnouncement = () => {
     if (announcement) {
@@ -234,6 +227,7 @@ const App = () => {
         const data = await response.json();
         setSubscriptionStatus(data);
         if (data.role) setUserRole(data.role);
+        if (data.onboardingCompleted === false) setShowOnboarding(true);
       } catch (err) {
         console.error('Failed to fetch subscription status:', err);
       }
@@ -466,23 +460,14 @@ const App = () => {
       <SyncPopup isOpen={syncPopupOpen} onClose={() => setSyncPopupOpen(false)} triggerReload={triggerReload} />
       <Toast toast={toast} onClose={() => setToast(null)} />
 
-      {showWelcome && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={dismissWelcome}>
-          <div className="bg-bg-surface border border-border rounded-xl shadow-2xl max-w-sm w-full mx-4 px-6 py-5 text-center" onClick={e => e.stopPropagation()}>
-            <h3 className="text-text-primary text-base font-semibold mb-2">Welcome to RR Metrics!</h3>
-            <p className="text-text-secondary text-sm mb-4">New here? Check out our quick start guide to get up and running.</p>
-            <a
-              href="/guides/getting-started"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-2 px-4 py-2 bg-accent text-black text-sm font-medium rounded-lg hover:opacity-90 transition-opacity no-underline"
-            >
-              <Icons.BookOpen className="w-4 h-4" />
-              Quick Start Guide
-            </a>
-            <button onClick={dismissWelcome} className="text-text-muted text-xs hover:text-text-secondary transition-colors mt-4 cursor-pointer block mx-auto">Dismiss</button>
-          </div>
-        </div>
+      {showOnboarding && (
+        <OnboardingFlow
+          onComplete={() => setShowOnboarding(false)}
+          theme={theme}
+          customColors={customColors}
+          onThemeChange={handleThemeChange}
+          subscriptionStatus={subscriptionStatus}
+        />
       )}
     </div>
     </SidePanelContext.Provider>

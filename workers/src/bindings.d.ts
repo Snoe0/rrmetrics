@@ -48,6 +48,7 @@ export interface ProfileRow {
   role: string;
   created_at: string;
   email_unsubscribed: boolean;
+  onboarding_completed: boolean;
 }
 
 export interface AccountAPI {

@@ -116,6 +116,18 @@ account.post('/api/account/complete-registration', requiresLogin, async (c) => {
   return c.json({ ok: true });
 });
 
+// POST /api/account/onboarding-complete
+account.post('/api/account/onboarding-complete', requiresLogin, async (c) => {
+  const profile = c.get('profile');
+  const supabase = c.get('supabase');
+  try {
+    await profilesDb.updateById(supabase, profile.id, { onboardingCompleted: true });
+    return c.json({ ok: true });
+  } catch (err: any) {
+    return c.json({ error: 'Failed to mark onboarding complete' }, 500);
+  }
+});
+
 // GET /api/subscriptionStatus
 account.get(
   '/api/subscriptionStatus',
@@ -131,6 +143,7 @@ account.get(
       isPremium: status.isPremium,
       plan: status.effectivePlan,
       role: profile.role || 'user',
+      onboardingCompleted: profile.onboarding_completed ?? true,
     };
 
     if (status.hasTradeLimit) {
