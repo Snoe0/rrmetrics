@@ -341,21 +341,59 @@ async function syncConnection(
   }
 
   // Step 7: Skip already-synced trades
+  // 7a: Exact match on tradovateOrderId (handles normal re-syncs)
   const allCompositeIds = filteredTrips.map((t) => t.tradovateOrderId);
   const existingOrderIds = await tradesDb.findByTradovateOrderIds(supabase, userId, allCompositeIds);
   const existingIds = new Set(existingOrderIds);
 
-  const newTrades = filteredTrips
-    .filter((t) => !existingIds.has(t.tradovateOrderId))
-    .map((t) => ({
-      ...t,
-      tradovateSource: source,
-      brokerConnectionId: connectionId,
-    }));
+  const afterOrderIdDedup = filteredTrips.filter((t) => !existingIds.has(t.tradovateOrderId));
+
+  // 7b: Fuzzy time+account dedup against all existing trades in the same time window.
+  // Catches duplicates from CSV imports, reconnected brokers, or pre-merge syncs.
+  let newTrades = afterOrderIdDedup;
+  if (afterOrderIdDedup.length > 0) {
+    // Query a time window that covers all incoming trades ± threshold
+    const allEnterMs = afterOrderIdDedup.map((t) => new Date(t.enterTime).getTime());
+    const minEnter = new Date(Math.min(...allEnterMs) - MERGE_THRESHOLD_MS).toISOString();
+    const maxEnter = new Date(Math.max(...allEnterMs) + MERGE_THRESHOLD_MS).toISOString();
+    const { data: existing } = await supabase
+      .from('trades')
+      .select('ticker, enter_time, exit_time, account')
+      .eq('user_id', userId)
+      .gte('enter_time', minEnter)
+      .lte('enter_time', maxEnter);
+
+    if (existing && existing.length > 0) {
+      const existingTrades = existing.map((r: any) => ({
+        ticker: r.ticker as string,
+        enterMs: new Date(r.enter_time).getTime(),
+        exitMs: new Date(r.exit_time).getTime(),
+        account: (r.account || '') as string,
+      }));
+
+      newTrades = afterOrderIdDedup.filter((t) => {
+        const enterMs = new Date(t.enterTime).getTime();
+        const exitMs = new Date(t.exitTime).getTime();
+        const acct = t.account || '';
+        return !existingTrades.some((e) =>
+          e.ticker === t.ticker &&
+          e.account === acct &&
+          Math.abs(e.enterMs - enterMs) <= MERGE_THRESHOLD_MS &&
+          Math.abs(e.exitMs - exitMs) <= MERGE_THRESHOLD_MS
+        );
+      });
+    }
+  }
+
+  const tradesToInsert = newTrades.map((t) => ({
+    ...t,
+    tradovateSource: source,
+    brokerConnectionId: connectionId,
+  }));
 
   let syncedCount = 0;
-  if (newTrades.length > 0) {
-    const result = await tradesDb.bulkInsertTrades(supabase, userId, newTrades);
+  if (tradesToInsert.length > 0) {
+    const result = await tradesDb.bulkInsertTrades(supabase, userId, tradesToInsert);
     syncedCount = result.imported;
   }
 
