@@ -291,7 +291,7 @@ const BentoItem = ({ className = '', children }) => {
 const ChecklistVisual = () => {
   const rules = [
     { label: 'Review pre-market levels', checked: true },
-    { label: 'Check economic calendar', checked: true },
+    { label: 'Check key support/resistance levels', checked: true },
     { label: 'Set stop-loss before entry', checked: true },
     { label: 'Max 3 trades per session', checked: false },
     { label: 'No revenge trading', checked: false },
@@ -396,20 +396,20 @@ const PremarketVisual = () => (
   <div className="mt-4 space-y-3">
     <div className="bg-bg-input/50 rounded-lg p-3 flex items-start gap-3">
       <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-        <Icons.Calendar className="w-4 h-4 text-accent" />
+        <Icons.Check className="w-4 h-4 text-accent" />
       </div>
       <div>
-        <p className="text-text-primary text-sm font-medium">Economic Calendar</p>
-        <p className="text-text-muted text-xs mt-0.5">FOMC Minutes at 2:00 PM ET</p>
+        <p className="text-text-primary text-sm font-medium">Custom Checklist</p>
+        <p className="text-text-muted text-xs mt-0.5">Build your own pre-session routine</p>
       </div>
     </div>
     <div className="bg-bg-input/50 rounded-lg p-3 flex items-start gap-3">
       <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-        <Icons.Bell className="w-4 h-4 text-accent" />
+        <Icons.BarChart2 className="w-4 h-4 text-accent" />
       </div>
       <div>
-        <p className="text-text-primary text-sm font-medium">Discord Alerts</p>
-        <p className="text-text-muted text-xs mt-0.5">Summary sent at 8:30 AM</p>
+        <p className="text-text-primary text-sm font-medium">Prep Consistency Stats</p>
+        <p className="text-text-muted text-xs mt-0.5">Track completion over time</p>
       </div>
     </div>
     <div className="bg-bg-input/50 rounded-lg p-3 flex items-start gap-3">
@@ -417,8 +417,8 @@ const PremarketVisual = () => (
         <Icons.Sunrise className="w-4 h-4 text-accent" />
       </div>
       <div>
-        <p className="text-text-primary text-sm font-medium">Auto-Reset Daily</p>
-        <p className="text-text-muted text-xs mt-0.5">Resets at your chosen time</p>
+        <p className="text-text-primary text-sm font-medium">Stay Accountable</p>
+        <p className="text-text-muted text-xs mt-0.5">Never skip your prep again</p>
       </div>
     </div>
   </div>
