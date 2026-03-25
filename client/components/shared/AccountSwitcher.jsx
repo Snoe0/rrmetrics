@@ -5,12 +5,47 @@ const { Avatar, AvatarFallback } = require('../ui/avatar');
 const { Check, ChevronsUpDown } = require('lucide-react');
 const { cn } = require('../../lib/utils');
 
+const BROKER_ICONS = {
+  tradovate:           { icon: '/assets/img/tradovate.png',    label: 'Tradovate' },
+  ninjatrader:         { icon: '/assets/img/ninjatrader.jpeg', label: 'NinjaTrader' },
+  alpha_futures:       { icon: '/assets/img/alphafutures.png', label: 'Alpha Futures' },
+  apex_trader_funding: { icon: '/assets/img/apex.png',         label: 'Apex Trader Funding' },
+  robinhood:           { icon: '/assets/img/robinhood.svg',    label: 'Robinhood' },
+  webull:              { icon: '/assets/img/webull.svg',       label: 'Webull' },
+  projectx:            { icon: '/assets/img/topstep.png',      label: 'TopstepX' },
+};
+
 const AccountSwitcher = ({ trades, selectedAccounts, setSelectedAccounts, collapsed }) => {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
 
   const accounts = useMemo(() => {
     return [...new Set((trades || []).map(t => t.account || 'Manual'))].sort();
+  }, [trades]);
+
+  // Map account names to their broker key using tradovateSource/projectxSource
+  const accountBrokerMap = useMemo(() => {
+    const map = {};
+    for (const t of (trades || [])) {
+      const acct = t.account || 'Manual';
+      if (map[acct]) continue;
+      if (t.projectxSource) {
+        // projectxSource format: "projectx_demo" or "projectx_live"
+        map[acct] = 'projectx';
+      } else if (t.tradovateSource && t.tradovateSource !== 'manual') {
+        // tradovateSource format: "broker_environment" e.g. "alpha_futures_live", "tradovate_demo"
+        const src = t.tradovateSource;
+        // Match against known broker keys (longest match first to handle underscored names)
+        const brokerKeys = Object.keys(BROKER_ICONS).sort((a, b) => b.length - a.length);
+        for (const key of brokerKeys) {
+          if (src.startsWith(key + '_') || src === key) {
+            map[acct] = key;
+            break;
+          }
+        }
+      }
+    }
+    return map;
   }, [trades]);
 
   const filtered = useMemo(() => {
@@ -52,11 +87,19 @@ const AccountSwitcher = ({ trades, selectedAccounts, setSelectedAccounts, collap
             collapsed && 'justify-center px-2'
           )}
         >
-          <Avatar className="h-6 w-6 flex-shrink-0">
-            <AvatarFallback className="text-[10px] font-semibold text-text-secondary bg-accent/15">
-              {isAllSelected ? 'A' : label.charAt(0).toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
+          {(() => {
+            const singleAcct = !isAllSelected && selectedAccounts.length === 1 ? selectedAccounts[0] : null;
+            const broker = singleAcct && accountBrokerMap[singleAcct] ? BROKER_ICONS[accountBrokerMap[singleAcct]] : null;
+            return broker ? (
+              <img src={broker.icon} alt={broker.label} className="h-6 w-6 flex-shrink-0 rounded-md object-contain" />
+            ) : (
+              <Avatar className="h-6 w-6 flex-shrink-0">
+                <AvatarFallback className="text-[10px] font-semibold text-text-secondary bg-accent/15">
+                  {isAllSelected ? 'A' : label.charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+            );
+          })()}
           {!collapsed && (
             <>
               <span className="ml-2 flex-1 truncate text-text-primary font-medium">{label}</span>
@@ -115,11 +158,18 @@ const AccountSwitcher = ({ trades, selectedAccounts, setSelectedAccounts, collap
                     isSelected && 'bg-bg-input'
                   )}
                 >
-                  <Avatar className="h-5 w-5 flex-shrink-0">
-                    <AvatarFallback className="text-[9px] font-bold bg-bg-page text-text-secondary">
-                      {acct.charAt(0).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
+                  {(() => {
+                    const broker = accountBrokerMap[acct] ? BROKER_ICONS[accountBrokerMap[acct]] : null;
+                    return broker ? (
+                      <img src={broker.icon} alt={broker.label} className="h-5 w-5 flex-shrink-0 rounded object-contain" />
+                    ) : (
+                      <Avatar className="h-5 w-5 flex-shrink-0">
+                        <AvatarFallback className="text-[9px] font-bold bg-bg-page text-text-secondary">
+                          {acct.charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                    );
+                  })()}
                   <span className={cn('flex-1 truncate', isSelected ? 'text-text-primary' : 'text-text-secondary')}>
                     {acct}
                   </span>
