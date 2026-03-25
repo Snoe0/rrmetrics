@@ -39,7 +39,7 @@ const calculateAnalytics = (trades) => {
   const bestTrade = Math.max(...allPLs);
   const worstTrade = Math.min(...allPLs);
 
-  const uniqueDays = new Set(trades.map(t => toEST(new Date(t.enterTime)).toDateString()));
+  const uniqueDays = new Set(trades.map(t => { const d = toEST(new Date(t.enterTime)); return `${d.year}-${d.month}-${d.day}`; }));
   const avgTradesPerDay = uniqueDays.size > 0 ? trades.length / uniqueDays.size : 0;
 
   return {
