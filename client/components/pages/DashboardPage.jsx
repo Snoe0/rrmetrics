@@ -43,8 +43,16 @@ const AvgWinLossCard = ({ avgWin, avgLoss }) => {
 
 
 
-const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, onOpenImport, onOpenAddTrade, onEditTrade, dailyNotes, onSaveNote, onDeleteNote, tags, strategyRules, evalFilter, setEvalFilter, sidebarCollapsed }) => {
+const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, onOpenImport, onManualSync, brokerStatuses, onOpenAddTrade, onEditTrade, dailyNotes, onSaveNote, onDeleteNote, tags, strategyRules, evalFilter, setEvalFilter, sidebarCollapsed }) => {
   const [period, setPeriod] = useState('all');
+  const [syncing, setSyncing] = useState(false);
+  const hasBrokers = brokerStatuses && brokerStatuses.length > 0;
+
+  const handleSync = async () => {
+    if (syncing || !onManualSync) return;
+    setSyncing(true);
+    try { await onManualSync(); } finally { setSyncing(false); }
+  };
 
   const baseTrades = applyEvalFilter(trades, evalFilter);
   const dateRange = getDateRange(period);
@@ -69,6 +77,16 @@ const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, onOpenImport, o
             <Icons.Download className="w-4 h-4" />
             Import CSV
           </button>
+          {hasBrokers && (
+            <button
+              className="flex items-center justify-center w-9 h-9 bg-bg-surface border border-border text-text-secondary rounded-lg hover:text-text-primary hover:border-accent transition-all disabled:opacity-50"
+              onClick={handleSync}
+              disabled={syncing}
+              title="Sync broker trades"
+            >
+              <Icons.RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+            </button>
+          )}
           {subscriptionStatus && subscriptionStatus.isPremium && (subscriptionStatus.tradeCount == null || subscriptionStatus.tradeCount < 50) && (
             <button className="flex items-center gap-2 px-4 py-2.5 bg-accent text-accent-text text-sm font-semibold rounded-lg hover:brightness-110 transition-all" onClick={onOpenForm}>
               <Icons.Plus className="w-4 h-4" />

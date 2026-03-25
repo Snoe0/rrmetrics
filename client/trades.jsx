@@ -329,79 +329,92 @@ const App = () => {
   useEffect(() => {
     const autoSync = async () => {
       const statuses = [];
-      try {
-        const statusRes = await authFetch('/api/tradovate/status');
-        const status = await statusRes.json();
-        if (status.configured) {
-          statuses.push({ name: 'Tradovate', apiPrefix: 'tradovate', ...status });
-          setSyncNotification('Syncing trades from Tradovate...');
-          const syncRes = await authFetch('/api/tradovate/sync', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-          });
-          const syncData = await syncRes.json();
-          if (syncData.synced > 0) {
-            setSyncNotification(`Synced ${syncData.synced} new trade${syncData.synced !== 1 ? 's' : ''} from Tradovate`);
-            triggerReload();
-          } else {
-            setSyncNotification(null);
-          }
-          setTimeout(() => setSyncNotification(null), 4000);
-        }
-      } catch (err) {
-        console.error('Auto-sync failed:', err);
-      }
 
-      // Auto-sync ProjectX
-      try {
-        const pxStatusRes = await authFetch('/api/projectx/status');
-        const pxStat = await pxStatusRes.json();
-        if (pxStat.configured && pxStat.selectedAccounts?.length > 0) {
-          statuses.push({ name: 'Topstep', apiPrefix: 'projectx', ...pxStat });
-          setSyncNotification('Syncing trades from Topstep...');
-          const pxSyncRes = await authFetch('/api/projectx/sync', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-          });
-          const pxSyncData = await pxSyncRes.json();
-          if (pxSyncData.synced > 0) {
-            setSyncNotification(`Synced ${pxSyncData.synced} new trade${pxSyncData.synced !== 1 ? 's' : ''} from Topstep`);
-            triggerReload();
-          } else {
-            setSyncNotification(null);
+      // Helper: fetch status + sync all configured connections for a broker
+      const syncBroker = async (apiPrefix, displayName) => {
+        try {
+          const statusRes = await authFetch(`/api/${apiPrefix}/status`);
+          const statusData = await statusRes.json();
+          const conns = statusData.connections || [];
+          const configuredConns = conns.filter(c => c.configured);
+
+          if (configuredConns.length > 0) {
+            statuses.push({ name: displayName, apiPrefix, connections: conns, ...statusData });
+            setSyncNotification(`Syncing trades from ${displayName}...`);
+            let totalSynced = 0;
+
+            for (const conn of configuredConns) {
+              try {
+                const syncRes = await authFetch(`/api/${apiPrefix}/sync`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ connectionId: conn.connectionId }),
+                });
+                const syncData = await syncRes.json();
+                totalSynced += syncData.synced || 0;
+              } catch (err) {
+                console.error(`Auto-sync failed for ${displayName} connection ${conn.connectionId}:`, err);
+              }
+            }
+
+            if (totalSynced > 0) {
+              setSyncNotification(`Synced ${totalSynced} new trade${totalSynced !== 1 ? 's' : ''} from ${displayName}`);
+              triggerReload();
+            } else {
+              setSyncNotification(null);
+            }
+            setTimeout(() => setSyncNotification(null), 4000);
+          } else if (conns.length > 0) {
+            // Has connections but none configured (all expired)
+            statuses.push({ name: displayName, apiPrefix, connections: conns, ...statusData });
           }
-          setTimeout(() => setSyncNotification(null), 4000);
+        } catch (err) {
+          console.error(`${displayName} auto-sync failed:`, err);
         }
-      } catch (err) {
-        console.error('ProjectX auto-sync failed:', err);
-      }
+      };
+
+      await syncBroker('tradovate', 'Tradovate');
+      await syncBroker('projectx', 'Topstep');
+
       setBrokerStatuses(statuses);
     };
     autoSync();
   }, []);
 
   const handleManualSync = async () => {
-    const hasExpired = brokerStatuses.some(b => b.expired);
+    const hasExpired = brokerStatuses.some(b =>
+      (b.connections || []).some(c => c.expired)
+    );
     if (hasExpired) {
       setSyncPopupOpen(true);
       return;
     }
     for (const broker of brokerStatuses) {
+      const conns = (broker.connections || []).filter(c => c.configured);
+      if (conns.length === 0) continue;
+
       setSyncNotification(`Syncing trades from ${broker.name}...`);
-      try {
-        const res = await authFetch(`/api/${broker.apiPrefix}/sync`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-        });
-        const data = await res.json();
-        if (data.synced > 0) {
-          setSyncNotification(`Synced ${data.synced} new trade${data.synced !== 1 ? 's' : ''} from ${broker.name}`);
-          triggerReload();
-        } else {
-          setSyncNotification(`${broker.name} is up to date`);
+      let totalSynced = 0;
+
+      for (const conn of conns) {
+        try {
+          const res = await authFetch(`/api/${broker.apiPrefix}/sync`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ connectionId: conn.connectionId }),
+          });
+          const data = await res.json();
+          totalSynced += data.synced || 0;
+        } catch {
+          setSyncNotification(`Failed to sync ${broker.name}`);
         }
-      } catch {
-        setSyncNotification(`Failed to sync ${broker.name}`);
+      }
+
+      if (totalSynced > 0) {
+        setSyncNotification(`Synced ${totalSynced} new trade${totalSynced !== 1 ? 's' : ''} from ${broker.name}`);
+        triggerReload();
+      } else {
+        setSyncNotification(`${broker.name} is up to date`);
       }
     }
     setTimeout(() => setSyncNotification(null), 4000);
