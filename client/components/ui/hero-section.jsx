@@ -68,36 +68,6 @@ const HeroSection = () => (
       </div>
     </div>
 
-    {/* Broker logos */}
-    <div className="relative z-10 py-16">
-      <div className="m-auto max-w-5xl px-6">
-        <h2 className="text-center text-lg font-medium text-text-secondary">
-          Sync trades from your favorite brokers
-        </h2>
-        <div className="mx-auto mt-12 flex max-w-3xl flex-wrap items-center justify-center gap-x-12 gap-y-8 sm:gap-x-16 sm:gap-y-12">
-          <div className="flex flex-col items-center gap-2">
-            <img className="h-10 w-10 rounded object-contain" src="/assets/img/tradovate.png" alt="Tradovate" />
-            <span className="text-text-muted text-xs">Tradovate</span>
-          </div>
-          <div className="flex flex-col items-center gap-2">
-            <img className="h-10 w-10 rounded object-contain" src="/assets/img/ninjatrader.jpeg" alt="NinjaTrader" />
-            <span className="text-text-muted text-xs">NinjaTrader</span>
-          </div>
-          <div className="flex flex-col items-center gap-2">
-            <img className="h-10 w-10 rounded object-contain" src="/assets/img/topstep.png" alt="TopstepX" />
-            <span className="text-text-muted text-xs">TopstepX</span>
-          </div>
-          <div className="flex flex-col items-center gap-2">
-            <img className="h-10 w-10 rounded object-contain" src="/assets/img/webull.png" alt="Webull" />
-            <span className="text-text-muted text-xs">Webull</span>
-          </div>
-          <div className="flex flex-col items-center gap-2">
-            <img className="h-10 w-10 rounded object-contain" src="/assets/img/robinhood.png" alt="Robinhood" />
-            <span className="text-text-muted text-xs">Robinhood</span>
-          </div>
-        </div>
-      </div>
-    </div>
   </section>
 );
 
