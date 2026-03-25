@@ -50,7 +50,7 @@ const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, onOpenImport, o
 
   const {
     containerRef, isLocked, setIsLocked,
-    widgetVisibility, toggleWidget, resetLayout, ready,
+    widgetVisibility, toggleWidget, resetLayout, ready, portalRevision,
   } = useGridStack('dashboard', DASHBOARD_WIDGETS);
 
   const baseTrades = applyEvalFilter(trades, evalFilter);
@@ -73,7 +73,7 @@ const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, onOpenImport, o
       if (el) targets[w.id] = el;
     });
     setPortalTargets(targets);
-  }, [ready, widgetVisibility]);
+  }, [ready, portalRevision]);
 
   const widgetContent = {
     'dash-primary-stats': (

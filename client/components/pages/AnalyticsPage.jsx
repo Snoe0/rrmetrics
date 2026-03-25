@@ -45,7 +45,7 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
 
   const {
     containerRef, isLocked, setIsLocked,
-    widgetVisibility, toggleWidget, resetLayout, ready,
+    widgetVisibility, toggleWidget, resetLayout, ready, portalRevision,
   } = useGridStack('analytics', ANALYTICS_WIDGETS);
 
   const baseTradesForPeriod = applyEvalFilter(allTrades, evalFilter);
@@ -705,7 +705,7 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
       if (el) targets[w.id] = el;
     });
     setPortalTargets(targets);
-  }, [ready, widgetVisibility]);
+  }, [ready, portalRevision]);
 
   if (trades.length === 0 && period === 'all') {
     return (

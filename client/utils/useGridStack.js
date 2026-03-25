@@ -34,13 +34,14 @@ function useGridStack(pageKey, defaultWidgets) {
     if (saved && saved.widgets) {
       saved.widgets.forEach(w => { vis[w.id] = w.visible !== false; });
     }
-    // Ensure all default widgets have a visibility entry
     defaultWidgets.forEach(w => {
       if (vis[w.id] === undefined) vis[w.id] = true;
     });
     return vis;
   });
   const [ready, setReady] = useState(false);
+  // Counter to force portal target re-scan after toggle/reset
+  const [portalRevision, setPortalRevision] = useState(0);
   const savePendingRef = useRef(null);
 
   // Debounced save
@@ -86,11 +87,11 @@ function useGridStack(pageKey, defaultWidgets) {
 
     const grid = GridStack.init({
       column: 12,
-      cellHeight: 40,
+      cellHeight: 70,
       margin: 8,
       float: false,
       animate: true,
-      staticGrid: true, // start locked
+      staticGrid: true,
       disableOneColumnMode: true,
     }, containerRef.current);
 
@@ -138,7 +139,7 @@ function useGridStack(pageKey, defaultWidgets) {
       gridRef.current = null;
       setReady(false);
     };
-  }, []); // Only run once on mount
+  }, []);
 
   // Handle lock/unlock
   useEffect(() => {
@@ -181,8 +182,12 @@ function useGridStack(pageKey, defaultWidgets) {
         if (el) grid.removeWidget(el, false);
       }
 
-      // Save after toggle
-      setTimeout(() => persistLayout(), 100);
+      // Bump portal revision after DOM update so portals re-scan
+      setTimeout(() => {
+        setPortalRevision(r => r + 1);
+        persistLayout();
+      }, 50);
+
       return newVis;
     });
   }, [defaultWidgets, persistLayout]);
@@ -191,10 +196,8 @@ function useGridStack(pageKey, defaultWidgets) {
     const grid = gridRef.current;
     if (!grid) return;
 
-    // Remove all existing widgets
     grid.removeAll(false);
 
-    // Re-add all defaults
     const newVis = {};
     grid.batchUpdate(true);
     defaultWidgets.forEach(def => {
@@ -223,8 +226,10 @@ function useGridStack(pageKey, defaultWidgets) {
     setIsLocked(true);
     grid.setStatic(true);
 
-    // Clear saved layout
     localStorage.removeItem(getStorageKey(pageKey));
+
+    // Bump portal revision so portals re-scan
+    setTimeout(() => setPortalRevision(r => r + 1), 50);
   }, [pageKey, defaultWidgets]);
 
   return {
@@ -236,6 +241,7 @@ function useGridStack(pageKey, defaultWidgets) {
     toggleWidget,
     resetLayout,
     ready,
+    portalRevision,
   };
 }
 
