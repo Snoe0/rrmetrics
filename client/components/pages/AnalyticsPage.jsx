@@ -254,6 +254,13 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
       const y = val >= 0 ? zeroY - barH : zeroY;
 
       const isHovered = hoveredDayIndex === i;
+
+      // Subtle hover background for the full column
+      if (isHovered) {
+        ctx.fillStyle = getCSSVar('--text-primary') + '08';
+        ctx.fillRect(padding.left + barGap * i, padding.top, barGap, chartH);
+      }
+
       const baseColor = val >= 0 ? dayPosColor : dayNegColor;
       ctx.fillStyle = isHovered ? baseColor + 'CC' : baseColor;
       ctx.beginPath();
@@ -482,6 +489,13 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
       const y = stat.avgPL >= 0 ? zeroY - barH : zeroY;
 
       const isHovered = hoveredTimeIndex === i;
+
+      // Subtle hover background for the full column
+      if (isHovered) {
+        ctx.fillStyle = getCSSVar('--text-primary') + '08';
+        ctx.fillRect(padding.left + barGap * i, padding.top, barGap, chartH);
+      }
+
       const timeBaseColor = stat.avgPL >= 0 ? timePosColor : timeNegColor;
       ctx.fillStyle = stat.count === 0 ? 'transparent' : (isHovered ? timeBaseColor + 'CC' : timeBaseColor);
       if (stat.count > 0) {
@@ -853,20 +867,20 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
           <h3 className="text-text-primary font-semibold mb-4">Detailed Statistics</h3>
           <div className="space-y-3">
             {[
-              ['Total Trades', stats.totalTrades],
-              ['Winning Trades', stats.wins],
-              ['Losing Trades', stats.losses],
-              ['Avg Win', `$${stats.avgWin.toFixed(2)}`],
-              ['Avg Loss', `$${stats.avgLoss.toFixed(2)}`],
-              ['Best Trade', `$${stats.bestTrade.toFixed(2)}`],
-              ['Worst Trade', `$${stats.worstTrade.toFixed(2)}`],
-              ['Best Win Streak', bestWinStreak],
-              ['Worst Loss Streak', bestLossStreak],
-              ['Avg Duration', formatDuration(stats.avgDuration)],
-            ].map(([label, value]) => (
+              ['Total Trades', stats.totalTrades, 'text-text-primary'],
+              ['Winning Trades', stats.wins, 'text-positive'],
+              ['Losing Trades', stats.losses, 'text-negative'],
+              ['Avg Win', `$${stats.avgWin.toFixed(2)}`, 'text-positive'],
+              ['Avg Loss', `$${stats.avgLoss.toFixed(2)}`, 'text-negative'],
+              ['Best Trade', `$${stats.bestTrade.toFixed(2)}`, 'text-positive'],
+              ['Worst Trade', `$${stats.worstTrade.toFixed(2)}`, 'text-negative'],
+              ['Best Win Streak', bestWinStreak, 'text-positive'],
+              ['Worst Loss Streak', bestLossStreak, 'text-negative'],
+              ['Avg Duration', formatDuration(stats.avgDuration), 'text-text-primary'],
+            ].map(([label, value, color]) => (
               <div key={label} className="flex items-center justify-between py-1.5 border-b border-border/50">
                 <span className="text-text-secondary text-sm">{label}</span>
-                <span className="font-mono text-sm text-text-primary">{value}</span>
+                <span className={`font-mono text-sm ${color}`}>{value}</span>
               </div>
             ))}
           </div>
