@@ -428,25 +428,25 @@ const AnalyticsVisual = () => (
 
 const PropFirmVisual = () => (
   <div className="mt-4">
-    <div className="flex items-center justify-between mb-3">
-      <span className="text-text-secondary text-xs">Evaluation Progress</span>
-      <span className="text-accent font-mono text-xs font-bold">73%</span>
+    <div className="flex items-center justify-between mb-2">
+      <span className="text-text-secondary text-xs">Pass Probability</span>
+      <span className="text-accent font-mono text-sm font-bold">72.4%</span>
     </div>
     <div className="w-full h-3 bg-bg-input rounded-full overflow-hidden mb-4">
-      <div className="h-full bg-gradient-to-r from-accent to-[#8b5cf6] rounded-full" style={{ width: '73%' }}></div>
+      <div className="h-full bg-gradient-to-r from-accent to-[#8b5cf6] rounded-full" style={{ width: '72.4%' }}></div>
+    </div>
+    <div className="flex items-center gap-2 mb-3">
+      <span className="text-text-muted text-[10px] uppercase tracking-wider">10,000 simulations</span>
+      <div className="flex-1 h-px bg-border"></div>
     </div>
     <div className="space-y-2">
       <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-bg-input/50">
-        <span className="text-text-secondary text-xs">Max Daily Loss</span>
-        <span className="text-positive text-xs font-mono">Within Limit</span>
+        <span className="text-text-secondary text-xs">Avg Days to Pass</span>
+        <span className="text-text-primary text-xs font-mono">14.2</span>
       </div>
       <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-bg-input/50">
-        <span className="text-text-secondary text-xs">Trailing Drawdown</span>
-        <span className="text-positive text-xs font-mono">$2,150 remaining</span>
-      </div>
-      <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-bg-input/50">
-        <span className="text-text-secondary text-xs">Profit Target</span>
-        <span className="text-warning text-xs font-mono">$1,800 / $6,000</span>
+        <span className="text-text-secondary text-xs">Bust Probability</span>
+        <span className="text-negative text-xs font-mono">27.6%</span>
       </div>
     </div>
   </div>
@@ -553,8 +553,8 @@ const BentoFeaturesGrid = () => {
               <div className="w-10 h-10 bg-accent/10 rounded-lg flex items-center justify-center mb-3 text-accent">
                 <Icons.Target className="w-5 h-5" />
               </div>
-              <h3 className="text-lg font-bold text-text-primary">Prop Firm Tracker</h3>
-              <p className="mt-2 text-text-secondary text-sm">Track your evaluation progress, drawdown limits, and profit targets all in one view.</p>
+              <h3 className="text-lg font-bold text-text-primary">Prop Firm Calculator</h3>
+              <p className="mt-2 text-text-secondary text-sm">Monte Carlo simulations calculate your probability of passing any prop firm evaluation based on your real trading stats.</p>
             </div>
             <PropFirmVisual />
           </BentoItem>
