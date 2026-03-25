@@ -676,7 +676,7 @@ const PricingSection = () => {
             </ScrollReveal>
           ))}
         </div>
-        <p className="text-center text-text-muted text-xs mt-8">Cancel anytime. Remaining balance refunded.</p>
+        <p className="text-center text-text-muted text-xs mt-8">Cancel anytime.</p>
       </div>
     </section>
   );
