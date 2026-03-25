@@ -190,8 +190,8 @@ referral.post('/api/referral/payout', requiresLogin, async (c) => {
       return c.json({ error: 'Connect your bank account before requesting a payout.' }, 400);
     }
 
-    if (!amountCents || amountCents < 2500) {
-      return c.json({ error: 'Minimum payout is $25.00.' }, 400);
+    if (!amountCents || amountCents < 1500) {
+      return c.json({ error: 'Minimum payout is $15.00.' }, 400);
     }
 
     // Atomic: check balance + create payout_request in one transaction

@@ -574,7 +574,7 @@ CREATE POLICY "Users can manage own backtesting trades"
 CREATE OR REPLACE FUNCTION public.create_payout_atomic(
   p_user_id UUID,
   p_amount_cents INTEGER,
-  p_min_cents INTEGER DEFAULT 2500,
+  p_min_cents INTEGER DEFAULT 1500,
   p_maturity_days INTEGER DEFAULT 14,
   p_cooldown_hours INTEGER DEFAULT 24
 )
