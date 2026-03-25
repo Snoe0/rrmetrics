@@ -27,6 +27,28 @@ const COMMON_TICKERS = [
   'COIN', 'SOFI', 'PLTR', 'IWM', 'DIA', 'GLD', 'TLT',
 ];
 
-const getPointValue = (ticker) => TICK_VALUES[(ticker || '').toUpperCase()] ?? 1;
+// Minimum price increment per contract. Stocks default to 0.01.
+const TICK_SIZES = {
+  NQ: 0.25, MNQ: 0.25,
+  ES: 0.25, MES: 0.25,
+  YM: 1.0,  MYM: 1.0,
+  RTY: 0.10, M2K: 0.10,
+  GC: 0.10, MGC: 0.10,
+  SI: 0.005, SIL: 0.005,
+  CL: 0.01, MCL: 0.01,
+  NG: 0.001,
+  ZB: 1/32, ZN: 1/64, ZF: 1/128,
+};
 
-module.exports = { TICK_VALUES, COMMON_TICKERS, getPointValue };
+const getPointValue = (ticker) => TICK_VALUES[(ticker || '').toUpperCase()] ?? 1;
+const getTickSize = (ticker) => TICK_SIZES[(ticker || '').toUpperCase()] ?? 0.01;
+
+const BREAKEVEN_TICK_THRESHOLD = 4;
+
+const isBreakevenTrade = (trade) => {
+  const priceDiff = Math.abs(trade.exitPrice - trade.enterPrice);
+  const threshold = getTickSize(trade.ticker) * BREAKEVEN_TICK_THRESHOLD;
+  return priceDiff <= threshold;
+};
+
+module.exports = { TICK_VALUES, TICK_SIZES, COMMON_TICKERS, getPointValue, getTickSize, isBreakevenTrade };
