@@ -1,28 +1,70 @@
 const React = require('react');
-const { useState } = React;
+const { useState, useRef, useEffect, useCallback } = React;
 const Icons = require('./shared/Icons');
 const AccountSwitcher = require('./shared/AccountSwitcher');
 const { cn } = require('../lib/utils');
 const { supabase } = require('../helper');
 
-// =====================================================
-// SIDEBAR
-// =====================================================
-const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChange, userRole, trades, selectedAccounts, setSelectedAccounts }) => {
+const MIN_WIDTH = 64;
+const COLLAPSE_THRESHOLD = 140;
+const DEFAULT_WIDTH = 240;
+
+const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChange, onWidthChange, userRole, trades, selectedAccounts, setSelectedAccounts }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(
-    () => localStorage.getItem('sidebar-collapsed') === 'true'
-  );
+  const [width, setWidth] = useState(() => {
+    const stored = localStorage.getItem('sidebar-width');
+    return stored ? Number(stored) : DEFAULT_WIDTH;
+  });
+  const isDragging = useRef(false);
+  const startX = useRef(0);
+  const startWidth = useRef(0);
 
-  const toggleCollapsed = () => {
-    const next = !collapsed;
-    setCollapsed(next);
-    localStorage.setItem('sidebar-collapsed', String(next));
-    if (onCollapsedChange) onCollapsedChange(next);
-  };
+  const isCollapsed = width < COLLAPSE_THRESHOLD && !sidebarOpen;
 
-  const isCollapsed = collapsed && !sidebarOpen;
+  // Notify parent of collapsed state and width changes
+  useEffect(() => {
+    if (onCollapsedChange) onCollapsedChange(isCollapsed);
+    if (onWidthChange) onWidthChange(isCollapsed ? MIN_WIDTH : width);
+  }, [width, isCollapsed]);
+
+  const handleMouseDown = useCallback((e) => {
+    e.preventDefault();
+    isDragging.current = true;
+    startX.current = e.clientX;
+    startWidth.current = width;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, [width]);
+
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!isDragging.current) return;
+      const delta = e.clientX - startX.current;
+      const newWidth = Math.max(MIN_WIDTH, Math.min(400, startWidth.current + delta));
+      setWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      if (!isDragging.current) return;
+      isDragging.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      // Snap to collapsed or expanded
+      setWidth(prev => {
+        const final = prev < COLLAPSE_THRESHOLD ? MIN_WIDTH : prev;
+        localStorage.setItem('sidebar-width', String(final));
+        return final;
+      });
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Icons.Home },
@@ -62,6 +104,8 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChang
     </>
   );
 
+  const sidebarWidth = isCollapsed ? MIN_WIDTH : width;
+
   return (
     <>
       {/* Mobile hamburger */}
@@ -82,7 +126,10 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChang
       )}
 
       {/* Sidebar */}
-      <nav className={`fixed top-0 left-0 h-full bg-bg-page border-r border-border flex flex-col z-50 transition-[width] duration-300 overflow-hidden lg:translate-x-0 ${isCollapsed ? 'w-16' : 'w-60'} ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <nav
+        className={`fixed top-0 left-0 h-full bg-bg-page border-r border-border flex flex-col z-50 overflow-hidden lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
+        style={{ width: sidebarWidth, transition: isDragging.current ? 'none' : 'width 0.2s ease' }}
+      >
         {/* Nav links */}
         <div className="flex-1 py-4 px-3 flex flex-col">
           <div className={cn('px-3 mb-3', isCollapsed && 'px-2')}>
@@ -239,20 +286,6 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChang
           </a>
         </div>
 
-        {/* Collapse toggle */}
-        <div className="px-3 pb-2">
-          <button
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors"
-            onClick={toggleCollapsed}
-            title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            {collapsed ? <Icons.ChevronRight className="w-4 h-4" /> : <Icons.ChevronLeft className="w-4 h-4" />}
-            <span className={`text-xs transition-opacity duration-200 whitespace-nowrap ${isCollapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100'}`}>
-              Collapse
-            </span>
-          </button>
-        </div>
-
         {/* Account section */}
         <div className="px-3 pb-4 border-t border-border pt-3">
           <div className="relative">
@@ -276,14 +309,18 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChang
             )}
           </div>
         </div>
+
+        {/* Drag handle */}
+        <div
+          className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-accent/30 active:bg-accent/50 transition-colors hidden lg:block"
+          onMouseDown={handleMouseDown}
+        />
       </nav>
 
       {/* Account side panel — outside nav to escape CSS transform containing block */}
       {accountOpen && isCollapsed && (
         <>
-          {/* Backdrop — closes panel on outside click */}
           <div className="fixed inset-0 z-[59]" onClick={() => setAccountOpen(false)} />
-          {/* Side panel — z-[60] sits above sidebar z-50 and backdrop z-[59] */}
           <div className="fixed left-16 bottom-4 w-48 bg-bg-surface border border-border rounded-lg overflow-hidden shadow-lg z-[60]">
             {accountMenuContent}
           </div>

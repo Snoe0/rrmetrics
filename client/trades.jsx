@@ -87,8 +87,15 @@ const App = () => {
   const [strategyRules, setStrategyRules] = useState([]);
   const [sidePanelOffset, setSidePanelOffset] = useState(0);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
-    () => localStorage.getItem('sidebar-collapsed') === 'true'
+    () => {
+      const stored = localStorage.getItem('sidebar-width');
+      return stored ? Number(stored) < 140 : localStorage.getItem('sidebar-collapsed') === 'true';
+    }
   );
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const stored = localStorage.getItem('sidebar-width');
+    return stored ? Number(stored) : (localStorage.getItem('sidebar-collapsed') === 'true' ? 64 : 240);
+  });
   const [announcement, setAnnouncement] = useState(null);
   const [evalFilter, setEvalFilterState] = useState(() => {
     const stored = localStorage.getItem('evalFilter');
@@ -456,12 +463,13 @@ const App = () => {
         onNavigate={setCurrentPage}
         subscriptionStatus={subscriptionStatus}
         onCollapsedChange={setSidebarCollapsed}
+        onWidthChange={setSidebarWidth}
         userRole={userRole}
         trades={trades}
         selectedAccounts={selectedAccounts}
         setSelectedAccounts={setSelectedAccounts}
       />
-      <main className={`flex-1 min-h-screen transition-[margin] duration-300 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-60'}`} style={{ paddingRight: sidePanelOffset }}>
+      <main className="flex-1 min-h-screen transition-[margin] duration-200 max-lg:!ml-0" style={{ marginLeft: sidebarWidth, paddingRight: sidePanelOffset }}>
         <div className="p-6 lg:p-8">
           <FreeBanner subscriptionStatus={subscriptionStatus} proPrice={pricing.pro} />
           {syncNotification && (
