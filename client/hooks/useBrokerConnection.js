@@ -1,12 +1,17 @@
 const { useState, useCallback } = require('react');
 const { authFetch } = require('../helper.js');
 
-const TRADOVATE_BROKERS = [
-  { key: 'tradovate', label: 'Tradovate', icon: '/assets/img/tradovate.png', subtitle: 'Futures trading platform', color: '#3b82f6' },
-  { key: 'ninjatrader', label: 'NinjaTrader', icon: '/assets/img/ninjatrader.jpeg', subtitle: 'Advanced charting & trading', color: '#f59e0b' },
-  { key: 'alpha_futures', label: 'Alpha Futures', icon: '/assets/img/alphafutures.png', subtitle: 'Prop trading firm (Tradovate)', color: '#e63946' },
-  { key: 'apex_trader_funding', label: 'Apex Trader Funding', icon: '/assets/img/apex.png', subtitle: 'Prop trading firm (Tradovate)', color: '#ff6b00' },
-];
+const BROKER_CONFIGS = {
+  tradovate:           { key: 'tradovate',           label: 'Tradovate',           icon: '/assets/img/tradovate.png',    subtitle: 'Futures trading platform',      color: '#3b82f6',  apiBase: '/api/tradovate', authType: 'oauth', group: 'tradovate' },
+  ninjatrader:         { key: 'ninjatrader',         label: 'NinjaTrader',         icon: '/assets/img/ninjatrader.jpeg',  subtitle: 'Advanced charting & trading',   color: '#f59e0b',  apiBase: '/api/tradovate', authType: 'oauth', group: 'tradovate' },
+  alpha_futures:       { key: 'alpha_futures',       label: 'Alpha Futures',       icon: '/assets/img/alphafutures.png',  subtitle: 'Prop trading firm (Tradovate)', color: '#e63946',  apiBase: '/api/tradovate', authType: 'oauth', group: 'tradovate' },
+  apex_trader_funding: { key: 'apex_trader_funding', label: 'Apex Trader Funding', icon: '/assets/img/apex.png',          subtitle: 'Prop trading firm (Tradovate)', color: '#ff6b00',  apiBase: '/api/tradovate', authType: 'oauth', group: 'tradovate' },
+  robinhood:           { key: 'robinhood',           label: 'Robinhood',           icon: '/assets/img/robinhood.svg',     subtitle: 'Stocks & options',              color: '#00C805',  apiBase: '/api/robinhood', authType: 'credentials', group: 'robinhood' },
+  webull:              { key: 'webull',              label: 'Webull',              icon: '/assets/img/webull.svg',         subtitle: 'Stocks, options & futures',     color: '#E22028',  apiBase: '/api/webull',    authType: 'oauth', group: 'webull' },
+};
+
+// Backward-compatible array for Tradovate-family brokers
+const TRADOVATE_BROKERS = Object.values(BROKER_CONFIGS).filter(b => b.group === 'tradovate');
 
 const useBrokerConnection = (brokerType, { onSyncComplete, setMessage, setExpandedBroker } = {}) => {
   const [connections, setConnections] = useState([]);
@@ -19,13 +24,19 @@ const useBrokerConnection = (brokerType, { onSyncComplete, setMessage, setExpand
   const [showImportPrompt, setShowImportPrompt] = useState(null);
   const [savingAccounts, setSavingAccounts] = useState(null);
   const [selectedAcctIds, setSelectedAcctIds] = useState([]);
+  const [credentials, setCredentials] = useState({ email: '', password: '' });
 
-  const config = TRADOVATE_BROKERS.find(b => b.key === brokerType);
+  const config = BROKER_CONFIGS[brokerType];
   const label = config?.label || brokerType;
+  const apiBase = config?.apiBase || '/api/tradovate';
+  const isTradovateGroup = config?.group === 'tradovate';
 
   const fetchStatus = useCallback(async () => {
     try {
-      const response = await authFetch(`/api/tradovate/status?broker=${brokerType}`);
+      const statusUrl = isTradovateGroup
+        ? `${apiBase}/status?broker=${brokerType}`
+        : `${apiBase}/status`;
+      const response = await authFetch(statusUrl);
       const data = await response.json();
       setConnections(data.connections || []);
       setConnectionsUsed(data.connectionsUsed || 0);
@@ -36,21 +47,43 @@ const useBrokerConnection = (brokerType, { onSyncComplete, setMessage, setExpand
     }
   }, [brokerType]);
 
-  const handleConnect = async () => {
+  const handleConnect = async (connectCredentials) => {
     setConnecting(true);
     setMessage?.(null);
     try {
-      const response = await authFetch('/api/tradovate/connect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ environment, broker: brokerType }),
-      });
-      const data = await response.json();
-      if (data.error) {
-        setMessage?.({ type: 'error', text: data.error });
+      if (config?.authType === 'credentials') {
+        const creds = connectCredentials || credentials;
+        const response = await authFetch(`${apiBase}/connect`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(creds),
+        });
+        const data = await response.json();
+        if (data.error) {
+          setMessage?.({ type: 'error', text: data.error });
+        } else {
+          setMessage?.({ type: 'success', text: `${label} connected successfully!` });
+          setCredentials({ email: '', password: '' });
+          fetchStatus();
+        }
         setConnecting(false);
-      } else if (data.authUrl) {
-        window.location.href = data.authUrl;
+      } else {
+        // OAuth flow
+        const body = isTradovateGroup
+          ? { environment, broker: brokerType }
+          : {};
+        const response = await authFetch(`${apiBase}/connect`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await response.json();
+        if (data.error) {
+          setMessage?.({ type: 'error', text: data.error });
+          setConnecting(false);
+        } else if (data.authUrl) {
+          window.location.href = data.authUrl;
+        }
       }
     } catch (err) {
       setMessage?.({ type: 'error', text: `Failed to start ${label} connection` });
@@ -62,7 +95,7 @@ const useBrokerConnection = (brokerType, { onSyncComplete, setMessage, setExpand
     setSyncingId(connectionId);
     setMessage?.(null);
     try {
-      const response = await authFetch('/api/tradovate/sync', {
+      const response = await authFetch(`${apiBase}/sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ connectionId }),
@@ -82,10 +115,11 @@ const useBrokerConnection = (brokerType, { onSyncComplete, setMessage, setExpand
   };
 
   const handleSyncAll = async () => {
+    if (!isTradovateGroup) return;
     setSyncingId('all');
     setMessage?.(null);
     try {
-      const response = await authFetch('/api/tradovate/sync-all', {
+      const response = await authFetch(`${apiBase}/sync-all`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ broker: brokerType }),
@@ -115,7 +149,7 @@ const useBrokerConnection = (brokerType, { onSyncComplete, setMessage, setExpand
     if (!confirm(`Disconnect this ${label} connection?`)) return;
     setMessage?.(null);
     try {
-      const response = await authFetch(`/api/tradovate/connections/${connectionId}`, { method: 'DELETE' });
+      const response = await authFetch(`${apiBase}/connections/${connectionId}`, { method: 'DELETE' });
       const data = await response.json();
       if (data.error) {
         setMessage?.({ type: 'error', text: data.error });
@@ -138,7 +172,7 @@ const useBrokerConnection = (brokerType, { onSyncComplete, setMessage, setExpand
         body.startDate = today;
         body.endDate = today;
       }
-      const response = await authFetch('/api/tradovate/sync', {
+      const response = await authFetch(`${apiBase}/sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -165,6 +199,7 @@ const useBrokerConnection = (brokerType, { onSyncComplete, setMessage, setExpand
   };
 
   const handleEnableDisable = async (connectionId, enable) => {
+    if (!isTradovateGroup) return;
     if (selectedAcctIds.length === 0) return;
     const conn = connections.find(c => c.connectionId === connectionId);
     if (!conn) return;
@@ -185,7 +220,7 @@ const useBrokerConnection = (brokerType, { onSyncComplete, setMessage, setExpand
 
     setSavingAccounts(connectionId);
     try {
-      const response = await authFetch('/api/tradovate/accounts', {
+      const response = await authFetch(`${apiBase}/accounts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ connectionId, selectedAccounts: toSave }),
@@ -217,11 +252,12 @@ const useBrokerConnection = (brokerType, { onSyncComplete, setMessage, setExpand
     showImportPrompt, setShowImportPrompt,
     savingAccounts,
     selectedAcctIds, setSelectedAcctIds,
-    config, label,
+    credentials, setCredentials,
+    config, label, isTradovateGroup,
     fetchStatus,
     handleConnect, handleSync, handleSyncAll, handleDisconnect,
     handleImportNow, toggleAcctSelection, handleEnableDisable,
   };
 };
 
-module.exports = { useBrokerConnection, TRADOVATE_BROKERS };
+module.exports = { useBrokerConnection, BROKER_CONFIGS, TRADOVATE_BROKERS };

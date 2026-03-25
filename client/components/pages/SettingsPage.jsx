@@ -3,7 +3,7 @@ const { useState, useEffect, useCallback } = React;
 const { authFetch, supabase } = require('../../helper.js');
 const { TAG_COLOR_PRESETS } = require('../../utils/tagConstants');
 const Icons = require('../shared/Icons');
-const { useBrokerConnection, TRADOVATE_BROKERS } = require('../../hooks/useBrokerConnection');
+const { useBrokerConnection, TRADOVATE_BROKERS, BROKER_CONFIGS } = require('../../hooks/useBrokerConnection');
 
 // Helper: relative time string from ISO date
 const relativeTime = (iso) => {
@@ -21,7 +21,7 @@ const relativeTime = (iso) => {
 const TradovateBrokerSection = ({ hook, expandedBroker, toggleBroker, brokerHeaderBadge, statusDot }) => {
   const { config, label, connections, connectionsUsed, connectionLimit, canUseBrokerSync,
     atConnectionLimit, syncingId, showImportPrompt, environment, setEnvironment,
-    connecting, selectedAcctIds, setSelectedAcctIds, savingAccounts,
+    connecting, selectedAcctIds, setSelectedAcctIds, savingAccounts, isTradovateGroup,
     handleConnect, handleSync, handleSyncAll, handleDisconnect,
     handleImportNow, toggleAcctSelection, handleEnableDisable } = hook;
 
@@ -56,7 +56,7 @@ const TradovateBrokerSection = ({ hook, expandedBroker, toggleBroker, brokerHead
             </div>
           ) : (
             <>
-              {connections.filter(c => c.configured && !c.expired).length >= 2 && (
+              {isTradovateGroup && connections.filter(c => c.configured && !c.expired).length >= 2 && (
                 <button onClick={handleSyncAll} disabled={syncingId !== null} className="w-full px-4 py-2.5 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
                   <Icons.RefreshCw className={`w-4 h-4 ${syncingId === 'all' ? 'animate-spin' : ''}`} />
                   {syncingId === 'all' ? 'Syncing all...' : 'Sync All Connections'}
@@ -174,14 +174,16 @@ const TradovateBrokerSection = ({ hook, expandedBroker, toggleBroker, brokerHead
                   <div className="bg-bg-page/50 rounded-lg p-3">
                     <p className="text-xs text-text-secondary leading-relaxed">Connect your {label} account to automatically sync your fills into RR Metrics.</p>
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-text-secondary mb-1">Environment</label>
-                    <select value={environment} onChange={(e) => setEnvironment(e.target.value)}
-                      className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-accent">
-                      <option value="demo">Demo</option>
-                      <option value="live">Live</option>
-                    </select>
-                  </div>
+                  {isTradovateGroup && (
+                    <div>
+                      <label className="block text-xs font-medium text-text-secondary mb-1">Environment</label>
+                      <select value={environment} onChange={(e) => setEnvironment(e.target.value)}
+                        className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-accent">
+                        <option value="demo">Demo</option>
+                        <option value="live">Live</option>
+                      </select>
+                    </div>
+                  )}
                   <button onClick={handleConnect} disabled={connecting}
                     className="px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50">
                     {connecting ? 'Connecting...' : `Connect with ${label}`}
@@ -191,11 +193,13 @@ const TradovateBrokerSection = ({ hook, expandedBroker, toggleBroker, brokerHead
                 <div className="flex items-center justify-between pt-2 border-t border-border">
                   <span className="text-xs text-text-muted">{connectionsUsed} / {connectionLimit} broker connections</span>
                   <div className="flex items-center gap-3">
-                    <select value={environment} onChange={(e) => setEnvironment(e.target.value)}
-                      className="px-2 py-1.5 bg-bg-input border border-border rounded-lg text-xs text-text-primary focus:outline-none focus:border-accent">
-                      <option value="demo">Demo</option>
-                      <option value="live">Live</option>
-                    </select>
+                    {isTradovateGroup && (
+                      <select value={environment} onChange={(e) => setEnvironment(e.target.value)}
+                        className="px-2 py-1.5 bg-bg-input border border-border rounded-lg text-xs text-text-primary focus:outline-none focus:border-accent">
+                        <option value="demo">Demo</option>
+                        <option value="live">Live</option>
+                      </select>
+                    )}
                     <button onClick={handleConnect} disabled={connecting || atConnectionLimit}
                       className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-input border border-border text-text-primary text-xs font-medium rounded-lg hover:border-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       title={atConnectionLimit ? 'Connection limit reached' : `Add another ${label} connection`}>
@@ -203,6 +207,139 @@ const TradovateBrokerSection = ({ hook, expandedBroker, toggleBroker, brokerHead
                       Connect Another
                     </button>
                   </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const RobinhoodBrokerSection = ({ hook, expandedBroker, toggleBroker, brokerHeaderBadge, statusDot }) => {
+  const { config, label, connections, connectionsUsed, connectionLimit, canUseBrokerSync,
+    atConnectionLimit, syncingId, showImportPrompt, connecting,
+    credentials, setCredentials,
+    handleConnect, handleSync, handleDisconnect,
+    handleImportNow } = hook;
+
+  return (
+    <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
+      <button
+        onClick={() => toggleBroker(config.key)}
+        className="w-full flex items-center justify-between p-5 hover:bg-bg-page/50 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <img src={config.icon} alt={label} className="w-10 h-10 rounded-lg object-contain" />
+          <div className="text-left">
+            <h3 className="text-text-primary font-semibold text-sm">{label}</h3>
+            <p className="text-text-tertiary text-xs">{config.subtitle}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          {brokerHeaderBadge(connections)}
+          {expandedBroker === config.key
+            ? <Icons.ChevronUp className="w-4 h-4 text-text-secondary" />
+            : <Icons.ChevronDown className="w-4 h-4 text-text-secondary" />}
+        </div>
+      </button>
+
+      {expandedBroker === config.key && (
+        <div className="px-5 pb-5 border-t border-border pt-4 space-y-4">
+          {!canUseBrokerSync ? (
+            <div className="bg-accent/5 border border-accent/20 rounded-lg p-4 text-center">
+              <p className="text-sm text-text-primary font-medium mb-1">Pro or Elite plan required</p>
+              <p className="text-xs text-text-secondary mb-3">Broker sync is available on Pro and Elite plans.</p>
+              <button onClick={() => window.location.href = '/upgrade'} className="px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all">Upgrade Now</button>
+            </div>
+          ) : (
+            <>
+              {connections.map(conn => (
+                <div key={conn.connectionId} className="bg-bg-page/50 border border-border rounded-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${statusDot(conn)}`}></span>
+                      <span className="text-sm text-text-primary font-medium">{label}</span>
+                      {conn.label && <span className="text-xs text-text-secondary">— {conn.label}</span>}
+                    </div>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      conn.configured && !conn.expired ? 'bg-positive/10 text-positive' :
+                      conn.expired ? 'bg-warning/10 text-warning' : 'bg-text-secondary/10 text-text-secondary'
+                    }`}>
+                      {conn.configured && !conn.expired ? 'Active' : conn.expired ? 'Expired' : 'Inactive'}
+                    </span>
+                  </div>
+
+                  {conn.lastSyncTime && <p className="text-xs text-text-muted">Last sync: {relativeTime(conn.lastSyncTime)}</p>}
+
+                  {showImportPrompt === conn.connectionId && (
+                    <div className="bg-accent/5 border border-accent/20 rounded-lg p-3">
+                      <p className="text-sm text-text-primary font-medium mb-1">Import trades</p>
+                      <p className="text-xs text-text-secondary mb-3">Import your past trades from {label}.</p>
+                      <button onClick={() => handleImportNow(conn.connectionId, false)} disabled={syncingId !== null}
+                        className="w-full px-3 py-2 bg-accent text-accent-text text-xs font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50">
+                        {syncingId === conn.connectionId ? 'Importing...' : 'Import all trades'}
+                      </button>
+                    </div>
+                  )}
+
+                  {showImportPrompt !== conn.connectionId && (
+                    <div className="flex items-center gap-2">
+                      {conn.expired ? (
+                        <button onClick={handleConnect} disabled={connecting}
+                          className="px-3 py-1.5 bg-warning/10 text-warning text-xs font-medium rounded-lg hover:bg-warning/20 transition-colors disabled:opacity-50">
+                          {connecting ? 'Reconnecting...' : 'Reconnect'}
+                        </button>
+                      ) : conn.configured ? (
+                        <button onClick={() => handleSync(conn.connectionId)} disabled={syncingId !== null}
+                          className="px-3 py-1.5 bg-accent text-accent-text text-xs font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50 flex items-center gap-1.5">
+                          <Icons.RefreshCw className={`w-3.5 h-3.5 ${syncingId === conn.connectionId ? 'animate-spin' : ''}`} />
+                          {syncingId === conn.connectionId ? 'Syncing...' : 'Sync Now'}
+                        </button>
+                      ) : null}
+                      <button onClick={() => handleDisconnect(conn.connectionId)}
+                        className="px-3 py-1.5 text-text-secondary text-xs font-medium hover:text-negative hover:bg-negative/10 rounded-lg transition-colors">
+                        Disconnect
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {connections.length === 0 ? (
+                <>
+                  <div className="bg-bg-page/50 rounded-lg p-3">
+                    <p className="text-xs text-text-secondary leading-relaxed">Connect your {label} account to automatically sync your trades into RR Metrics. Your credentials are used once to authenticate and are never stored.</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-text-secondary mb-1">Email</label>
+                    <input type="email" value={credentials.email} onChange={(e) => setCredentials(prev => ({ ...prev, email: e.target.value }))}
+                      placeholder="your@email.com"
+                      className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-accent placeholder:text-text-muted" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-text-secondary mb-1">Password</label>
+                    <input type="password" value={credentials.password} onChange={(e) => setCredentials(prev => ({ ...prev, password: e.target.value }))}
+                      placeholder="Enter your password"
+                      className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-accent placeholder:text-text-muted" />
+                  </div>
+                  <button onClick={() => handleConnect({ email: credentials.email, password: credentials.password })}
+                    disabled={connecting || !credentials.email || !credentials.password}
+                    className="w-full px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
+                    style={{ backgroundColor: connecting ? undefined : '#00C805' }}>
+                    {connecting ? 'Connecting...' : `Connect with ${label}`}
+                  </button>
+                </>
+              ) : (
+                <div className="flex items-center justify-between pt-2 border-t border-border">
+                  <span className="text-xs text-text-muted">{connectionsUsed} / {connectionLimit} broker connections</span>
+                  <button onClick={handleConnect} disabled={connecting || atConnectionLimit}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-input border border-border text-text-primary text-xs font-medium rounded-lg hover:border-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={atConnectionLimit ? 'Connection limit reached' : `Add another ${label} connection`}>
+                    <Icons.Plus className="w-3.5 h-3.5" />
+                    Connect Another
+                  </button>
                 </div>
               )}
             </>
@@ -243,17 +380,21 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
 
   const [expandedBroker, setExpandedBroker] = useState(null);
 
-  // --- Tradovate-compatible broker hooks (must be top-level, not in a loop) ---
+  // --- Broker hooks (must be top-level, not in a loop) ---
   const hookOpts = { onSyncComplete, setMessage, setExpandedBroker };
   const tradovateHook = useBrokerConnection('tradovate', hookOpts);
   const ninjatraderHook = useBrokerConnection('ninjatrader', hookOpts);
   const alphaFuturesHook = useBrokerConnection('alpha_futures', hookOpts);
   const apexHook = useBrokerConnection('apex_trader_funding', hookOpts);
+  const robinhoodHook = useBrokerConnection('robinhood', hookOpts);
+  const webullHook = useBrokerConnection('webull', hookOpts);
   const brokerHooks = {
     tradovate: tradovateHook,
     ninjatrader: ninjatraderHook,
     alpha_futures: alphaFuturesHook,
     apex_trader_funding: apexHook,
+    robinhood: robinhoodHook,
+    webull: webullHook,
   };
 
   // =============================================
@@ -326,6 +467,50 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
         setMessage({ type: 'error', text: `Failed to connect ${brokerLabel}` });
       }
       hook.setConnecting(false);
+    };
+    exchangeCode();
+  }, []);
+
+  // =============================================
+  // Webull OAuth callback detection
+  // =============================================
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('webull_code');
+    const connId = params.get('webull_connection');
+    const error = params.get('wb_error');
+
+    if (code || error) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+    if (error) {
+      setMessage({ type: 'error', text: 'Webull OAuth failed. Please try again.' });
+      return;
+    }
+    if (!code || !connId) return;
+
+    const exchangeCode = async () => {
+      webullHook.setConnecting(true);
+      setMessage(null);
+      try {
+        const response = await authFetch('/api/webull/exchange', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code, connectionId: connId }),
+        });
+        const data = await response.json();
+        if (data.error) {
+          setMessage({ type: 'error', text: data.error });
+        } else {
+          setMessage({ type: 'success', text: 'Webull connected successfully!' });
+          webullHook.setShowImportPrompt(connId);
+          setExpandedBroker('webull');
+          webullHook.fetchStatus();
+        }
+      } catch (err) {
+        setMessage({ type: 'error', text: 'Failed to connect Webull' });
+      }
+      webullHook.setConnecting(false);
     };
     exchangeCode();
   }, []);
@@ -633,6 +818,24 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
               statusDot={statusDot}
             />
           ))}
+
+          {/* ============== Robinhood ============== */}
+          <RobinhoodBrokerSection
+            hook={robinhoodHook}
+            expandedBroker={expandedBroker}
+            toggleBroker={toggleBroker}
+            brokerHeaderBadge={brokerHeaderBadge}
+            statusDot={statusDot}
+          />
+
+          {/* ============== Webull ============== */}
+          <TradovateBrokerSection
+            hook={webullHook}
+            expandedBroker={expandedBroker}
+            toggleBroker={toggleBroker}
+            brokerHeaderBadge={brokerHeaderBadge}
+            statusDot={statusDot}
+          />
 
           {/* ============== ProjectX / Topstep ============== */}
           <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">

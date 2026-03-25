@@ -8,7 +8,6 @@ import { WebullAPI } from '../services/WebullAPI';
 import { buildRoundTrips } from '../utils/round-trip-builder';
 import type { BrokerFill } from '../utils/round-trip-builder';
 import { requiresLogin } from '../middleware/supabase-auth';
-import { requiresDeveloper } from '../middleware/developer-auth';
 import { checkSubscriptionStatus, requiresBrokerSync, BROKER_CONNECTION_LIMITS } from '../middleware/subscription';
 import { createServiceClient } from '../lib/supabase';
 import type { EffectivePlan } from '../middleware/subscription';
@@ -93,7 +92,6 @@ async function ensureFreshToken(
 webull.post(
   '/api/webull/connect',
   requiresLogin,
-  requiresDeveloper,
   checkSubscriptionStatus,
   requiresBrokerSync,
   async (c) => {
@@ -154,7 +152,7 @@ webull.post(
  * Public endpoint — called by Webull's redirect (no auth context).
  * Validates the CSRF nonce, then redirects to the SPA with code + connectionId.
  */
-webull.get('/api/webull/callback', requiresDeveloper, async (c) => {
+webull.get('/api/webull/callback', async (c) => {
   const code = c.req.query('code');
   const state = c.req.query('state');
 
@@ -199,7 +197,7 @@ webull.get('/api/webull/callback', requiresDeveloper, async (c) => {
  * Exchanges an OAuth authorization code for Webull access and refresh tokens.
  * Called by the client after receiving the code from the callback redirect.
  */
-webull.post('/api/webull/exchange', requiresLogin, requiresDeveloper, async (c) => {
+webull.post('/api/webull/exchange', requiresLogin, async (c) => {
   const user = c.get('user');
   const body = await c.req.json();
   const { code, connectionId } = body as { code?: string; connectionId?: string };
@@ -279,7 +277,6 @@ webull.post('/api/webull/exchange', requiresLogin, requiresDeveloper, async (c) 
 webull.get(
   '/api/webull/status',
   requiresLogin,
-  requiresDeveloper,
   checkSubscriptionStatus,
   async (c) => {
     const user = c.get('user');
@@ -364,7 +361,6 @@ webull.get(
 webull.post(
   '/api/webull/sync',
   requiresLogin,
-  requiresDeveloper,
   checkSubscriptionStatus,
   requiresBrokerSync,
   async (c) => {
@@ -484,7 +480,6 @@ webull.post(
 webull.delete(
   '/api/webull/connections/:connectionId',
   requiresLogin,
-  requiresDeveloper,
   async (c) => {
     const user = c.get('user');
     const connectionId = c.req.param('connectionId');

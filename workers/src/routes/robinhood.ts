@@ -8,7 +8,6 @@ import { RobinhoodAPI } from '../services/RobinhoodAPI';
 import { buildRoundTrips } from '../utils/round-trip-builder';
 import type { BrokerFill } from '../utils/round-trip-builder';
 import { requiresLogin } from '../middleware/supabase-auth';
-import { requiresDeveloper } from '../middleware/developer-auth';
 import { checkSubscriptionStatus, requiresBrokerSync, BROKER_CONNECTION_LIMITS } from '../middleware/subscription';
 import { createServiceClient } from '../lib/supabase';
 import type { EffectivePlan } from '../middleware/subscription';
@@ -64,7 +63,6 @@ async function ensureFreshToken(
 robinhood.post(
   '/api/robinhood/connect',
   requiresLogin,
-  requiresDeveloper,
   checkSubscriptionStatus,
   requiresBrokerSync,
   async (c) => {
@@ -142,7 +140,6 @@ robinhood.post(
 robinhood.get(
   '/api/robinhood/status',
   requiresLogin,
-  requiresDeveloper,
   checkSubscriptionStatus,
   async (c) => {
     const user = c.get('user');
@@ -220,7 +217,6 @@ robinhood.get(
 robinhood.post(
   '/api/robinhood/sync',
   requiresLogin,
-  requiresDeveloper,
   checkSubscriptionStatus,
   requiresBrokerSync,
   async (c) => {
@@ -372,7 +368,6 @@ robinhood.post(
 robinhood.delete(
   '/api/robinhood/connections/:id',
   requiresLogin,
-  requiresDeveloper,
   async (c) => {
     const user = c.get('user');
     const connectionId = c.req.param('id');

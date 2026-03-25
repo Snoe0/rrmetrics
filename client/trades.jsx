@@ -59,7 +59,7 @@ const AnnouncementBanner = ({ announcement, onDismiss }) => {
 const App = () => {
   const [currentPage, setCurrentPage] = useState(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('tv_code') || params.get('tv_error')) return 'settings';
+    if (params.get('tv_code') || params.get('tv_error') || params.get('webull_code') || params.get('wb_error')) return 'settings';
     if (params.get('tab')) return params.get('tab');
     if (params.get('connect')) return 'referral';
     return 'dashboard';

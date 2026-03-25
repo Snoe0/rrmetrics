@@ -18,6 +18,8 @@ import adminRoutes from './routes/admin';
 import syncerRoutes from './routes/syncer';
 import announcementRoutes from './routes/announcement';
 import emailRoutes from './routes/email';
+import robinhoodRoutes from './routes/robinhood';
+import webullRoutes from './routes/webull';
 import { processEmailDrips } from './scheduled/email-drips';
 import pageRoutes from './routes/pages';
 
@@ -51,6 +53,8 @@ app.route('/', adminRoutes);
 app.route('/', syncerRoutes);
 app.route('/', announcementRoutes);
 app.route('/', emailRoutes);
+app.route('/', robinhoodRoutes);
+app.route('/', webullRoutes);
 
 // Page routes (HTML serving)
 app.route('/', pageRoutes);
