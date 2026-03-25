@@ -16,6 +16,22 @@ type HonoEnv = {
   Variables: AuthContext;
 };
 
+/** All broker types that use the Tradovate OAuth + API infrastructure. */
+const TRADOVATE_COMPATIBLE_BROKERS = ['tradovate', 'ninjatrader', 'alpha_futures', 'apex_trader_funding'] as const;
+type TradovateBrokerType = typeof TRADOVATE_COMPATIBLE_BROKERS[number];
+
+/** Human-readable labels for broker-aware messages. */
+const BROKER_LABELS: Record<string, string> = {
+  tradovate: 'Tradovate',
+  ninjatrader: 'NinjaTrader',
+  alpha_futures: 'Alpha Futures',
+  apex_trader_funding: 'Apex Trader Funding',
+};
+
+function isValidTradovateBroker(broker: string): broker is TradovateBrokerType {
+  return (TRADOVATE_COMPATIBLE_BROKERS as readonly string[]).includes(broker);
+}
+
 const tradovate = new Hono<HonoEnv>();
 
 /** Threshold in ms — renew token if it expires within 30 minutes. */
@@ -198,9 +214,7 @@ async function syncConnection(
     // non-fatal — fall back to numeric account IDs
   }
 
-  const source = `tradovate_${brokerConn.environment}` as
-    | 'tradovate_demo'
-    | 'tradovate_live';
+  const source = `${brokerConn.broker}_${brokerConn.environment}`;
 
   // Step 5: Map each fillPair to a round-trip trade record
   interface RoundTrip {
@@ -250,7 +264,7 @@ async function syncConnection(
       exitPrice: isLong ? fp.sellPrice : fp.buyPrice,
       quantity: isLong ? fp.qty : -fp.qty,
       tradovateOrderId,
-      comments: acctLabel ? `Tradovate account: ${acctLabel}` : undefined,
+      comments: acctLabel ? `${BROKER_LABELS[brokerConn.broker] || brokerConn.broker} account: ${acctLabel}` : undefined,
     });
   }
 
@@ -316,8 +330,9 @@ tradovate.post(
   requiresBrokerSync,
   async (c) => {
     const user = c.get('user');
-    const body = await c.req.json().catch(() => ({})) as { environment?: string };
+    const body = await c.req.json().catch(() => ({})) as { environment?: string; broker?: string };
     const environment = body.environment === 'live' ? 'live' : 'demo';
+    const broker = body.broker && isValidTradovateBroker(body.broker) ? body.broker : 'tradovate';
 
     const clientId = c.env.TRADOVATE_CLIENT_ID;
     if (!clientId) {
@@ -336,7 +351,7 @@ tradovate.post(
       const connectionId = await brokerDb.createWithLimitCheck(
         serviceClient,
         user.id,
-        'tradovate',
+        broker,
         environment,
         null, // label auto-generated after exchange
         limit,
@@ -415,8 +430,12 @@ tradovate.get('/api/tradovate/callback', async (c) => {
     oauth_nonce: null,
   });
 
+  // Fetch broker type from the parent connection
+  const brokerConn = await brokerDb.findById(serviceClient, connectionId);
+  const broker = brokerConn?.broker || 'tradovate';
+
   return c.redirect(
-    `/trades?tv_code=${encodeURIComponent(code)}&tv_conn=${encodeURIComponent(connectionId)}`,
+    `/trades?tv_code=${encodeURIComponent(code)}&tv_conn=${encodeURIComponent(connectionId)}&tv_broker=${encodeURIComponent(broker)}`,
   );
 });
 
@@ -505,7 +524,8 @@ tradovate.post('/api/tradovate/exchange', requiresLogin, async (c) => {
       // Auto-generate label from environment + first account name
       if (accounts.length > 0) {
         const envLabel = brokerConn.environment === 'live' ? 'Live' : 'Demo';
-        const label = `Tradovate ${envLabel} — ${accounts[0].name}`;
+        const brokerLabel = BROKER_LABELS[brokerConn.broker] || 'Tradovate';
+        const label = `${brokerLabel} ${envLabel} — ${accounts[0].name}`;
         await brokerDb.updateById(serviceClient, connectionId, { label });
       }
     } catch {
@@ -518,7 +538,8 @@ tradovate.post('/api/tradovate/exchange', requiresLogin, async (c) => {
       }));
     }
 
-    return c.json({ message: 'Tradovate connected successfully', accounts, connectionId });
+    const brokerLabel = BROKER_LABELS[brokerConn.broker] || 'Tradovate';
+    return c.json({ message: `${brokerLabel} connected successfully`, accounts, connectionId, broker: brokerConn.broker });
   } catch (err: any) {
     // Clean up the pending connection on failure
     try {
@@ -542,9 +563,10 @@ tradovate.get(
   async (c) => {
     const user = c.get('user');
     const serviceClient = createServiceClient(c.env);
+    const broker = c.req.query('broker') || 'tradovate';
 
-    // Fetch all Tradovate connections for user
-    const brokerConns = await brokerDb.findByOwnerAndBroker(serviceClient, user.id, 'tradovate');
+    // Fetch all connections for user matching the requested broker
+    const brokerConns = await brokerDb.findByOwnerAndBroker(serviceClient, user.id, broker);
 
     // Total count across ALL brokers for limit tracking
     const totalCount = await brokerDb.countByOwner(serviceClient, user.id);
@@ -655,7 +677,7 @@ tradovate.post(
 
     const serviceClient = createServiceClient(c.env);
     const connection = await brokerDb.findById(serviceClient, connectionId);
-    if (!connection || connection.owner !== user.id || connection.broker !== 'tradovate') {
+    if (!connection || connection.owner !== user.id || !isValidTradovateBroker(connection.broker)) {
       return c.json({ error: 'Connection not found' }, 404);
     }
 
@@ -729,11 +751,14 @@ tradovate.post(
     const user = c.get('user');
     const supabase = c.get('supabase');
     const serviceClient = createServiceClient(c.env);
+    const body = await c.req.json().catch(() => ({})) as { broker?: string };
+    const broker = body.broker || 'tradovate';
+    const brokerLabel = BROKER_LABELS[broker] || broker;
 
-    const brokerConns = await brokerDb.findByOwnerAndBroker(serviceClient, user.id, 'tradovate');
+    const brokerConns = await brokerDb.findByOwnerAndBroker(serviceClient, user.id, broker);
 
     if (brokerConns.length === 0) {
-      return c.json({ message: 'No Tradovate connections found', results: [] });
+      return c.json({ message: `No ${brokerLabel} connections found`, results: [] });
     }
 
     const results: Array<{
