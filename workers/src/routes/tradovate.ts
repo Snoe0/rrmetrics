@@ -226,6 +226,7 @@ async function syncConnection(
     quantity: number;
     tradovateOrderId: string;
     comments?: string;
+    account?: string | null;
   }
   const roundTrips: RoundTrip[] = [];
 
