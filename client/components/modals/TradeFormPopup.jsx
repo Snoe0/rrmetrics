@@ -27,6 +27,7 @@ const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, prefillD
   const [quickTagName, setQuickTagName] = useState('');
   const [quickTagColor, setQuickTagColor] = useState(TAG_COLOR_PRESETS[0]);
   const [creatingTag, setCreatingTag] = useState(false);
+  const [account, setAccount] = useState('');
   const [isEval, setIsEval] = useState(false);
   const [tradeRuleChecks, setTradeRuleChecks] = useState([]);
   const [pendingRuleChecks, setPendingRuleChecks] = useState([]);
@@ -84,13 +85,14 @@ const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, prefillD
   useEffect(() => {
     if (!isOpen) {
       setScreenshot(null); setPastedImage(null); setSelectedTags([]);
-      setIsEval(false); setTradeRuleChecks([]); setPendingRuleChecks([]);
+      setAccount(''); setIsEval(false); setTradeRuleChecks([]); setPendingRuleChecks([]);
       return;
     }
     if (editingTrade && editingTrade.screenshot) setScreenshot(editingTrade.screenshot);
     if (editingTrade && editingTrade.tags) setSelectedTags(editingTrade.tags);
     else setSelectedTags([]);
     if (editingTrade) {
+      setAccount(editingTrade?.account || '');
       setIsEval(editingTrade.isEval || false);
       if (editingTrade._id && tradeRules.length > 0) {
         authFetch(`/api/strategy/checks/trade/${editingTrade._id}`)
@@ -211,6 +213,7 @@ const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, prefillD
       exitPrice: exitPrice ? parseFloat(exitPrice) : 0,
       quantity: parseFloat(quantity),
       comments, isEval,
+      account: account || null,
     };
     if (hasPL) tradeData.manualPL = parseFloat(manualPL);
     if (screenshot) tradeData.screenshot = screenshot;
@@ -320,6 +323,24 @@ const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, prefillD
             <div>
               <label htmlFor="comments" className={labelClass}>Comments</label>
               <textarea id="comments" name="comments" placeholder="Trade notes..." rows="3" defaultValue={isEditing ? editingTrade.comments : ''} className={`${inputClass} resize-none`}></textarea>
+            </div>
+
+            {/* Account field */}
+            <div>
+              <label className="block text-xs font-medium text-text-secondary mb-1">Account (optional)</label>
+              <input
+                type="text"
+                list="account-suggestions"
+                value={account}
+                onChange={(e) => setAccount(e.target.value)}
+                placeholder="e.g. Topstep 50K"
+                className="w-full bg-bg-input border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary outline-none focus:border-accent transition-colors"
+              />
+              <datalist id="account-suggestions">
+                {[...new Set((trades || []).map(t => t.account).filter(Boolean))].sort().map(a => (
+                  <option key={a} value={a} />
+                ))}
+              </datalist>
             </div>
 
             {/* Eval checkbox */}
