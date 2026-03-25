@@ -324,6 +324,62 @@
 
   </main>
 
+  <!-- Search Script -->
+  <script>
+  (function() {
+    var input = document.getElementById('guide-search');
+    var clearBtn = document.getElementById('guide-search-clear');
+    var status = document.getElementById('guide-search-status');
+    var cards = document.querySelectorAll('.guide-card');
+    var sections = document.querySelectorAll('main > section');
+
+    function doSearch() {
+      var q = input.value.trim().toLowerCase();
+      clearBtn.classList.toggle('hidden', !q);
+
+      if (!q) {
+        cards.forEach(function(c) { c.style.display = ''; });
+        sections.forEach(function(s) { s.style.display = ''; });
+        status.classList.add('hidden');
+        return;
+      }
+
+      var terms = q.split(/\s+/);
+      var visible = 0;
+
+      cards.forEach(function(card) {
+        var tags = (card.getAttribute('data-tags') || '').toLowerCase();
+        var title = card.textContent.toLowerCase();
+        var searchable = tags + ' ' + title;
+        var match = terms.every(function(t) { return searchable.indexOf(t) !== -1; });
+        card.style.display = match ? '' : 'none';
+        if (match) visible++;
+      });
+
+      // Hide sections where all cards are hidden
+      sections.forEach(function(section) {
+        var sectionCards = section.querySelectorAll('.guide-card');
+        var anyVisible = Array.prototype.some.call(sectionCards, function(c) {
+          return c.style.display !== 'none';
+        });
+        section.style.display = anyVisible ? '' : 'none';
+      });
+
+      status.textContent = visible === 0
+        ? 'No guides found. Try a different search term.'
+        : visible + ' guide' + (visible === 1 ? '' : 's') + ' found';
+      status.classList.remove('hidden');
+    }
+
+    input.addEventListener('input', doSearch);
+    clearBtn.addEventListener('click', function() {
+      input.value = '';
+      doSearch();
+      input.focus();
+    });
+  })();
+  </script>
+
   <!-- Footer -->
   <footer class="border-t border-border py-8 px-6 mt-12">
     <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
