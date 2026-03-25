@@ -93,7 +93,7 @@ const runMonteCarloSimulation = (trades, config = {}) => {
     maxDrawdown = 2000,
     simulations = 10000,
     maxDays = 100,
-    samplePaths = 50,
+    samplePaths = 100,
   } = config;
 
   if (!trades || trades.length === 0) return { passRate: 0, avgDaysToPass: 0, medianDaysToPass: 0 };
