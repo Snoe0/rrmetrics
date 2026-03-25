@@ -25,6 +25,8 @@
   "author": "Cody Van De Mark / Austin Willoughby",
   "license": "Apache 2.0",
   "dependencies": {
+    "@radix-ui/react-avatar": "^1.1.11",
+    "@radix-ui/react-popover": "^1.1.15",
     "@supabase/supabase-js": "^2.95.3",
     "bcrypt": "^6.0.0",
     "compression": "^1.8.1",
@@ -34,6 +36,7 @@
     "express-session": "^1.18.2",
     "framer-motion": "^12.34.3",
     "helmet": "^8.1.0",
+    "lucide-react": "^1.6.0",
     "mongoose": "^8.19.3",
     "nodemailer": "^8.0.1",
     "papaparse": "^5.5.3",
