@@ -163,7 +163,6 @@ function useGridStack(pageKey, defaultWidgets) {
     const isCurrentlyVisible = widgetVisibility[widgetId] !== false;
 
     if (!isCurrentlyVisible) {
-      // Show widget — use options API
       const def = defaultWidgets.find(w => w.id === widgetId);
       if (def) {
         grid.addWidget({
@@ -173,22 +172,17 @@ function useGridStack(pageKey, defaultWidgets) {
         });
       }
     } else {
-      // Hide widget
       const items = grid.getGridItems();
       const el = items.find(item => item.getAttribute('gs-id') === widgetId);
       if (el) grid.removeWidget(el, false);
     }
 
-    const newVis = { ...widgetVisibility, [widgetId]: !isCurrentlyVisible };
-    setWidgetVisibility(newVis);
-
-    // Re-scan the actual DOM for portal targets
-    // Use rAF to ensure GridStack has finished DOM manipulation
-    requestAnimationFrame(() => {
-      setPortalTargets(scanTargets(containerRef.current));
-      persistLayout();
-    });
-  }, [defaultWidgets, widgetVisibility, persistLayout, refreshPortals]);
+    // Scan synchronously — addWidget/removeWidget update DOM immediately
+    const newTargets = scanTargets(containerRef.current);
+    setPortalTargets(newTargets);
+    setWidgetVisibility({ ...widgetVisibility, [widgetId]: !isCurrentlyVisible });
+    persistLayout();
+  }, [defaultWidgets, widgetVisibility, persistLayout]);
 
   const resetLayout = useCallback(() => {
     const grid = gridRef.current;
@@ -214,9 +208,7 @@ function useGridStack(pageKey, defaultWidgets) {
 
     localStorage.removeItem(getStorageKey(pageKey));
 
-    requestAnimationFrame(() => {
-      setPortalTargets(scanTargets(containerRef.current));
-    });
+    setPortalTargets(scanTargets(containerRef.current));
   }, [pageKey, defaultWidgets]);
 
   return {
