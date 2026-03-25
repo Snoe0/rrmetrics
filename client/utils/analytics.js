@@ -78,6 +78,33 @@ const calculateSortinoRatio = (trades) => {
   return (mean / downsideDev) * Math.sqrt(252);
 };
 
+// Kelly Criterion: optimal fraction of bankroll to risk per trade
+// f* = (W/L) * p - (1-p)  /  (W/L)  where p = win%, W = avg win, L = avg loss
+// Returns { kellyPct, optimalRisk } given a max drawdown (bankroll)
+const calculateKellyCriterion = (trades, maxDrawdownBankroll = 2000) => {
+  if (!trades || trades.length === 0) return { kellyPct: 0, optimalRisk: 0 };
+
+  const pls = trades.map(t => getTradePL(t));
+  const decisive = pls.filter(pl => pl !== 0);
+  if (decisive.length < 2) return { kellyPct: 0, optimalRisk: 0 };
+
+  const wins = decisive.filter(pl => pl > 0);
+  const losses = decisive.filter(pl => pl < 0);
+  if (wins.length === 0 || losses.length === 0) return { kellyPct: 0, optimalRisk: 0 };
+
+  const p = wins.length / decisive.length;
+  const avgWin = wins.reduce((s, v) => s + v, 0) / wins.length;
+  const avgLoss = Math.abs(losses.reduce((s, v) => s + v, 0) / losses.length);
+  const winLossRatio = avgWin / avgLoss;
+
+  // Kelly formula: f* = p - (1-p) / (W/L)
+  const kelly = p - (1 - p) / winLossRatio;
+  const kellyPct = Math.max(0, kelly * 100);
+  const optimalRisk = Math.max(0, kelly * maxDrawdownBankroll);
+
+  return { kellyPct, optimalRisk };
+};
+
 // Helper: get array of daily P/L totals
 const getDailyReturns = (trades) => {
   if (!trades || trades.length === 0) return [];
@@ -175,5 +202,5 @@ const applyEvalFilter = (trades, evalFilter) => {
 
 module.exports = {
   getTradePL, calculateAnalytics, groupTradesByDate, applyEvalFilter,
-  calculateSharpeRatio, calculateSortinoRatio, runMonteCarloSimulation,
+  calculateSharpeRatio, calculateSortinoRatio, calculateKellyCriterion, runMonteCarloSimulation,
 };

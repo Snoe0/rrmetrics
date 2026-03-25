@@ -1,7 +1,7 @@
 const React = require("react");
 const { useState, useEffect, useRef, useMemo } = React;
 
-const { getTradePL, calculateAnalytics, applyEvalFilter, calculateSharpeRatio, calculateSortinoRatio, runMonteCarloSimulation } = require("../../utils/analytics");
+const { getTradePL, calculateAnalytics, applyEvalFilter, calculateSharpeRatio, calculateSortinoRatio, calculateKellyCriterion, runMonteCarloSimulation } = require("../../utils/analytics");
 const { formatDuration, toEST } = require("../../utils/dateUtils");
 const { getCSSVar, colorToRgba, drawTooltip } = require("../../utils/chartUtils");
 const { getDateRange, getPreviousDateRange, filterTradesByDateRange, calcPercentChange } = require("../../utils/periodUtils");
@@ -368,6 +368,9 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
   const sharpeRatio = calculateSharpeRatio(trades);
   const sortinoRatio = calculateSortinoRatio(trades);
 
+  // Kelly Criterion (based on $2000 max drawdown as bankroll)
+  const kelly = calculateKellyCriterion(trades, 2000);
+
   // Monte Carlo simulation (memoized to avoid re-running on every render)
   const monteCarloResults = useMemo(() => {
     if (trades.length < 5) return null;
@@ -714,11 +717,15 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
         <StatCard label="Expectancy" value={`$${expectancy.toFixed(2)}`} color={expectancy >= 0 ? 'text-positive' : 'text-negative'}
           change={showChange ? calcPercentChange(expectancy, prevExpectancy) : null} />
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <StatCard label="Max Drawdown" value={`$${maxDrawdown.toFixed(2)}`} color="text-negative" />
         <StatCard label="Breakeven Rate" value={`${stats.breakevenPct.toFixed(1)}%`} subValue={`${stats.breakevens} trades`} color="text-text-primary" />
-        <StatCard label="Sharpe Ratio" value={sharpeRatio === Infinity ? '∞' : sharpeRatio.toFixed(2)} color={sharpeRatio > 0 ? 'text-positive' : 'text-negative'} />
-        <StatCard label="Sortino Ratio" value={sortinoRatio === Infinity ? '∞' : sortinoRatio.toFixed(2)} color={sortinoRatio > 0 ? 'text-positive' : 'text-negative'} />
+        <StatCard label="Sharpe Ratio" value={sharpeRatio === Infinity ? '∞' : sharpeRatio.toFixed(2)} color={sharpeRatio > 0 ? 'text-positive' : 'text-negative'}
+          tooltip={"Risk-adjusted return measuring reward per unit of total volatility.\n\nFormula: (Mean Daily P/L / Std Dev of Daily P/L) x √252\n\nAbove 1.0 = good, above 2.0 = excellent, below 0 = losing money on average."} />
+        <StatCard label="Sortino Ratio" value={sortinoRatio === Infinity ? '∞' : sortinoRatio.toFixed(2)} color={sortinoRatio > 0 ? 'text-positive' : 'text-negative'}
+          tooltip={"Like Sharpe but only penalizes downside volatility, ignoring upside swings.\n\nFormula: (Mean Daily P/L / Downside Deviation) x √252\n\nHigher is better. A Sortino much higher than Sharpe means your volatility is mostly upside."} />
+        <StatCard label="Kelly Optimal Risk" value={`$${kelly.optimalRisk.toFixed(0)}`} subValue={`${kelly.kellyPct.toFixed(1)}% of $2,000`} color="text-text-primary"
+          tooltip={"Optimal risk per trade based on the Kelly Criterion and a $2,000 max drawdown.\n\nFormula: f* = p - (1-p) / (avgWin/avgLoss)\n\nRepresents the mathematically optimal fraction of your bankroll to risk on each trade to maximize long-term growth."} />
       </div>
 
       {/* Long vs Short Breakdown */}
