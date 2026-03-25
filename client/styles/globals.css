@@ -72,4 +72,64 @@
   .font-data {
     font-family: 'JetBrains Mono', monospace;
   }
+
+  /* Bento grid */
+  .bento-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+  }
+
+  @media (max-width: 1024px) {
+    .bento-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (max-width: 640px) {
+    .bento-grid {
+      grid-template-columns: 1fr;
+    }
+    .bento-grid .col-span-2 {
+      grid-column: span 1;
+    }
+  }
+
+  .bento-item {
+    position: relative;
+    padding: 1.5rem;
+    border-radius: 1rem;
+    background: rgb(var(--bg-surface));
+    border: 1px solid rgb(var(--border));
+    overflow: hidden;
+    transition: border-color 0.3s ease;
+  }
+
+  .bento-item::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      400px circle at var(--mouse-x) var(--mouse-y),
+      rgb(var(--accent) / 0.06),
+      transparent 60%
+    );
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .bento-item:hover {
+    border-color: rgb(var(--accent) / 0.3);
+  }
+
+  .bento-item:hover::before {
+    opacity: 1;
+  }
+
+  .bento-item > * {
+    position: relative;
+    z-index: 1;
+  }
 }

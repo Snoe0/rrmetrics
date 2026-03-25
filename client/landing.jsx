@@ -169,6 +169,13 @@ const Icons = {
       <polyline points="12 5 19 12 12 19"></polyline>
     </svg>
   ),
+  Target: (props) => (
+    <svg className={props.className || "w-6 h-6"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10"></circle>
+      <circle cx="12" cy="12" r="6"></circle>
+      <circle cx="12" cy="12" r="2"></circle>
+    </svg>
+  ),
 };
 
 // =====================================================
@@ -312,44 +319,176 @@ const SocialProofBar = () => {
 };
 
 // =====================================================
-// FEATURES GRID
+// BENTO ITEM (mouse-tracking glow)
 // =====================================================
-const FeaturesGrid = () => {
-  const features = [
-    {
-      icon: <Icons.Sunrise className="w-5 h-5" />,
-      title: 'Pre-Market Prep',
-      description: 'Custom daily checklist with auto-reset, economic calendar, and Discord alerts to start each session right.',
-    },
-    {
-      icon: <Icons.BarChart className="w-5 h-5" />,
-      title: 'Advanced Analytics',
-      description: 'Win rate, P&L curves, drawdown analysis, R-multiple tracking, and time-of-day breakdowns.',
-    },
-    {
-      icon: <Icons.Zap className="w-5 h-5" />,
-      title: 'Auto Broker Sync',
-      description: 'Connect Tradovate, ProjectX, or NinjaTrader and auto-import trades. No manual entry needed.',
-    },
-    {
-      icon: <Icons.Camera className="w-5 h-5" />,
-      title: 'Trade Screenshots',
-      description: 'Attach chart screenshots to every trade. Review your entries and exits visually.',
-    },
-    {
-      icon: <Icons.Calendar className="w-5 h-5" />,
-      title: 'Calendar View',
-      description: 'See your P&L day by day. Spot winning streaks, losing patterns, and seasonal trends.',
-    },
-    {
-      icon: <Icons.FlaskConical className="w-5 h-5" />,
-      title: 'Backtesting Analysis',
-      description: 'Track and analyze your backtesting wins and losses all in one tool.',
-    },
-  ];
+const BentoItem = ({ className = '', children }) => {
+  const itemRef = useRef(null);
 
+  useEffect(() => {
+    const item = itemRef.current;
+    if (!item) return;
+
+    const handleMouseMove = (e) => {
+      const rect = item.getBoundingClientRect();
+      item.style.setProperty('--mouse-x', `${e.clientX - rect.left}px`);
+      item.style.setProperty('--mouse-y', `${e.clientY - rect.top}px`);
+    };
+
+    item.addEventListener('mousemove', handleMouseMove);
+    return () => item.removeEventListener('mousemove', handleMouseMove);
+  }, []);
+
+  return (
+    <div ref={itemRef} className={`bento-item ${className}`}>
+      {children}
+    </div>
+  );
+};
+
+// =====================================================
+// BENTO FEATURE VISUALS
+// =====================================================
+const ChecklistVisual = () => {
+  const rules = [
+    { label: 'Review pre-market levels', checked: true },
+    { label: 'Check economic calendar', checked: true },
+    { label: 'Set stop-loss before entry', checked: true },
+    { label: 'Max 3 trades per session', checked: false },
+    { label: 'No revenge trading', checked: false },
+  ];
+  return (
+    <div className="mt-4 space-y-2.5">
+      {rules.map((rule) => (
+        <div key={rule.label} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-bg-input/50">
+          <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 ${
+            rule.checked ? 'bg-accent' : 'border border-text-muted'
+          }`}>
+            {rule.checked && <Icons.Check className="w-3 h-3 text-accent-text" />}
+          </div>
+          <span className={`text-sm ${rule.checked ? 'text-text-primary' : 'text-text-secondary'}`}>{rule.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const BrokerOrbitVisual = () => {
+  const brokers = [
+    { name: 'Tradovate', src: '/assets/img/tradovate.png', color: '#3b82f6' },
+    { name: 'NinjaTrader', src: '/assets/img/ninjatrader.jpeg', color: '#f59e0b' },
+    { name: 'TopstepX', src: '/assets/img/topstep.png', color: '#8b5cf6' },
+    { name: 'Webull', src: '/assets/img/webull.png', color: '#10b981' },
+  ];
+  return (
+    <div className="mt-6 flex items-center justify-center gap-5 flex-wrap">
+      {brokers.map((broker) => (
+        <div key={broker.name} className="flex flex-col items-center gap-2">
+          <div
+            className="w-16 h-16 rounded-full bg-bg-input border border-border flex items-center justify-center overflow-hidden shadow-lg"
+            style={{ boxShadow: `0 0 20px ${broker.color}20` }}
+          >
+            <img src={broker.src} alt={broker.name} className="w-10 h-10 object-contain rounded" />
+          </div>
+          <span className="text-text-muted text-xs">{broker.name}</span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const AnalyticsVisual = () => (
+  <div className="mt-4 space-y-3">
+    <div className="flex items-center justify-between">
+      <span className="text-text-secondary text-xs">Win Rate</span>
+      <span className="text-accent font-mono text-xs font-bold">68.4%</span>
+    </div>
+    <div className="w-full h-2 bg-bg-input rounded-full overflow-hidden">
+      <div className="h-full bg-accent rounded-full" style={{ width: '68.4%' }}></div>
+    </div>
+    <div className="grid grid-cols-2 gap-3 mt-3">
+      <div className="bg-bg-input/50 rounded-lg p-3">
+        <p className="text-text-muted text-xs mb-1">Profit Factor</p>
+        <p className="text-text-primary font-mono font-bold">2.41</p>
+      </div>
+      <div className="bg-bg-input/50 rounded-lg p-3">
+        <p className="text-text-muted text-xs mb-1">Avg R:R</p>
+        <p className="text-text-primary font-mono font-bold">1.87</p>
+      </div>
+      <div className="bg-bg-input/50 rounded-lg p-3">
+        <p className="text-text-muted text-xs mb-1">Max DD</p>
+        <p className="text-negative font-mono font-bold">-$1,240</p>
+      </div>
+      <div className="bg-bg-input/50 rounded-lg p-3">
+        <p className="text-text-muted text-xs mb-1">Net P&L</p>
+        <p className="text-positive font-mono font-bold">+$8,320</p>
+      </div>
+    </div>
+  </div>
+);
+
+const PropFirmVisual = () => (
+  <div className="mt-4">
+    <div className="flex items-center justify-between mb-3">
+      <span className="text-text-secondary text-xs">Evaluation Progress</span>
+      <span className="text-accent font-mono text-xs font-bold">73%</span>
+    </div>
+    <div className="w-full h-3 bg-bg-input rounded-full overflow-hidden mb-4">
+      <div className="h-full bg-gradient-to-r from-accent to-[#8b5cf6] rounded-full" style={{ width: '73%' }}></div>
+    </div>
+    <div className="space-y-2">
+      <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-bg-input/50">
+        <span className="text-text-secondary text-xs">Max Daily Loss</span>
+        <span className="text-positive text-xs font-mono">Within Limit</span>
+      </div>
+      <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-bg-input/50">
+        <span className="text-text-secondary text-xs">Trailing Drawdown</span>
+        <span className="text-positive text-xs font-mono">$2,150 remaining</span>
+      </div>
+      <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-bg-input/50">
+        <span className="text-text-secondary text-xs">Profit Target</span>
+        <span className="text-warning text-xs font-mono">$1,800 / $6,000</span>
+      </div>
+    </div>
+  </div>
+);
+
+const PremarketVisual = () => (
+  <div className="mt-4 space-y-3">
+    <div className="bg-bg-input/50 rounded-lg p-3 flex items-start gap-3">
+      <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+        <Icons.Calendar className="w-4 h-4 text-accent" />
+      </div>
+      <div>
+        <p className="text-text-primary text-sm font-medium">Economic Calendar</p>
+        <p className="text-text-muted text-xs mt-0.5">FOMC Minutes at 2:00 PM ET</p>
+      </div>
+    </div>
+    <div className="bg-bg-input/50 rounded-lg p-3 flex items-start gap-3">
+      <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+        <Icons.Bell className="w-4 h-4 text-accent" />
+      </div>
+      <div>
+        <p className="text-text-primary text-sm font-medium">Discord Alerts</p>
+        <p className="text-text-muted text-xs mt-0.5">Summary sent at 8:30 AM</p>
+      </div>
+    </div>
+    <div className="bg-bg-input/50 rounded-lg p-3 flex items-start gap-3">
+      <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+        <Icons.Sunrise className="w-4 h-4 text-accent" />
+      </div>
+      <div>
+        <p className="text-text-primary text-sm font-medium">Auto-Reset Daily</p>
+        <p className="text-text-muted text-xs mt-0.5">Resets at your chosen time</p>
+      </div>
+    </div>
+  </div>
+);
+
+// =====================================================
+// BENTO FEATURES GRID
+// =====================================================
+const BentoFeaturesGrid = () => {
   const headerRef = useScrollReveal();
-  const delays = ['', 'delay-100', 'delay-200', 'delay-300', 'delay-400', 'delay-500'];
 
   return (
     <section id="features" className="py-20 px-6">
@@ -359,121 +498,67 @@ const FeaturesGrid = () => {
           <h2 className="text-3xl sm:text-4xl font-bold text-text-primary mb-4">Everything a Trader Needs</h2>
           <p className="text-text-secondary text-lg max-w-xl mx-auto">Powerful tools designed for futures and stock traders who are serious about improving.</p>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {features.map((feature, i) => (
-            <ScrollReveal key={feature.title} className="bg-bg-surface rounded-xl p-6 border border-border hover:border-accent/30 transition-all group" delay={delays[i] || ''}>
-              <div className="w-10 h-10 bg-accent/10 rounded-lg flex items-center justify-center mb-4 text-accent group-hover:bg-accent/20 transition-colors">
-                {feature.icon}
+        <div className="bento-grid">
+          {/* Trade & Daily Rules — large card */}
+          <BentoItem className="col-span-2 row-span-2 flex flex-col">
+            <div>
+              <div className="w-10 h-10 bg-accent/10 rounded-lg flex items-center justify-center mb-3 text-accent">
+                <Icons.CheckSquare className="w-5 h-5" />
               </div>
-              <h3 className="text-text-primary font-semibold mb-2">{feature.title}</h3>
-              <p className="text-text-secondary text-sm leading-relaxed">{feature.description}</p>
-            </ScrollReveal>
-          ))}
+              <h3 className="text-xl font-bold text-text-primary">Trade & Daily Rules</h3>
+              <p className="mt-2 text-text-secondary text-sm">Build custom rule checklists that keep you disciplined. Track your adherence daily and see how following your rules impacts your P&L.</p>
+            </div>
+            <ChecklistVisual />
+          </BentoItem>
+
+          {/* Advanced Analytics */}
+          <BentoItem className="col-span-2 row-span-2 flex flex-col">
+            <div>
+              <div className="w-10 h-10 bg-accent/10 rounded-lg flex items-center justify-center mb-3 text-accent">
+                <Icons.BarChart className="w-5 h-5" />
+              </div>
+              <h3 className="text-xl font-bold text-text-primary">Advanced Analytics</h3>
+              <p className="mt-2 text-text-secondary text-sm">Win rate, P&L curves, drawdown analysis, R-multiple tracking, and time-of-day breakdowns. Know exactly where your edge is.</p>
+            </div>
+            <AnalyticsVisual />
+          </BentoItem>
+
+          {/* Automatic Trade Syncing */}
+          <BentoItem className="col-span-2 flex flex-col">
+            <div>
+              <div className="w-10 h-10 bg-accent/10 rounded-lg flex items-center justify-center mb-3 text-accent">
+                <Icons.Zap className="w-5 h-5" />
+              </div>
+              <h3 className="text-xl font-bold text-text-primary">Automatic Trade Syncing</h3>
+              <p className="mt-2 text-text-secondary text-sm">Connect your broker once and your trades import automatically. No manual entry. No CSV uploads. Just trade.</p>
+            </div>
+            <BrokerOrbitVisual />
+          </BentoItem>
+
+          {/* Premarket Rules */}
+          <BentoItem className="flex flex-col">
+            <div>
+              <div className="w-10 h-10 bg-accent/10 rounded-lg flex items-center justify-center mb-3 text-accent">
+                <Icons.Sunrise className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-bold text-text-primary">Pre-Market Prep</h3>
+              <p className="mt-2 text-text-secondary text-sm">Start every session with a plan. Custom checklists, economic calendar, and Discord alerts.</p>
+            </div>
+            <PremarketVisual />
+          </BentoItem>
+
+          {/* Prop Firm Pass Rate */}
+          <BentoItem className="flex flex-col">
+            <div>
+              <div className="w-10 h-10 bg-accent/10 rounded-lg flex items-center justify-center mb-3 text-accent">
+                <Icons.Target className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-bold text-text-primary">Prop Firm Tracker</h3>
+              <p className="mt-2 text-text-secondary text-sm">Track your evaluation progress, drawdown limits, and profit targets all in one view.</p>
+            </div>
+            <PropFirmVisual />
+          </BentoItem>
         </div>
-      </div>
-    </section>
-  );
-};
-
-// =====================================================
-// FEATURE DEEP DIVES (alternating layout)
-// =====================================================
-const FeatureDeepDive = ({ label, title, description, bullets, imageSrc, imageAlt, reversed }) => {
-  const textRef = useScrollReveal();
-  const imageRef = useScrollReveal();
-
-  return (
-    <div className={`flex flex-col ${reversed ? 'lg:flex-row-reverse' : 'lg:flex-row'} items-center gap-12 lg:gap-16`}>
-      {/* Text */}
-      <div ref={textRef} className="flex-1 max-w-lg">
-        <p className="text-accent text-sm font-semibold uppercase tracking-wider mb-3">{label}</p>
-        <h3 className="text-2xl sm:text-3xl font-bold text-text-primary mb-4 leading-tight">{title}</h3>
-        <p className="text-text-secondary text-base leading-relaxed mb-6">{description}</p>
-        <ul className="space-y-3">
-          {bullets.map(b => (
-            <li key={b} className="flex items-start gap-3 text-sm text-text-secondary">
-              <Icons.Check className="w-4 h-4 text-accent flex-shrink-0 mt-0.5" />
-              <span>{b}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
-      <div ref={imageRef} className="flex-1 w-full delay-200">
-        <div className="bg-bg-surface border border-border rounded-xl overflow-hidden shadow-lg">
-          <img src={imageSrc} alt={imageAlt} className="w-full object-cover" />
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const FeatureDeepDives = () => {
-  const sections = [
-    {
-      label: 'Trade Management',
-      title: 'Log, Tag, and Analyze Every Trade',
-      description: 'Whether you enter trades manually or sync from your broker, every trade gets captured with full detail. Add custom tags, screenshots, and notes to build a complete picture of your performance.',
-      bullets: [
-        'Manual entry or auto-import from brokers',
-        'Custom tags for setups, strategies, and mistakes',
-        'Attach multiple chart screenshots per trade',
-        'Daily notes for journaling your mindset',
-        'Filter and search across your entire history',
-      ],
-      imageSrc: '/assets/img/feature-trades.png',
-      imageAlt: 'Trade management screenshot',
-      reversed: false,
-    },
-    {
-      label: 'Analytics & Insights',
-      title: 'Understand Your Edge with Data',
-      description: 'Go beyond win rate. Dive into P&L curves, drawdown periods, time-of-day analysis, and per-tag performance. See exactly where you make and lose money.',
-      bullets: [
-        'Cumulative P&L and equity curves',
-        'Win rate, average win/loss, profit factor',
-        'Performance breakdown by tag, ticker, and time',
-        'Calendar heatmap of daily results',
-        'Identify your best and worst trading patterns',
-      ],
-      imageSrc: '/assets/img/feature-analytics.png',
-      imageAlt: 'Analytics dashboard screenshot',
-      reversed: true,
-    },
-    {
-      label: 'Backtesting',
-      title: 'Practice Your Strategy',
-      description: 'Track your statistics as you backtest, all in one dashboard. Track your average risk-reward, winrate, and more as you backtest. Receive in-depth statistics based on your backtesting history to truly understand your trading.',
-      bullets: [
-        'Multiple backtesting sessions',
-        'Simple trade tracking',
-        'Historical performance analysis',
-        'In-depth backtesting feedback',
-      ],
-      imageSrc: '/assets/img/feature-backtest.png',
-      imageAlt: 'Backtesting screenshot',
-      reversed: false,
-    },
-    {
-      label: 'Pre-Market Preparation',
-      title: 'Start Every Trading Day with a Plan',
-      description: 'Build a custom pre-market checklist that resets daily at your chosen time. See the day\'s economic releases at a glance so you\'re never caught off-guard by a major report.',
-      bullets: [
-        'Custom checklist items that auto-reset daily',
-        'Configurable reset time and timezone',
-        'Pre-market preparation statistics and tracking',
-      ],
-      imageSrc: '/assets/img/feature-premarket.png',
-      imageAlt: 'Pre-market preparation screenshot',
-      reversed: true,
-    },
-  ];
-
-  return (
-    <section className="py-20 px-6">
-      <div className="max-w-6xl mx-auto space-y-24">
-        {sections.map((section, i) => (
-          <FeatureDeepDive key={section.label} {...section} />
-        ))}
       </div>
     </section>
   );
@@ -808,8 +893,7 @@ const App = () => (
     <Navbar />
     <HeroSection />
     <SocialProofBar />
-    <FeaturesGrid />
-    <FeatureDeepDives />
+    <BentoFeaturesGrid />
     <HowItWorks />
     <PricingSection />
     <FAQSection />
