@@ -9,7 +9,7 @@ const getTradePL = (trade) => {
 const calculateAnalytics = (trades) => {
   const empty = {
     totalPL: 0, winRate: 0, avgWin: 0, avgLoss: 0,
-    totalTrades: 0, wins: 0, losses: 0, breakevens: 0,
+    totalTrades: 0, avgTradesPerDay: 0, wins: 0, losses: 0, breakevens: 0,
     breakevenPct: 0, avgDuration: 0, bestTrade: 0, worstTrade: 0,
   };
   if (!trades || trades.length === 0) return empty;
@@ -39,9 +39,13 @@ const calculateAnalytics = (trades) => {
   const bestTrade = Math.max(...allPLs);
   const worstTrade = Math.min(...allPLs);
 
+  const uniqueDays = new Set(trades.map(t => toEST(new Date(t.enterTime)).toDateString()));
+  const avgTradesPerDay = uniqueDays.size > 0 ? trades.length / uniqueDays.size : 0;
+
   return {
     totalPL, winRate, avgWin, avgLoss,
-    totalTrades: trades.length, wins: winningTrades.length,
+    totalTrades: trades.length, avgTradesPerDay,
+    wins: winningTrades.length,
     losses: losingTrades.length, breakevens: beCount,
     breakevenPct: (beCount / trades.length) * 100,
     avgDuration, bestTrade, worstTrade,

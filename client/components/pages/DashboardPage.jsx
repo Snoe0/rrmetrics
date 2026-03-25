@@ -97,6 +97,7 @@ const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, onOpenImport, o
         <WinRateCard wins={stats.wins} losses={stats.losses} total={stats.totalTrades}
           change={showChange ? calcPercentChange(stats.winRate, prevStats.winRate) : null} />
         <StatCard label="Total Trades" value={stats.totalTrades} color="text-text-primary"
+          subValue={`${stats.avgTradesPerDay.toFixed(1)} avg/day`}
           change={showChange ? calcPercentChange(stats.totalTrades, prevStats.totalTrades) : null} />
         <StatCard label="Avg Duration" value={formatDuration(stats.avgDuration)} color="text-text-primary" />
       </div>
