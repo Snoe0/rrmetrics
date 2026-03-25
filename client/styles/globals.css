@@ -336,8 +336,12 @@
   background: transparent;
   border: none;
   padding: 0;
-  overflow: visible;
+  overflow: hidden;
   inset: 4px;
+}
+
+.grid-stack > .grid-stack-item > .grid-stack-item-content > * {
+  height: 100%;
 }
 
 .grid-stack > .grid-stack-item {

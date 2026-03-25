@@ -1,7 +1,7 @@
 const DASHBOARD_WIDGETS = [
   { id: 'dash-primary-stats', label: 'Primary Stats', x: 0, y: 0, w: 12, h: 2, minW: 6, minH: 1 },
   { id: 'dash-secondary-stats', label: 'Secondary Stats', x: 0, y: 2, w: 12, h: 2, minW: 6, minH: 1 },
-  { id: 'dash-calendar', label: 'Calendar', x: 0, y: 4, w: 12, h: 12, minW: 8, minH: 6 },
+  { id: 'dash-calendar', label: 'Calendar', x: 0, y: 4, w: 12, h: 16, minW: 8, minH: 10 },
 ];
 
 const ANALYTICS_WIDGETS = [
