@@ -544,40 +544,6 @@ const BentoFeaturesGrid = () => {
 // =====================================================
 // HOW IT WORKS
 // =====================================================
-const HowItWorks = () => {
-  const steps = [
-    { num: '01', title: 'Sign Up Free', desc: 'Create your account in seconds. No credit card needed to start your trial.' },
-    { num: '02', title: 'Connect Your Broker', desc: 'Link Tradovate or import trades via CSV. Your data syncs automatically.' },
-    { num: '03', title: 'Set Up Your Routine', desc: 'Build your pre-market checklist and customize your dashboard.' },
-    { num: '04', title: 'Review & Improve', desc: 'Use analytics to spot patterns, fix mistakes, and grow your edge over time.' },
-  ];
-
-  const headerRef = useScrollReveal();
-  const delays = ['', 'delay-100', 'delay-200', 'delay-300'];
-
-  return (
-    <section id="how-it-works" className="py-20 px-6">
-      <div className="max-w-5xl mx-auto">
-        <div ref={headerRef} className="text-center mb-14">
-          <p className="text-accent text-sm font-semibold uppercase tracking-wider mb-3">How It Works</p>
-          <h2 className="text-3xl sm:text-4xl font-bold text-text-primary mb-4">Get Started in Minutes</h2>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-          {steps.map((step, i) => (
-            <ScrollReveal key={step.num} className="text-center" delay={delays[i]}>
-              <div className="w-12 h-12 bg-accent/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-accent font-mono font-bold text-sm">{step.num}</span>
-              </div>
-              <h3 className="text-text-primary font-semibold mb-2">{step.title}</h3>
-              <p className="text-text-secondary text-sm leading-relaxed">{step.desc}</p>
-            </ScrollReveal>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-};
-
 // =====================================================
 // PRICING SECTION
 // =====================================================
@@ -873,7 +839,6 @@ const App = () => (
     <HeroSection />
     <SocialProofBar />
     <BentoFeaturesGrid />
-    <HowItWorks />
     <PricingSection />
     <FAQSection />
     <FinalCTA />
