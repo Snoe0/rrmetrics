@@ -66,6 +66,7 @@ const App = () => {
   });
   const [reloadTrades, setReloadTrades] = useState(false);
   const [trades, setTrades] = useState([]);
+  const [accountBrokers, setAccountBrokers] = useState({});
   const [tags, setTags] = useState([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingTrade, setEditingTrade] = useState(null);
@@ -226,6 +227,7 @@ const App = () => {
       const response = await authFetch('/api/getTrades');
       const data = await response.json();
       setTrades(data.trades);
+      if (data.accountBrokers) setAccountBrokers(data.accountBrokers);
     };
     loadTradesFromServer();
   }, [reloadTrades]);
@@ -481,6 +483,7 @@ const App = () => {
         trades={trades}
         selectedAccounts={selectedAccounts}
         setSelectedAccounts={setSelectedAccounts}
+        accountBrokers={accountBrokers}
       />
       <main className="flex-1 min-h-screen transition-[margin] duration-200 max-lg:!ml-0" style={{ marginLeft: sidebarWidth, paddingRight: sidePanelOffset }}>
         <div className="p-6 lg:p-8">

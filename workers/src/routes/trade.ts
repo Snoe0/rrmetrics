@@ -1,7 +1,9 @@
 import { Hono } from 'hono';
 import type { Env, AuthContext } from '../bindings';
 import * as tradesDb from '../db/trades';
+import * as brokerDb from '../db/broker-connections';
 import { requiresLogin } from '../middleware/supabase-auth';
+import { createServiceClient } from '../lib/supabase';
 
 type HonoEnv = {
   Bindings: Env;
@@ -16,7 +18,54 @@ trade.get('/api/getTrades', requiresLogin, async (c) => {
   const supabase = c.get('supabase');
   try {
     const trades = await tradesDb.getTrades(supabase, user.id);
-    return c.json({ trades });
+
+    // Build account → broker mapping from broker_connections
+    const accountBrokers: Record<string, string> = {};
+    try {
+      const serviceClient = createServiceClient(c.env);
+      const conns = await brokerDb.findByOwner(serviceClient, user.id);
+
+      // Step 1: Direct match — parse account name from each connection's label
+      // Label format: "Alpha Futures Demo — AFZEROQA202602139428"
+      const labelMatches: Array<{ name: string; broker: string }> = [];
+      for (const conn of conns) {
+        if (conn.label) {
+          const dashIdx = conn.label.indexOf('—');
+          if (dashIdx !== -1) {
+            const acctName = conn.label.substring(dashIdx + 1).trim();
+            if (acctName) {
+              accountBrokers[acctName] = conn.broker;
+              labelMatches.push({ name: acctName, broker: conn.broker });
+            }
+          }
+        }
+      }
+
+      // Step 2: For unmatched trade accounts, match by shared prefix with
+      // a label-matched account (e.g. AFZEROEV... shares prefix with AFZEROQA...)
+      const allAccounts = [...new Set(trades.map((t: any) => t.account).filter(Boolean))];
+      const unmatched = allAccounts.filter((a: string) => !accountBrokers[a]);
+      if (unmatched.length > 0 && labelMatches.length > 0) {
+        for (const acct of unmatched) {
+          let bestMatch = '';
+          let bestBroker = '';
+          for (const lm of labelMatches) {
+            // Find longest common prefix
+            let i = 0;
+            while (i < acct.length && i < lm.name.length && acct[i] === lm.name[i]) i++;
+            if (i >= 4 && i > bestMatch.length) {
+              bestMatch = acct.substring(0, i);
+              bestBroker = lm.broker;
+            }
+          }
+          if (bestBroker) accountBrokers[acct] = bestBroker;
+        }
+      }
+    } catch {
+      // non-fatal — account icons are best-effort
+    }
+
+    return c.json({ trades, accountBrokers });
   } catch (err) {
     console.error('getTrades error:', err);
     return c.json({ error: 'Error retrieving trades!' }, 500);
