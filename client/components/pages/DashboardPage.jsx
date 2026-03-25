@@ -50,7 +50,7 @@ const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, onOpenImport, o
 
   const {
     containerRef, isLocked, setIsLocked,
-    widgetVisibility, toggleWidget, resetLayout, ready, portalRevision,
+    widgetVisibility, toggleWidget, resetLayout, ready, portalTargets,
   } = useGridStack('dashboard', DASHBOARD_WIDGETS);
 
   const baseTrades = applyEvalFilter(trades, evalFilter);
@@ -62,18 +62,6 @@ const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, onOpenImport, o
   const prevTrades = prevRange ? filterTradesByDateRange(baseTrades, prevRange) : null;
   const prevStats = prevTrades ? calculateAnalytics(prevTrades) : null;
   const showChange = period !== 'all' && prevStats;
-
-  // Portal targets — re-check when grid becomes ready or visibility changes
-  const [portalTargets, setPortalTargets] = useState({});
-  useEffect(() => {
-    if (!ready) return;
-    const targets = {};
-    DASHBOARD_WIDGETS.forEach(w => {
-      const el = document.getElementById('gs-content-' + w.id);
-      if (el) targets[w.id] = el;
-    });
-    setPortalTargets(targets);
-  }, [ready, portalRevision]);
 
   const widgetContent = {
     'dash-primary-stats': (

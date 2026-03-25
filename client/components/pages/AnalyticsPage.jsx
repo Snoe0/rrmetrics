@@ -45,7 +45,7 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
 
   const {
     containerRef, isLocked, setIsLocked,
-    widgetVisibility, toggleWidget, resetLayout, ready, portalRevision,
+    widgetVisibility, toggleWidget, resetLayout, ready, portalTargets,
   } = useGridStack('analytics', ANALYTICS_WIDGETS);
 
   const baseTradesForPeriod = applyEvalFilter(allTrades, evalFilter);
@@ -694,18 +694,6 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
       ctx.stroke();
     });
   }, [monteCarloResults, monteCarloSize.width, document.documentElement.dataset.theme]);
-
-  // Portal targets
-  const [portalTargets, setPortalTargets] = useState({});
-  useEffect(() => {
-    if (!ready) return;
-    const targets = {};
-    ANALYTICS_WIDGETS.forEach(w => {
-      const el = document.getElementById('gs-content-' + w.id);
-      if (el) targets[w.id] = el;
-    });
-    setPortalTargets(targets);
-  }, [ready, portalRevision]);
 
   if (trades.length === 0 && period === 'all') {
     return (
