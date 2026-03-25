@@ -269,8 +269,42 @@ async function syncConnection(
     });
   }
 
+  // Step 5b: Merge trades with identical entry time, exit time, and account.
+  // Combines quantities and averages exit prices (quantity-weighted).
+  const mergeKey = (t: RoundTrip) => `${t.enterTime}|${t.exitTime}|${t.account ?? ''}`;
+  const mergeGroups = new Map<string, RoundTrip[]>();
+  for (const t of roundTrips) {
+    const key = mergeKey(t);
+    const group = mergeGroups.get(key);
+    if (group) group.push(t);
+    else mergeGroups.set(key, [t]);
+  }
+  const mergedTrips: RoundTrip[] = [];
+  for (const group of mergeGroups.values()) {
+    if (group.length === 1) {
+      mergedTrips.push(group[0]);
+    } else {
+      const totalQty = group.reduce((s, t) => s + Math.abs(t.quantity), 0);
+      const avgExitPrice = totalQty > 0
+        ? group.reduce((s, t) => s + t.exitPrice * Math.abs(t.quantity), 0) / totalQty
+        : group.reduce((s, t) => s + t.exitPrice, 0) / group.length;
+      const avgEnterPrice = totalQty > 0
+        ? group.reduce((s, t) => s + t.enterPrice * Math.abs(t.quantity), 0) / totalQty
+        : group.reduce((s, t) => s + t.enterPrice, 0) / group.length;
+      const combinedOrderId = group.map(t => t.tradovateOrderId).sort().join('+');
+      const sumQty = group.reduce((s, t) => s + t.quantity, 0);
+      mergedTrips.push({
+        ...group[0],
+        enterPrice: avgEnterPrice,
+        exitPrice: avgExitPrice,
+        quantity: sumQty,
+        tradovateOrderId: combinedOrderId,
+      });
+    }
+  }
+
   // Step 6: Apply optional date range filter on entry time
-  let filteredTrips = roundTrips;
+  let filteredTrips = mergedTrips;
   const { startDate, endDate } = options || {};
   if (startDate || endDate) {
     const start = startDate ? new Date(startDate + 'T00:00:00.000Z') : null;
