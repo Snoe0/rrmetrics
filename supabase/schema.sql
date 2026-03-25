@@ -46,6 +46,10 @@ CREATE TABLE IF NOT EXISTS public.trades (
   is_eval BOOLEAN NOT NULL DEFAULT FALSE,
   tradovate_order_id TEXT,
   tradovate_source TEXT NOT NULL DEFAULT 'manual',
+  projectx_trade_id TEXT,
+  projectx_source TEXT,
+  broker_connection_id UUID,
+  account TEXT,
   created_date TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
