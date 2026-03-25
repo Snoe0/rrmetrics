@@ -100,6 +100,29 @@ const App = () => {
     localStorage.setItem('evalFilter', val);
   };
 
+  const [selectedAccounts, setSelectedAccounts] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('rrmetrics_selectedAccounts'));
+      if (Array.isArray(saved)) return saved;
+    } catch {}
+    return [];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('rrmetrics_selectedAccounts', JSON.stringify(selectedAccounts));
+  }, [selectedAccounts]);
+
+  useEffect(() => {
+    if (trades && trades.length > 0 && selectedAccounts.length > 0) {
+      const validAccounts = new Set(trades.map(t => t.account || 'Manual'));
+      const cleaned = selectedAccounts.filter(a => validAccounts.has(a));
+      if (cleaned.length !== selectedAccounts.length) {
+        setSelectedAccounts(cleaned);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trades]);
+
   const triggerReload = () => setReloadTrades(!reloadTrades);
 
   // Apply theme to DOM and persist
@@ -381,14 +404,18 @@ const App = () => {
   const openFormWithDate = (dateKey) => { setPrefillDate(dateKey); setIsFormOpen(true); };
   const openEditForm = (trade) => { setEditingTrade(trade); setIsFormOpen(true); };
 
+  const filteredTrades = selectedAccounts.length === 0
+    ? trades
+    : (trades || []).filter(t => selectedAccounts.includes(t.account || 'Manual'));
+
   const renderPage = () => {
     switch (currentPage) {
       case 'dashboard':
-        return <DashboardPage trades={trades} subscriptionStatus={subscriptionStatus} onOpenForm={openForm} onOpenImport={() => setCsvImportOpen(true)} onManualSync={handleManualSync} brokerStatuses={brokerStatuses} onOpenAddTrade={openFormWithDate} onEditTrade={openEditForm} dailyNotes={dailyNotes} onSaveNote={handleSaveNote} onDeleteNote={handleDeleteNote} tags={tags} strategyRules={strategyRules} evalFilter={evalFilter} setEvalFilter={setEvalFilter} sidebarCollapsed={sidebarCollapsed} />;
+        return <DashboardPage trades={filteredTrades} subscriptionStatus={subscriptionStatus} onOpenForm={openForm} onOpenImport={() => setCsvImportOpen(true)} onManualSync={handleManualSync} brokerStatuses={brokerStatuses} onOpenAddTrade={openFormWithDate} onEditTrade={openEditForm} dailyNotes={dailyNotes} onSaveNote={handleSaveNote} onDeleteNote={handleDeleteNote} tags={tags} strategyRules={strategyRules} evalFilter={evalFilter} setEvalFilter={setEvalFilter} sidebarCollapsed={sidebarCollapsed} />;
       case 'trades':
         return (
           <TradeListPage
-            trades={trades}
+            trades={filteredTrades}
             triggerReload={triggerReload}
             onEdit={(trade) => { setEditingTrade(trade); setIsFormOpen(true); }}
             subscriptionStatus={subscriptionStatus}
@@ -399,11 +426,11 @@ const App = () => {
           />
         );
       case 'analytics':
-        return <AnalyticsPage trades={trades} evalFilter={evalFilter} setEvalFilter={setEvalFilter} />;
+        return <AnalyticsPage trades={filteredTrades} evalFilter={evalFilter} setEvalFilter={setEvalFilter} />;
       case 'strategy':
-        return <StrategyPage subscriptionStatus={subscriptionStatus} trades={trades} evalFilter={evalFilter} setEvalFilter={setEvalFilter} />;
+        return <StrategyPage subscriptionStatus={subscriptionStatus} trades={filteredTrades} evalFilter={evalFilter} setEvalFilter={setEvalFilter} />;
       case 'premarket':
-        return <PreMarketPage subscriptionStatus={subscriptionStatus} trades={trades} />;
+        return <PreMarketPage subscriptionStatus={subscriptionStatus} trades={filteredTrades} />;
       case 'backtesting':
         return <BacktestingPage subscriptionStatus={subscriptionStatus} />;
       case 'settings':
@@ -415,7 +442,7 @@ const App = () => {
       case 'syncer':
         return <TradeSyncerPage />;
       default:
-        return <DashboardPage trades={trades} subscriptionStatus={subscriptionStatus} onOpenForm={openForm} onOpenImport={() => setCsvImportOpen(true)} onManualSync={handleManualSync} brokerStatuses={brokerStatuses} onOpenAddTrade={openFormWithDate} onEditTrade={openEditForm} dailyNotes={dailyNotes} onSaveNote={handleSaveNote} onDeleteNote={handleDeleteNote} tags={tags} strategyRules={strategyRules} evalFilter={evalFilter} setEvalFilter={setEvalFilter} sidebarCollapsed={sidebarCollapsed} />;
+        return <DashboardPage trades={filteredTrades} subscriptionStatus={subscriptionStatus} onOpenForm={openForm} onOpenImport={() => setCsvImportOpen(true)} onManualSync={handleManualSync} brokerStatuses={brokerStatuses} onOpenAddTrade={openFormWithDate} onEditTrade={openEditForm} dailyNotes={dailyNotes} onSaveNote={handleSaveNote} onDeleteNote={handleDeleteNote} tags={tags} strategyRules={strategyRules} evalFilter={evalFilter} setEvalFilter={setEvalFilter} sidebarCollapsed={sidebarCollapsed} />;
     }
   };
 
@@ -430,6 +457,9 @@ const App = () => {
         subscriptionStatus={subscriptionStatus}
         onCollapsedChange={setSidebarCollapsed}
         userRole={userRole}
+        trades={trades}
+        selectedAccounts={selectedAccounts}
+        setSelectedAccounts={setSelectedAccounts}
       />
       <main className={`flex-1 min-h-screen transition-[margin] duration-300 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-60'}`} style={{ paddingRight: sidePanelOffset }}>
         <div className="p-6 lg:p-8">
