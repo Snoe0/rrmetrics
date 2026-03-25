@@ -41,7 +41,7 @@ const HeroSection = () => (
 
     {/* Perspective dashboard preview */}
     <div className="-mt-16 [mask-image:linear-gradient(to_right,black_60%,transparent_100%)]">
-      <div className="mx-auto max-w-7xl [mask-image:linear-gradient(to_bottom,black_50%,transparent_100%)]">
+      <div className="mx-auto max-w-[120rem] [mask-image:linear-gradient(to_bottom,black_50%,transparent_100%)]">
         <div className="[perspective:1200px] -mr-16 pl-16 lg:-mr-56 lg:pl-56">
         <div className="[transform:rotateX(20deg)]">
           <div className="lg:h-[44rem] relative skew-x-[.36rad]">
