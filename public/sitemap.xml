@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://rrmetrics.com/</loc><priority>1.0</priority><changefreq>weekly</changefreq></url>
+  <url><loc>https://rrmetrics.com/upgrade</loc><priority>0.6</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://rrmetrics.com/referral</loc><priority>0.6</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://rrmetrics.com/guides/</loc><priority>0.7</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://rrmetrics.com/privacy</loc><priority>0.3</priority><changefreq>yearly</changefreq></url>
+  <url><loc>https://rrmetrics.com/terms</loc><priority>0.3</priority><changefreq>yearly</changefreq></url>
+  <url><loc>https://rrmetrics.com/guides/getting-started</loc><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://rrmetrics.com/guides/analytics</loc><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://rrmetrics.com/guides/dashboard-walkthrough</loc><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://rrmetrics.com/guides/data-export</loc><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://rrmetrics.com/guides/generic-csv</loc><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://rrmetrics.com/guides/ninjatrader-api</loc><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://rrmetrics.com/guides/premarket</loc><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://rrmetrics.com/guides/strategy</loc><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://rrmetrics.com/guides/subscription</loc><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://rrmetrics.com/guides/tags</loc><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://rrmetrics.com/guides/topstep-import</loc><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://rrmetrics.com/guides/tradovate-import</loc><priority>0.8</priority><changefreq>monthly</changefreq></url>
+  <url><loc>https://rrmetrics.com/guides/copytrading</loc><priority>0.8</priority><changefreq>monthly</changefreq></url>
+</urlset>

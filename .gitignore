@@ -69,3 +69,7 @@ public/assets/*.css
 public/assets/*.map
 .mcp.json
 .claude/settings.local.json
+
+# Local tool configs
+.serena/
+.claude/RR-Metrics/.obsidian/

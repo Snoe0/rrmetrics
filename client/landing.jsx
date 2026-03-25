@@ -4,6 +4,7 @@ const { createRoot } = require('react-dom/client');
 const { supabase } = require('./supabase.js');
 require('./styles/globals.css');
 const { ContainerScroll } = require('./components/ui/container-scroll-animation');
+const { HeroSection } = require('./components/ui/hero-section');
 
 const APP_URL = '';
 
@@ -226,68 +227,7 @@ const Navbar = () => {
   );
 };
 
-// =====================================================
-// HERO SECTION
-// =====================================================
-const HeroSection = () => (
-  <section className="overflow-hidden pb-16">
-    <ContainerScroll
-      titleComponent={
-        <div className="pt-20 px-6">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-accent/10 border border-accent/20 mb-8">
-            <span className="w-2 h-2 bg-accent rounded-full animate-pulse"></span>
-            <span className="text-accent text-sm font-medium">Built for futures & stock traders</span>
-          </div>
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-text-primary leading-[1.1] mb-6">
-            Your Trading Edge{' '}
-            <span className="bg-gradient-to-r from-accent to-[#8b5cf6] bg-clip-text text-transparent">
-              Starts Before the Bell
-            </span>
-          </h1>
-          <p className="text-text-secondary text-lg sm:text-xl max-w-2xl mx-auto mb-10 leading-relaxed">
-            The all-in-one trading journal with pre-market preparation, auto broker sync, advanced analytics, and daily performance tracking. Build consistency. Find your edge.
-          </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <a
-              href={`${APP_URL}/login?signup`}
-              className="bg-accent text-accent-text font-semibold px-8 py-3.5 rounded-lg hover:brightness-110 transition-all text-base flex items-center gap-2 shadow-lg shadow-accent/20"
-            >
-              Start Free Trial
-              <Icons.ArrowRight className="w-4 h-4" />
-            </a>
-            <a
-              href="#features"
-              className="text-text-secondary hover:text-text-primary font-medium px-8 py-3.5 rounded-lg border border-border hover:border-accent/50 transition-all text-base"
-            >
-              See Features
-            </a>
-          </div>
-          <p className="text-text-muted text-sm mt-4">No credit card required</p>
-        </div>
-      }
-    >
-      <div className="bg-bg-surface border border-border rounded-xl overflow-hidden shadow-2xl shadow-black/30 h-full flex flex-col">
-        <div className="bg-bg-input border-b border-border px-4 py-3 flex items-center gap-2 flex-shrink-0">
-          <div className="flex gap-1.5">
-            <div className="w-3 h-3 rounded-full bg-[#ff5f57]"></div>
-            <div className="w-3 h-3 rounded-full bg-[#febc2e]"></div>
-            <div className="w-3 h-3 rounded-full bg-[#28c840]"></div>
-          </div>
-          <div className="flex-1 ml-4">
-            <div className="bg-bg-page rounded-md px-4 py-1.5 text-text-muted text-xs font-mono max-w-xs">
-              rrmetrics.com/trades
-            </div>
-          </div>
-        </div>
-        <img
-          src="/assets/img/dashboard-preview.png"
-          alt="RR Metrics Dashboard"
-          className="w-full flex-1 object-contain object-top"
-        />
-      </div>
-    </ContainerScroll>
-  </section>
-);
+// HeroSection is now imported from ./components/ui/hero-section
 
 // =====================================================
 // SOCIAL PROOF BAR
@@ -542,7 +482,7 @@ const BentoFeaturesGrid = () => {
                 <Icons.Sunrise className="w-5 h-5" />
               </div>
               <h3 className="text-lg font-bold text-text-primary">Pre-Market Prep</h3>
-              <p className="mt-2 text-text-secondary text-sm">Start every session with a plan. Custom checklists, economic calendar, and Discord alerts.</p>
+              <p className="mt-2 text-text-secondary text-sm">Start every session with a plan. Build a custom checklist and track your prep consistency with stats over time.</p>
             </div>
             <PremarketVisual />
           </BentoItem>
@@ -571,7 +511,7 @@ const HowItWorks = () => {
   const steps = [
     { num: '01', title: 'Sign Up Free', desc: 'Create your account in seconds. No credit card needed to start your trial.' },
     { num: '02', title: 'Connect Your Broker', desc: 'Link Tradovate or import trades via CSV. Your data syncs automatically.' },
-    { num: '03', title: 'Set Up Your Routine', desc: 'Build your pre-market checklist, configure alerts, and customize your dashboard.' },
+    { num: '03', title: 'Set Up Your Routine', desc: 'Build your pre-market checklist and customize your dashboard.' },
     { num: '04', title: 'Review & Improve', desc: 'Use analytics to spot patterns, fix mistakes, and grow your edge over time.' },
   ];
 
@@ -786,7 +726,7 @@ const FAQSection = () => {
     },
     {
       question: 'What is the pre-market prep feature?',
-      answer: 'Pre-market prep lets you create a custom daily checklist (e.g., "check futures", "review economic calendar") that automatically resets each morning at your chosen time. It also shows the day\'s economic releases from the FRED API, and can send a summary to your Discord.',
+      answer: 'Pre-market prep lets you create a custom daily checklist (e.g., "check futures", "review key levels") to keep yourself accountable before each session. It tracks your checklist completion stats over time so you can see how consistent your preparation is.',
     },
     {
       question: 'Do you support stocks or just futures?',
