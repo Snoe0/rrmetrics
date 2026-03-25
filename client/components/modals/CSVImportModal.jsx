@@ -89,6 +89,7 @@ const CSV_TRADE_FIELDS = [
   { key: 'quantity', label: 'Quantity', required: true, aliases: ['quantity', 'qty', 'size', 'shares', 'contracts', 'lots', 'volume'] },
   { key: 'manualPL', label: 'P/L (Optional)', required: false, aliases: ['pl', 'pnl', 'profit', 'profitloss', 'profit_loss', 'profit/loss', 'net p/l', 'net profit', 'realized p/l'] },
   { key: 'comments', label: 'Comments (Optional)', required: false, aliases: ['comments', 'notes', 'comment', 'note', 'description'] },
+  { key: 'account', label: 'Account (Optional)', required: false, aliases: ['account', 'account_name', 'accountname', 'broker', 'broker_account'] },
 ];
 
 const CSVImportModal = ({ isOpen, onClose, triggerReload, onDuplicatesSkipped }) => {
@@ -203,6 +204,7 @@ const CSVImportModal = ({ isOpen, onClose, triggerReload, onDuplicatesSkipped })
         ...t,
         enterTime: toESTIso(t.enterTime),
         exitTime: toESTIso(t.exitTime),
+        account: t.account || null,
       }));
       const response = await authFetch('/api/importTrades', {
         method: 'POST',
