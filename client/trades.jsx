@@ -4,6 +4,7 @@ const React = require('react');
 const { useState, useEffect } = React;
 const { createRoot } = require('react-dom/client');
 require('./styles/globals.css');
+require('gridstack/dist/gridstack.min.css');
 
 // Context
 const { SidePanelContext } = require('./utils/contexts');

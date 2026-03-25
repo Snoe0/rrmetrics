@@ -1,17 +1,20 @@
 const React = require('react');
-const { useState } = React;
+const ReactDOM = require('react-dom');
+const { useState, useEffect } = React;
 
-const ChangeIndicator = require('../shared/ChangeIndicator');
 const WinRateCard = require('../shared/WinRateCard');
 const StatCard = require('../shared/StatCard');
 const PeriodFilter = require('../shared/PeriodFilter');
 const EvalFilterControl = require('../shared/EvalFilterControl');
 const CalendarView = require('./CalendarView');
 const Icons = require('../shared/Icons');
+const LayoutControls = require('../shared/LayoutControls');
 
 const { getDateRange, getPreviousDateRange, filterTradesByDateRange, calcPercentChange } = require('../../utils/periodUtils');
 const { calculateAnalytics, applyEvalFilter } = require('../../utils/analytics');
 const { formatDuration } = require('../../utils/dateUtils');
+const { useGridStack } = require('../../utils/useGridStack');
+const { DASHBOARD_WIDGETS } = require('../../utils/gridstackLayouts');
 
 
 const AvgWinLossCard = ({ avgWin, avgLoss }) => {
@@ -42,9 +45,13 @@ const AvgWinLossCard = ({ avgWin, avgLoss }) => {
 };
 
 
-
 const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, onOpenImport, onOpenAddTrade, onEditTrade, dailyNotes, onSaveNote, onDeleteNote, tags, strategyRules, evalFilter, setEvalFilter, sidebarCollapsed }) => {
   const [period, setPeriod] = useState('all');
+
+  const {
+    containerRef, isLocked, setIsLocked,
+    widgetVisibility, toggleWidget, resetLayout, ready,
+  } = useGridStack('dashboard', DASHBOARD_WIDGETS);
 
   const baseTrades = applyEvalFilter(trades, evalFilter);
   const dateRange = getDateRange(period);
@@ -56,6 +63,48 @@ const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, onOpenImport, o
   const prevStats = prevTrades ? calculateAnalytics(prevTrades) : null;
   const showChange = period !== 'all' && prevStats;
 
+  // Portal targets — re-check when grid becomes ready or visibility changes
+  const [portalTargets, setPortalTargets] = useState({});
+  useEffect(() => {
+    if (!ready) return;
+    const targets = {};
+    DASHBOARD_WIDGETS.forEach(w => {
+      const el = document.getElementById('gs-content-' + w.id);
+      if (el) targets[w.id] = el;
+    });
+    setPortalTargets(targets);
+  }, [ready, widgetVisibility]);
+
+  const widgetContent = {
+    'dash-primary-stats': (
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 h-full">
+        <StatCard
+          label="Total P/L"
+          value={`$${stats.totalPL.toFixed(2)}`}
+          color={stats.totalPL >= 0 ? 'text-positive' : 'text-negative'}
+          change={showChange ? calcPercentChange(stats.totalPL, prevStats.totalPL) : null}
+        />
+        <WinRateCard wins={stats.wins} losses={stats.losses} total={stats.totalTrades}
+          change={showChange ? calcPercentChange(stats.winRate, prevStats.winRate) : null} />
+        <StatCard label="Total Trades" value={stats.totalTrades} color="text-text-primary"
+          change={showChange ? calcPercentChange(stats.totalTrades, prevStats.totalTrades) : null} />
+        <StatCard label="Avg Duration" value={formatDuration(stats.avgDuration)} color="text-text-primary" />
+      </div>
+    ),
+    'dash-secondary-stats': (
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 h-full">
+        <AvgWinLossCard avgWin={stats.avgWin} avgLoss={stats.avgLoss} />
+        <StatCard label="Best Trade" value={`$${stats.bestTrade.toFixed(2)}`} color="text-positive"
+          change={showChange ? calcPercentChange(stats.bestTrade, prevStats.bestTrade) : null} />
+        <StatCard label="Worst Trade" value={`$${stats.worstTrade.toFixed(2)}`} color="text-negative" />
+        <StatCard label="Breakeven Rate" value={`${stats.breakevenPct.toFixed(1)}%`} subValue={`${stats.breakevens} trades`} color="text-text-primary" />
+      </div>
+    ),
+    'dash-calendar': (
+      <CalendarView trades={baseTrades} dailyNotes={dailyNotes} onSaveNote={onSaveNote} onDeleteNote={onDeleteNote} tags={tags} subscriptionStatus={subscriptionStatus} strategyRules={strategyRules} onOpenAddTrade={onOpenAddTrade} onEditTrade={onEditTrade} sidebarCollapsed={sidebarCollapsed} />
+    ),
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -65,6 +114,11 @@ const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, onOpenImport, o
           <p className="text-text-secondary text-sm mt-1">Overview of your trading performance</p>
         </div>
         <div className="flex items-center gap-2">
+          <LayoutControls
+            isLocked={isLocked} setIsLocked={setIsLocked}
+            widgetVisibility={widgetVisibility} toggleWidget={toggleWidget}
+            resetLayout={resetLayout} widgetDefs={DASHBOARD_WIDGETS}
+          />
           <button className="flex items-center gap-2 px-4 py-2.5 bg-bg-surface border border-border text-text-secondary text-sm font-semibold rounded-lg hover:text-text-primary hover:border-accent transition-all" onClick={onOpenImport}>
             <Icons.Download className="w-4 h-4" />
             Import CSV
@@ -86,32 +140,13 @@ const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, onOpenImport, o
         <EvalFilterControl trades={trades} evalFilter={evalFilter} setEvalFilter={setEvalFilter} />
       </div>
 
-      {/* Stats grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard
-          label="Total P/L"
-          value={`$${stats.totalPL.toFixed(2)}`}
-          color={stats.totalPL >= 0 ? 'text-positive' : 'text-negative'}
-          change={showChange ? calcPercentChange(stats.totalPL, prevStats.totalPL) : null}
-        />
-        <WinRateCard wins={stats.wins} losses={stats.losses} total={stats.totalTrades}
-          change={showChange ? calcPercentChange(stats.winRate, prevStats.winRate) : null} />
-        <StatCard label="Total Trades" value={stats.totalTrades} color="text-text-primary"
-          change={showChange ? calcPercentChange(stats.totalTrades, prevStats.totalTrades) : null} />
-        <StatCard label="Avg Duration" value={formatDuration(stats.avgDuration)} color="text-text-primary" />
-      </div>
+      {/* GridStack container */}
+      <div ref={containerRef} className="grid-stack" />
 
-      {/* Secondary stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <AvgWinLossCard avgWin={stats.avgWin} avgLoss={stats.avgLoss} />
-        <StatCard label="Best Trade" value={`$${stats.bestTrade.toFixed(2)}`} color="text-positive"
-          change={showChange ? calcPercentChange(stats.bestTrade, prevStats.bestTrade) : null} />
-        <StatCard label="Worst Trade" value={`$${stats.worstTrade.toFixed(2)}`} color="text-negative" />
-        <StatCard label="Breakeven Rate" value={`${stats.breakevenPct.toFixed(1)}%`} subValue={`${stats.breakevens} trades`} color="text-text-primary" />
-      </div>
-
-      {/* Calendar */}
-      <CalendarView trades={baseTrades} dailyNotes={dailyNotes} onSaveNote={onSaveNote} onDeleteNote={onDeleteNote} tags={tags} subscriptionStatus={subscriptionStatus} strategyRules={strategyRules} onOpenAddTrade={onOpenAddTrade} onEditTrade={onEditTrade} sidebarCollapsed={sidebarCollapsed} />
+      {/* Portals: render widget content into GridStack items */}
+      {ready && Object.entries(portalTargets).map(([id, el]) =>
+        widgetContent[id] ? ReactDOM.createPortal(widgetContent[id], el) : null
+      )}
     </div>
   );
 };
