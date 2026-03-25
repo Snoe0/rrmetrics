@@ -807,8 +807,8 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
             </div>
           )}
 
-          {/* Tradovate-compatible broker sections */}
-          {TRADOVATE_BROKERS.map(b => (
+          {/* ============== Direct Brokers ============== */}
+          {TRADOVATE_BROKERS.filter(b => !b.subtitle.includes('Prop')).map(b => (
             <TradovateBrokerSection
               key={b.key}
               hook={brokerHooks[b.key]}
@@ -819,23 +819,49 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
             />
           ))}
 
-          {/* ============== Robinhood ============== */}
-          <RobinhoodBrokerSection
-            hook={robinhoodHook}
-            expandedBroker={expandedBroker}
-            toggleBroker={toggleBroker}
-            brokerHeaderBadge={brokerHeaderBadge}
-            statusDot={statusDot}
-          />
+          {/* ============== Robinhood — Coming Soon ============== */}
+          <div className="bg-bg-surface border border-border rounded-xl overflow-hidden opacity-75">
+            <div className="flex items-center justify-between p-5">
+              <div className="flex items-center gap-3">
+                <img src={BROKER_CONFIGS.robinhood.icon} alt="Robinhood" className="w-10 h-10 rounded-lg object-contain" />
+                <div>
+                  <h3 className="text-text-primary font-semibold text-sm">Robinhood</h3>
+                  <p className="text-text-tertiary text-xs">{BROKER_CONFIGS.robinhood.subtitle}</p>
+                </div>
+              </div>
+              <span className="text-xs px-2.5 py-1 rounded-full bg-accent/10 text-accent font-medium">Coming Soon</span>
+            </div>
+          </div>
 
-          {/* ============== Webull ============== */}
-          <TradovateBrokerSection
-            hook={webullHook}
-            expandedBroker={expandedBroker}
-            toggleBroker={toggleBroker}
-            brokerHeaderBadge={brokerHeaderBadge}
-            statusDot={statusDot}
-          />
+          {/* ============== Webull — Coming Soon ============== */}
+          <div className="bg-bg-surface border border-border rounded-xl overflow-hidden opacity-75">
+            <div className="flex items-center justify-between p-5">
+              <div className="flex items-center gap-3">
+                <img src={BROKER_CONFIGS.webull.icon} alt="Webull" className="w-10 h-10 rounded-lg object-contain" />
+                <div>
+                  <h3 className="text-text-primary font-semibold text-sm">Webull</h3>
+                  <p className="text-text-tertiary text-xs">{BROKER_CONFIGS.webull.subtitle}</p>
+                </div>
+              </div>
+              <span className="text-xs px-2.5 py-1 rounded-full bg-accent/10 text-accent font-medium">Coming Soon</span>
+            </div>
+          </div>
+
+          {/* ============== Prop Firms ============== */}
+          <div className="pt-2">
+            <h3 className="text-text-secondary text-xs font-semibold uppercase tracking-wider mb-3">Prop Firms</h3>
+          </div>
+
+          {TRADOVATE_BROKERS.filter(b => b.subtitle.includes('Prop')).map(b => (
+            <TradovateBrokerSection
+              key={b.key}
+              hook={brokerHooks[b.key]}
+              expandedBroker={expandedBroker}
+              toggleBroker={toggleBroker}
+              brokerHeaderBadge={brokerHeaderBadge}
+              statusDot={statusDot}
+            />
+          ))}
 
           {/* ============== ProjectX / Topstep ============== */}
           <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
