@@ -327,27 +327,44 @@ const App = () => {
     }
   };
 
+  // All broker types to auto-sync: { apiBase, brokerParam (optional), label }
+  const SYNC_BROKERS = [
+    { apiBase: '/api/tradovate', brokerParam: 'tradovate',           label: 'Tradovate' },
+    { apiBase: '/api/tradovate', brokerParam: 'ninjatrader',         label: 'NinjaTrader' },
+    { apiBase: '/api/tradovate', brokerParam: 'alpha_futures',       label: 'Alpha Futures' },
+    { apiBase: '/api/tradovate', brokerParam: 'apex_trader_funding', label: 'Apex Trader Funding' },
+    { apiBase: '/api/webull',    brokerParam: null,                  label: 'Webull' },
+    { apiBase: '/api/robinhood', brokerParam: null,                  label: 'Robinhood' },
+    { apiBase: '/api/projectx',  brokerParam: null,                  label: 'Topstep' },
+  ];
+
   // Auto-sync brokers on mount
   useEffect(() => {
     const autoSync = async () => {
       const statuses = [];
+      let anyNewTrades = false;
 
-      // Helper: fetch status + sync all configured connections for a broker
-      const syncBroker = async (apiPrefix, displayName) => {
+      for (const { apiBase, brokerParam, label } of SYNC_BROKERS) {
         try {
-          const statusRes = await authFetch(`/api/${apiPrefix}/status`);
+          const statusUrl = brokerParam
+            ? `${apiBase}/status?broker=${brokerParam}`
+            : `${apiBase}/status`;
+          const statusRes = await authFetch(statusUrl);
           const statusData = await statusRes.json();
           const conns = statusData.connections || [];
           const configuredConns = conns.filter(c => c.configured);
 
+          if (conns.length === 0) continue;
+
+          statuses.push({ name: label, apiBase, brokerParam, connections: conns, ...statusData });
+
           if (configuredConns.length > 0) {
-            statuses.push({ name: displayName, apiPrefix, connections: conns, ...statusData });
-            setSyncNotification(`Syncing trades from ${displayName}...`);
+            setSyncNotification(`Syncing trades from ${label}...`);
             let totalSynced = 0;
 
             for (const conn of configuredConns) {
               try {
-                const syncRes = await authFetch(`/api/${apiPrefix}/sync`, {
+                const syncRes = await authFetch(`${apiBase}/sync`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ connectionId: conn.connectionId }),
@@ -355,29 +372,26 @@ const App = () => {
                 const syncData = await syncRes.json();
                 totalSynced += syncData.synced || 0;
               } catch (err) {
-                console.error(`Auto-sync failed for ${displayName} connection ${conn.connectionId}:`, err);
+                console.error(`Auto-sync failed for ${label} connection ${conn.connectionId}:`, err);
               }
             }
 
             if (totalSynced > 0) {
-              setSyncNotification(`Synced ${totalSynced} new trade${totalSynced !== 1 ? 's' : ''} from ${displayName}`);
-              triggerReload();
-            } else {
-              setSyncNotification(null);
+              setSyncNotification(`Synced ${totalSynced} new trade${totalSynced !== 1 ? 's' : ''} from ${label}`);
+              anyNewTrades = true;
             }
-            setTimeout(() => setSyncNotification(null), 4000);
-          } else if (conns.length > 0) {
-            // Has connections but none configured (all expired)
-            statuses.push({ name: displayName, apiPrefix, connections: conns, ...statusData });
           }
         } catch (err) {
-          console.error(`${displayName} auto-sync failed:`, err);
+          console.error(`${label} auto-sync failed:`, err);
         }
-      };
+      }
 
-      await syncBroker('tradovate', 'Tradovate');
-      await syncBroker('projectx', 'Topstep');
-
+      if (anyNewTrades) {
+        triggerReload();
+        setTimeout(() => setSyncNotification(null), 4000);
+      } else {
+        setSyncNotification(null);
+      }
       setBrokerStatuses(statuses);
     };
     autoSync();
@@ -391,6 +405,7 @@ const App = () => {
       setSyncPopupOpen(true);
       return;
     }
+    let anyNewTrades = false;
     for (const broker of brokerStatuses) {
       const conns = (broker.connections || []).filter(c => c.configured);
       if (conns.length === 0) continue;
@@ -400,7 +415,7 @@ const App = () => {
 
       for (const conn of conns) {
         try {
-          const res = await authFetch(`/api/${broker.apiPrefix}/sync`, {
+          const res = await authFetch(`${broker.apiBase}/sync`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ connectionId: conn.connectionId }),
@@ -414,11 +429,12 @@ const App = () => {
 
       if (totalSynced > 0) {
         setSyncNotification(`Synced ${totalSynced} new trade${totalSynced !== 1 ? 's' : ''} from ${broker.name}`);
-        triggerReload();
+        anyNewTrades = true;
       } else {
         setSyncNotification(`${broker.name} is up to date`);
       }
     }
+    if (anyNewTrades) triggerReload();
     setTimeout(() => setSyncNotification(null), 4000);
   };
 
