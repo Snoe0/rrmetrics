@@ -20,20 +20,20 @@ const AvgWinLossCard = ({ avgWin, avgLoss }) => {
   const ratio = absLoss > 0 ? (avgWin / absLoss).toFixed(2) : avgWin > 0 ? '∞' : '0.00';
   const winPct = total > 0 ? (avgWin / total) * 100 : 50;
   return (
-    <div className="bg-bg-surface border border-border rounded-xl p-5">
+    <div className="relative rounded-xl border border-border bg-gradient-to-t from-accent/[0.03] to-bg-surface p-5 shadow-sm">
       <div className="flex items-center gap-4">
         <div>
-          <div className="text-text-secondary text-xs font-medium uppercase tracking-wider mb-2">Avg Win / Loss</div>
-          <div className="font-mono text-2xl font-bold text-text-primary">{ratio}</div>
+          <div className="text-text-secondary text-xs font-medium tracking-wide mb-3">Avg Win / Loss</div>
+          <div className="font-mono text-2xl font-bold tracking-tight text-text-primary">{ratio}</div>
         </div>
         <div className="flex-1 flex flex-col gap-3 ml-8">
-          <div className="flex h-2 rounded-full overflow-hidden">
-            <div className="bg-positive" style={{ width: `${winPct}%` }} />
-            <div className="bg-negative flex-1" />
+          <div className="flex h-2 rounded-full overflow-hidden bg-border/50">
+            <div className="bg-positive rounded-l-full" style={{ width: `${winPct}%` }} />
+            <div className="bg-negative flex-1 rounded-r-full" />
           </div>
           <div className="flex justify-between text-[12px] font-mono">
-            <span className="text-positive">${avgWin.toFixed(0)}</span>
-            <span className="text-negative">-${absLoss.toFixed(0)}</span>
+            <span className="text-positive font-medium">${avgWin.toFixed(0)}</span>
+            <span className="text-negative font-medium">-${absLoss.toFixed(0)}</span>
           </div>
         </div>
       </div>
@@ -65,21 +65,21 @@ const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, onOpenImport, o
   const showChange = period !== 'all' && prevStats;
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-4 md:gap-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">Dashboard</h1>
-          <p className="text-text-secondary text-sm mt-1">Overview of your trading performance</p>
+          <h1 className="text-2xl font-bold tracking-tight text-text-primary">Dashboard</h1>
+          <p className="text-text-secondary text-sm mt-0.5">Overview of your trading performance</p>
         </div>
         <div className="flex items-center gap-2">
-          <button className="flex items-center gap-2 px-4 py-2.5 bg-bg-surface border border-border text-text-secondary text-sm font-semibold rounded-lg hover:text-text-primary hover:border-accent transition-all" onClick={onOpenImport}>
+          <button className="flex items-center gap-2 px-3.5 py-2 bg-bg-surface border border-border text-text-secondary text-sm font-medium rounded-lg hover:text-text-primary hover:border-accent/50 transition-all" onClick={onOpenImport}>
             <Icons.Download className="w-4 h-4" />
-            Import CSV
+            <span className="hidden sm:inline">Import CSV</span>
           </button>
           {hasBrokers && (
             <button
-              className="flex items-center justify-center w-9 h-9 bg-bg-surface border border-border text-text-secondary rounded-lg hover:text-text-primary hover:border-accent transition-all disabled:opacity-50"
+              className="flex items-center justify-center w-9 h-9 bg-bg-surface border border-border text-text-secondary rounded-lg hover:text-text-primary hover:border-accent/50 transition-all disabled:opacity-50"
               onClick={handleSync}
               disabled={syncing}
               title="Sync broker trades"
@@ -88,7 +88,7 @@ const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, onOpenImport, o
             </button>
           )}
           {subscriptionStatus && subscriptionStatus.isPremium && (subscriptionStatus.tradeCount == null || subscriptionStatus.tradeCount < 50) && (
-            <button className="flex items-center gap-2 px-4 py-2.5 bg-accent text-accent-text text-sm font-semibold rounded-lg hover:brightness-110 transition-all" onClick={onOpenForm}>
+            <button className="flex items-center gap-2 px-3.5 py-2 bg-accent text-accent-text text-sm font-semibold rounded-lg hover:brightness-110 transition-all shadow-sm" onClick={onOpenForm}>
               <Icons.Plus className="w-4 h-4" />
               New Trade
             </button>
@@ -104,8 +104,8 @@ const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, onOpenImport, o
         <EvalFilterControl trades={trades} evalFilter={evalFilter} setEvalFilter={setEvalFilter} />
       </div>
 
-      {/* Stats grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {/* Primary stats grid */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
         <StatCard
           label="Total P/L"
           value={`$${stats.totalPL.toFixed(2)}`}
@@ -120,8 +120,8 @@ const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, onOpenImport, o
         <StatCard label="Avg Duration" value={formatDuration(stats.avgDuration)} color="text-text-primary" />
       </div>
 
-      {/* Secondary stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {/* Secondary stats grid */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
         <AvgWinLossCard avgWin={stats.avgWin} avgLoss={stats.avgLoss} />
         <StatCard label="Best Trade" value={`$${stats.bestTrade.toFixed(2)}`} color="text-positive"
           change={showChange ? calcPercentChange(stats.bestTrade, prevStats.bestTrade) : null} />
