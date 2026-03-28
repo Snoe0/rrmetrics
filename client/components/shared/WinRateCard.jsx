@@ -17,13 +17,13 @@ const WinRateCard = ({ wins, losses, breakevens = 0, total, change }) => {
   const neuStartDeg = 180 + (total > 0 ? (wins / total) * 180 : 0);
   const losStartDeg = 180 + (total > 0 ? ((wins + neutral) / total) * 180 : 0);
   return (
-    <div className="relative rounded-xl border border-border bg-gradient-to-t from-accent/[0.03] to-bg-surface p-5 shadow-sm">
-      <div className="flex items-center justify-between mb-3">
-        <div className="text-text-secondary text-xs font-medium tracking-wide">Win Rate</div>
+    <div className="bg-bg-surface border border-border rounded-xl p-5 relative">
+      <div className="text-text-secondary text-xs font-medium uppercase tracking-wider mb-2">Win Rate</div>
+      <div className="flex items-baseline gap-2">
+        <div className="font-mono text-2xl font-bold text-text-primary">{winRate.toFixed(1)}%</div>
         {change !== null && change !== undefined && <ChangeIndicator value={change} />}
       </div>
-      <div className="font-mono text-2xl font-bold tracking-tight text-text-primary">{winRate.toFixed(1)}%</div>
-      <div className="absolute right-4 top-14 flex flex-col items-center gap-1">
+      <div className="absolute right-4 top-4 flex flex-col items-center gap-1">
         <svg width={96} height={50} viewBox="0 0 72 38">
           {/* Background track */}
           <circle cx={cx} cy={cy} r={r} fill="none"
@@ -53,9 +53,9 @@ const WinRateCard = ({ wins, losses, breakevens = 0, total, change }) => {
           )}
         </svg>
         <div className="flex justify-between" style={{ width: 96 }}>
-          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-positive/15 text-positive text-[9px] font-bold">{wins}</span>
-          {neutral > 0 && <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-accent/15 text-accent text-[9px] font-bold">{neutral}</span>}
-          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-negative/15 text-negative text-[9px] font-bold">{losses}</span>
+          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-positive/20 text-positive text-[9px] font-bold">{wins}</span>
+          {neutral > 0 && <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-accent/20 text-accent text-[9px] font-bold">{neutral}</span>}
+          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-negative/20 text-negative text-[9px] font-bold">{losses}</span>
         </div>
       </div>
     </div>
