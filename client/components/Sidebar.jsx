@@ -127,7 +127,7 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChang
 
       {/* Sidebar */}
       <nav
-        className={`fixed top-0 left-0 h-full bg-bg-page flex flex-col z-50 overflow-hidden lg:translate-x-0 ${sidebarOpen ? 'translate-x-0 border-r border-border' : '-translate-x-full'}`}
+        className={`fixed top-0 left-0 h-full bg-bg-page border-r border-border flex flex-col z-50 overflow-hidden lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
         style={{ width: sidebarWidth, transition: isDragging.current ? 'none' : 'width 0.2s ease' }}
       >
         {/* Nav links */}
