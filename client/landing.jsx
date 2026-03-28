@@ -207,7 +207,7 @@ const Navbar = () => {
     <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
       scrolled ? 'bg-bg-surface/95 backdrop-blur-md border-b border-border shadow-sm' : 'bg-transparent'
     }`}>
-      <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+      <div className="w-full px-8 h-16 flex items-center justify-between">
         <Logo />
         <div className="hidden md:flex items-center gap-8">
           <a href="#features" className="text-text-secondary hover:text-text-primary text-sm transition-colors">Features</a>
