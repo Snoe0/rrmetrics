@@ -501,7 +501,7 @@ const App = () => {
         setSelectedAccounts={setSelectedAccounts}
         accountBrokers={accountBrokers}
       />
-      <main className="flex-1 min-h-screen transition-[margin] duration-200 max-lg:!ml-0" style={{ marginLeft: sidebarWidth, paddingRight: sidePanelOffset }}>
+      <main className="flex-1 min-h-screen transition-[margin] duration-200 max-lg:!ml-0 lg:bg-bg-surface lg:rounded-tl-2xl lg:border-l lg:border-t lg:border-border" style={{ marginLeft: sidebarWidth, paddingRight: sidePanelOffset }}>
         <div className="p-6 lg:p-8">
           <FreeBanner subscriptionStatus={subscriptionStatus} proPrice={pricing.pro} />
           {syncNotification && (
