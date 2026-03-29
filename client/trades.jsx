@@ -34,7 +34,6 @@ const ReferralPage = require('./components/pages/ReferralPage');
 const TradeSyncerPage = require('./components/pages/TradeSyncerPage');
 const DotGrid = require('./components/shared/DotGrid');
 const OnboardingFlow = require('./components/OnboardingFlow');
-const { useThemeFavicon } = require('./components/shared/LogoIcon');
 
 const AnnouncementBanner = ({ announcement, onDismiss }) => {
   if (!announcement) return null;
@@ -133,9 +132,6 @@ const App = () => {
   }, [trades]);
 
   const triggerReload = () => setReloadTrades(!reloadTrades);
-
-  // Dynamic favicon matching accent color
-  useThemeFavicon(theme, customColors);
 
   // Apply theme to DOM and persist
   useEffect(() => {

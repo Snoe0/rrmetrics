@@ -133,7 +133,10 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChang
         {/* Logo */}
         <div className={cn('px-3 pt-4 pb-3 border-b border-border', isCollapsed && 'flex justify-center')}>
           <div className={cn('flex items-center gap-2.5 px-3', isCollapsed && 'px-0')}>
-            <img src="/assets/img/logo.svg" alt="RR Metrics" className="w-8 h-8 rounded-md flex-shrink-0" />
+            <div className="relative w-8 h-8 flex-shrink-0">
+              <img src="/assets/img/logo.svg" alt="RR Metrics" className="w-8 h-8 rounded-md" />
+              <div className="absolute inset-0 bg-accent rounded-md mix-blend-color" />
+            </div>
             <span className={`text-text-primary font-semibold text-sm tracking-tight whitespace-nowrap transition-opacity duration-200 ${isCollapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100'}`}>
               RR Metrics
             </span>
