@@ -2,6 +2,7 @@ const React = require('react');
 const { useState, useRef, useEffect, useCallback } = React;
 const Icons = require('./shared/Icons');
 const AccountSwitcher = require('./shared/AccountSwitcher');
+const { LogoIcon } = require('./shared/LogoIcon');
 const { cn } = require('../lib/utils');
 const { supabase } = require('../helper');
 
@@ -130,6 +131,16 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChang
         className={`fixed top-0 left-0 h-full bg-bg-page border-r border-border flex flex-col z-50 overflow-hidden lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
         style={{ width: sidebarWidth, transition: isDragging.current ? 'none' : 'width 0.2s ease' }}
       >
+        {/* Logo */}
+        <div className={cn('px-3 pt-4 pb-3 border-b border-border', isCollapsed && 'flex justify-center')}>
+          <div className={cn('flex items-center gap-2.5 px-3', isCollapsed && 'px-0')}>
+            <LogoIcon className="w-8 h-8 flex-shrink-0" />
+            <span className={`text-text-primary font-semibold text-sm tracking-tight whitespace-nowrap transition-opacity duration-200 ${isCollapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100'}`}>
+              RR Metrics
+            </span>
+          </div>
+        </div>
+
         {/* Nav links */}
         <div className="flex-1 py-4 px-3 flex flex-col">
           <div className={cn('px-3 mb-3', isCollapsed && 'px-2')}>
