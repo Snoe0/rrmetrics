@@ -24,6 +24,8 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
   const [hoveredDayIndex, setHoveredDayIndex] = useState(null);
   const [hoveredTimeIndex, setHoveredTimeIndex] = useState(null);
   const [showTimeTable, setShowTimeTable] = useState(false);
+  const [dayPLMode, setDayPLMode] = useState('total');
+  const [timePLMode, setTimePLMode] = useState('avg');
   const [period, setPeriod] = useState('all');
   const [kellyDrawdown, setKellyDrawdown] = useState(2000);
 
@@ -219,7 +221,10 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
       else { dayLosses[day]++; dayLossPL[day] += Math.abs(pl); }
     });
 
-    const maxVal = Math.max(...dayPL.map(Math.abs), 1);
+    const dayValues = dayPLMode === 'avg'
+      ? dayPL.map((pl, i) => dayCounts[i] > 0 ? pl / dayCounts[i] : 0)
+      : dayPL;
+    const maxVal = Math.max(...dayValues.map(Math.abs), 1);
     const chartW = w - padding.left - padding.right;
     const chartH = h - padding.top - padding.bottom;
 
@@ -255,7 +260,7 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
       ctx.fillRect(padding.left + barGap * hoveredDayIndex, padding.top, barGap, chartH);
     }
 
-    dayPL.forEach((val, i) => {
+    dayValues.forEach((val, i) => {
       const x = padding.left + barGap * i + (barGap - barWidth) / 2;
       const barH = (Math.abs(val) / maxVal) * (chartH / 2);
       const y = val >= 0 ? zeroY - barH : zeroY;
@@ -296,7 +301,7 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
         { label: 'Total P/L', value: `$${dayPL[i].toFixed(2)}`, color: dayPL[i] >= 0 ? dayPosColor : dayNegColor },
       ], w, h);
     }
-  }, [trades, hoveredDayIndex, document.documentElement.dataset.theme]);
+  }, [trades, hoveredDayIndex, dayPLMode, document.documentElement.dataset.theme]);
 
   // Win rate by ticker
   const tickerStats = {};
@@ -436,8 +441,8 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
     const h = 320;
     const padding = { top: 20, right: 20, bottom: 90, left: 60 };
 
-    const values = timeOfDayStats.map(s => Math.abs(s.avgPL));
-    const maxVal = Math.max(...values, 1);
+    const timeValues = timeOfDayStats.map(s => timePLMode === 'avg' ? s.avgPL : s.totalPL);
+    const maxVal = Math.max(...timeValues.map(Math.abs), 1);
     const chartW = w - padding.left - padding.right;
     const chartH = h - padding.top - padding.bottom;
 
@@ -493,12 +498,13 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
     }
 
     timeOfDayStats.forEach((stat, i) => {
+      const val = timeValues[i];
       const x = padding.left + barGap * i + (barGap - barWidth) / 2;
-      const barH = (Math.abs(stat.avgPL) / maxVal) * (chartH / 2);
-      const y = stat.avgPL >= 0 ? zeroY - barH : zeroY;
+      const barH = (Math.abs(val) / maxVal) * (chartH / 2);
+      const y = val >= 0 ? zeroY - barH : zeroY;
 
       const isHovered = hoveredTimeIndex === i;
-      const timeBaseColor = stat.avgPL >= 0 ? timePosColor : timeNegColor;
+      const timeBaseColor = val >= 0 ? timePosColor : timeNegColor;
       ctx.fillStyle = stat.count === 0 ? 'transparent' : (isHovered ? timeBaseColor + 'CC' : timeBaseColor);
       if (stat.count > 0) {
         ctx.beginPath();
@@ -537,7 +543,7 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
         { label: 'Total P/L', value: `$${stat.totalPL.toFixed(2)}`, color: stat.totalPL >= 0 ? timePosColor : timeNegColor },
       ], w, h);
     }
-  }, [trades, hoveredTimeIndex, document.documentElement.dataset.theme]);
+  }, [trades, hoveredTimeIndex, timePLMode, document.documentElement.dataset.theme]);
 
   // Canvas hover listeners for bar charts — column-based hit detection (x-range only)
   useEffect(() => {
@@ -867,7 +873,13 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
 
         {/* Performance by Day */}
         <div className="bg-bg-surface border border-border rounded-xl p-6">
-          <h3 className="text-text-primary font-semibold mb-4">Performance by Day</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-text-primary font-semibold">Performance by Day</h3>
+            <div className="flex bg-bg-input rounded-lg p-0.5 text-xs">
+              <button onClick={() => setDayPLMode('total')} className={`px-2.5 py-1 rounded-md transition-colors ${dayPLMode === 'total' ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'}`}>Total P/L</button>
+              <button onClick={() => setDayPLMode('avg')} className={`px-2.5 py-1 rounded-md transition-colors ${dayPLMode === 'avg' ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'}`}>Avg P/L</button>
+            </div>
+          </div>
           <div>
             <canvas ref={barCanvasRef}></canvas>
           </div>
@@ -877,7 +889,13 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
       {/* Performance by Time of Day */}
       {trades.length > 0 && (
         <div className="bg-bg-surface border border-border rounded-xl p-6">
-          <h3 className="text-text-primary font-semibold mb-4">Performance by Entry Time (30-Min)</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-text-primary font-semibold">Performance by Entry Time (30-Min)</h3>
+            <div className="flex bg-bg-input rounded-lg p-0.5 text-xs">
+              <button onClick={() => setTimePLMode('avg')} className={`px-2.5 py-1 rounded-md transition-colors ${timePLMode === 'avg' ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'}`}>Avg P/L</button>
+              <button onClick={() => setTimePLMode('total')} className={`px-2.5 py-1 rounded-md transition-colors ${timePLMode === 'total' ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'}`}>Total P/L</button>
+            </div>
+          </div>
           <div className={showTimeTable ? 'mb-4' : ''}>
             <canvas ref={timeCanvasRef} className="w-full"></canvas>
           </div>
