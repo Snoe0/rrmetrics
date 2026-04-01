@@ -23,7 +23,8 @@ const TradovateBrokerSection = ({ hook, expandedBroker, toggleBroker, brokerHead
     atConnectionLimit, syncingId, showImportPrompt, environment, setEnvironment,
     connecting, selectedAcctIds, setSelectedAcctIds, savingAccounts, isTradovateGroup,
     handleConnect, handleSync, handleSyncAll, handleDisconnect,
-    handleImportNow, toggleAcctSelection, handleEnableDisable } = hook;
+    handleImportNow, toggleAcctSelection, handleEnableDisable,
+    handleToggleEval } = hook;
 
   return (
     <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
@@ -129,6 +130,19 @@ const TradovateBrokerSection = ({ hook, expandedBroker, toggleBroker, brokerHead
 
                   {conn.lastSyncTime && <p className="text-xs text-text-muted">Last sync: {relativeTime(conn.lastSyncTime)}</p>}
 
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-text-secondary">Eval Account</span>
+                      <span className="text-[10px] text-text-muted">(marks all synced trades as eval)</span>
+                    </div>
+                    <button
+                      onClick={() => handleToggleEval(conn.connectionId, !conn.isEval)}
+                      className={`relative w-9 h-5 rounded-full transition-colors cursor-pointer ${conn.isEval ? 'bg-accent' : 'bg-border'}`}
+                    >
+                      <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${conn.isEval ? 'translate-x-4' : ''}`} />
+                    </button>
+                  </div>
+
                   {showImportPrompt === conn.connectionId && (
                     <div className="bg-accent/5 border border-accent/20 rounded-lg p-3">
                       <p className="text-sm text-text-primary font-medium mb-1">Import trades</p>
@@ -222,7 +236,7 @@ const RobinhoodBrokerSection = ({ hook, expandedBroker, toggleBroker, brokerHead
     atConnectionLimit, syncingId, showImportPrompt, connecting,
     credentials, setCredentials,
     handleConnect, handleSync, handleDisconnect,
-    handleImportNow } = hook;
+    handleImportNow, handleToggleEval } = hook;
 
   return (
     <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
@@ -272,6 +286,19 @@ const RobinhoodBrokerSection = ({ hook, expandedBroker, toggleBroker, brokerHead
                   </div>
 
                   {conn.lastSyncTime && <p className="text-xs text-text-muted">Last sync: {relativeTime(conn.lastSyncTime)}</p>}
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-text-secondary">Eval Account</span>
+                      <span className="text-[10px] text-text-muted">(marks all synced trades as eval)</span>
+                    </div>
+                    <button
+                      onClick={() => handleToggleEval(conn.connectionId, !conn.isEval)}
+                      className={`relative w-9 h-5 rounded-full transition-colors cursor-pointer ${conn.isEval ? 'bg-accent' : 'bg-border'}`}
+                    >
+                      <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${conn.isEval ? 'translate-x-4' : ''}`} />
+                    </button>
+                  </div>
 
                   {showImportPrompt === conn.connectionId && (
                     <div className="bg-accent/5 border border-accent/20 rounded-lg p-3">
@@ -651,6 +678,27 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
     }
   };
 
+  const handlePxToggleEval = async (connectionId, isEval) => {
+    setMessage(null);
+    try {
+      const response = await authFetch('/api/projectx/eval', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connectionId, isEval }),
+      });
+      const data = await response.json();
+      if (data.error) {
+        setMessage({ type: 'error', text: data.error });
+      } else {
+        setPxConnections(prev => prev.map(c =>
+          c.connectionId === connectionId ? { ...c, isEval } : c
+        ));
+      }
+    } catch {
+      setMessage({ type: 'error', text: 'Failed to update eval setting' });
+    }
+  };
+
   const startEditingPxConnection = (conn) => {
     setPxEditingConnId(conn.connectionId);
     setPxEditSelectedAccounts(conn.selectedAccounts || []);
@@ -985,6 +1033,19 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                                 </div>
 
                                 {conn.lastSyncTime && <p className="text-xs text-text-muted">Last sync: {relativeTime(conn.lastSyncTime)}</p>}
+
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs text-text-secondary">Eval Account</span>
+                                    <span className="text-[10px] text-text-muted">(marks all synced trades as eval)</span>
+                                  </div>
+                                  <button
+                                    onClick={() => handlePxToggleEval(conn.connectionId, !conn.isEval)}
+                                    className={`relative w-9 h-5 rounded-full transition-colors cursor-pointer ${conn.isEval ? 'bg-accent' : 'bg-border'}`}
+                                  >
+                                    <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${conn.isEval ? 'translate-x-4' : ''}`} />
+                                  </button>
+                                </div>
 
                                 {pxEditingConnId === conn.connectionId && (
                                   <div className="space-y-3 pt-2 border-t border-border">

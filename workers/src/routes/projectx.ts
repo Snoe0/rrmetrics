@@ -160,6 +160,7 @@ projectx.get(
           connectionId: bc.id,
           environment: bc.environment,
           label: bc.label,
+          isEval: bc.is_eval,
           configured: hasToken && !tokenExpired,
           expired: hasToken && tokenExpired,
           selectedAccounts: pxConn?.selected_accounts || [],
@@ -238,6 +239,37 @@ projectx.post(
       console.error('ProjectX accounts save error:', err.message);
       return c.json({ error: 'Failed to save account settings' }, 500);
     }
+  },
+);
+
+/**
+ * POST /api/projectx/eval
+ * Toggle the is_eval flag on a ProjectX broker connection.
+ */
+projectx.post(
+  '/api/projectx/eval',
+  requiresLogin,
+  async (c) => {
+    const user = c.get('user');
+    const body = await c.req.json();
+    const { connectionId, isEval } = body as {
+      connectionId?: string;
+      isEval?: boolean;
+    };
+
+    if (!connectionId || typeof isEval !== 'boolean') {
+      return c.json({ error: 'Missing connectionId or isEval' }, 400);
+    }
+
+    const serviceClient = createServiceClient(c.env);
+    const connection = await brokerDb.findById(serviceClient, connectionId);
+    if (!connection || connection.owner !== user.id) {
+      return c.json({ error: 'Connection not found' }, 404);
+    }
+
+    await brokerDb.updateById(serviceClient, connectionId, { is_eval: isEval });
+
+    return c.json({ message: `Eval ${isEval ? 'enabled' : 'disabled'}` });
   },
 );
 
@@ -399,19 +431,23 @@ projectx.post(
       const multiplier = copytradeConfig ? copytradeConfig.multiplier : 1;
 
       // Build trade objects for bulk insert
-      const tradesToInsert = newTrades.map((t) => ({
-        ticker: contractNames[t.contractId] || t.contractId,
-        enterTime: new Date(t.creationTimestamp).toISOString(),
-        exitTime: new Date(t.creationTimestamp).toISOString(),
-        enterPrice: t.price,
-        exitPrice: t.price,
-        quantity: t.size * multiplier,
-        manualPL: t.profitAndLoss * multiplier,
-        projectxTradeId: String(t.id),
-        projectxSource: 'projectx',
-        brokerConnectionId: connectionId,
-        account: accountNameMap.get(tradeAccountMap.get(t.id) || 0) || 'Topstep',
-      }));
+      const tradesToInsert = newTrades.map((t) => {
+        const acctName = accountNameMap.get(tradeAccountMap.get(t.id) || 0) || 'Topstep';
+        return {
+          ticker: contractNames[t.contractId] || t.contractId,
+          enterTime: new Date(t.creationTimestamp).toISOString(),
+          exitTime: new Date(t.creationTimestamp).toISOString(),
+          enterPrice: t.price,
+          exitPrice: t.price,
+          quantity: t.size * multiplier,
+          manualPL: t.profitAndLoss * multiplier,
+          projectxTradeId: String(t.id),
+          projectxSource: 'projectx',
+          brokerConnectionId: connectionId,
+          account: acctName,
+          isEval: brokerConn.is_eval || /EV/i.test(acctName),
+        };
+      });
 
       const result = await tradesDb.bulkInsertTrades(supabase, user.id, tradesToInsert);
 

@@ -112,6 +112,7 @@ export interface BrokerConnectionRow {
   broker: string;
   environment: string;
   label: string | null;
+  is_eval: boolean;
   last_sync_time: string | null;
   created_at: string;
   updated_at: string;

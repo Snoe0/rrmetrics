@@ -247,6 +247,27 @@ const useBrokerConnection = (brokerType, { onSyncComplete, setMessage, setExpand
     setSavingAccounts(null);
   };
 
+  const handleToggleEval = async (connectionId, isEval) => {
+    setMessage?.(null);
+    try {
+      const response = await authFetch(`${apiBase}/eval`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connectionId, isEval }),
+      });
+      const data = await response.json();
+      if (data.error) {
+        setMessage?.({ type: 'error', text: data.error });
+      } else {
+        setConnections(prev => prev.map(c =>
+          c.connectionId === connectionId ? { ...c, isEval } : c
+        ));
+      }
+    } catch {
+      setMessage?.({ type: 'error', text: 'Failed to update eval setting' });
+    }
+  };
+
   const atConnectionLimit = connectionsUsed >= connectionLimit && connectionLimit > 0;
 
   return {
@@ -263,6 +284,7 @@ const useBrokerConnection = (brokerType, { onSyncComplete, setMessage, setExpand
     fetchStatus,
     handleConnect, handleSync, handleSyncAll, handleDisconnect,
     handleImportNow, toggleAcctSelection, handleEnableDisable,
+    handleToggleEval,
   };
 };
 

@@ -92,7 +92,7 @@ export async function createWithLimitCheck(
 export async function updateById(
   supabase: SupabaseClient,
   id: string,
-  data: Partial<Pick<BrokerConnectionRow, 'label' | 'last_sync_time'>>,
+  data: Partial<Pick<BrokerConnectionRow, 'label' | 'last_sync_time' | 'is_eval'>>,
 ): Promise<void> {
   const updateData: Record<string, unknown> = {
     ...data,

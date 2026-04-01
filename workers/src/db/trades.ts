@@ -222,6 +222,7 @@ export async function bulkInsertTrades(
     projectxSource?: string | null;
     brokerConnectionId?: string | null;
     account?: string | null;
+    isEval?: boolean;
   }>,
 ): Promise<{ imported: number; skipped: number }> {
   // Dedup: fetch existing trades that share any of the incoming enter_times
@@ -268,6 +269,7 @@ export async function bulkInsertTrades(
     projectx_source: t.projectxSource || null,
     broker_connection_id: t.brokerConnectionId || null,
     account: t.account || null,
+    is_eval: t.isEval || false,
   }));
 
   const { data: inserted, error } = await supabase

@@ -391,10 +391,13 @@ async function syncConnection(
     }
   }
 
+  // Mark trades as eval if the connection is flagged as eval,
+  // or (alpha) if the account name contains "EV"
   const tradesToInsert = newTrades.map((t) => ({
     ...t,
     tradovateSource: source,
     brokerConnectionId: connectionId,
+    isEval: brokerConn.is_eval || (t.account ? /EV/i.test(t.account) : false),
   }));
 
   let syncedCount = 0;
@@ -728,6 +731,7 @@ tradovate.get(
         broker: bc.broker,
         environment: bc.environment,
         label: bc.label,
+        isEval: bc.is_eval,
         configured: hasToken && !tokenExpired,
         expired: tokenExpired,
         lastSyncTime: bc.last_sync_time,
@@ -781,6 +785,38 @@ tradovate.post(
     });
 
     return c.json({ message: 'Account settings saved' });
+  },
+);
+
+/**
+ * POST /api/tradovate/eval
+ * Toggle the is_eval flag on a broker connection.
+ * When enabled, all future synced trades are automatically marked as eval.
+ */
+tradovate.post(
+  '/api/tradovate/eval',
+  requiresLogin,
+  async (c) => {
+    const user = c.get('user');
+    const body = await c.req.json();
+    const { connectionId, isEval } = body as {
+      connectionId?: string;
+      isEval?: boolean;
+    };
+
+    if (!connectionId || typeof isEval !== 'boolean') {
+      return c.json({ error: 'Missing connectionId or isEval' }, 400);
+    }
+
+    const serviceClient = createServiceClient(c.env);
+    const connection = await brokerDb.findById(serviceClient, connectionId);
+    if (!connection || connection.owner !== user.id) {
+      return c.json({ error: 'Connection not found' }, 404);
+    }
+
+    await brokerDb.updateById(serviceClient, connectionId, { is_eval: isEval });
+
+    return c.json({ message: `Eval ${isEval ? 'enabled' : 'disabled'}` });
   },
 );
 
