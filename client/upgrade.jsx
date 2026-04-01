@@ -1556,7 +1556,7 @@ const App = () => {
           <p className="text-center text-text-muted text-xs mt-8">
             {hasPaidSubscription
               ? 'Manage your plan, payment method, and billing from this page.'
-              : 'Cancel anytime — your membership stays active until the end of your billing period. Email us at support@rrmetrics.com for any questions.'}
+              : 'Cancel anytime — your membership stays active until the end of your billing period. Email us at info.rrmetrics@gmail.com for any questions.'}
           </p>
         </div>
       </main>
