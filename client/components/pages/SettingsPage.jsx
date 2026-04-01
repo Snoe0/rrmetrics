@@ -236,7 +236,7 @@ const RobinhoodBrokerSection = ({ hook, expandedBroker, toggleBroker, brokerHead
     atConnectionLimit, syncingId, showImportPrompt, connecting,
     credentials, setCredentials,
     handleConnect, handleSync, handleDisconnect,
-    handleImportNow, handleToggleEval } = hook;
+    handleImportNow } = hook;
 
   return (
     <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
@@ -286,19 +286,6 @@ const RobinhoodBrokerSection = ({ hook, expandedBroker, toggleBroker, brokerHead
                   </div>
 
                   {conn.lastSyncTime && <p className="text-xs text-text-muted">Last sync: {relativeTime(conn.lastSyncTime)}</p>}
-
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-text-secondary">Eval Account</span>
-                      <span className="text-[10px] text-text-muted">(marks all synced trades as eval)</span>
-                    </div>
-                    <button
-                      onClick={() => handleToggleEval(conn.connectionId, !conn.isEval)}
-                      className={`relative w-9 h-5 rounded-full transition-colors cursor-pointer ${conn.isEval ? 'bg-accent' : 'bg-border'}`}
-                    >
-                      <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${conn.isEval ? 'translate-x-4' : ''}`} />
-                    </button>
-                  </div>
 
                   {showImportPrompt === conn.connectionId && (
                     <div className="bg-accent/5 border border-accent/20 rounded-lg p-3">
