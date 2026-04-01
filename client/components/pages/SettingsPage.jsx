@@ -880,23 +880,36 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
           </div>
 
           {(() => {
-            const propFirms = TRADOVATE_BROKERS.filter(b => b.subtitle.includes('Prop'));
+            const propFirms = [
+              ...TRADOVATE_BROKERS.filter(b => b.subtitle.includes('Prop')),
+              { key: 'projectx', label: 'Topstep (ProjectX)', icon: '/assets/img/topstep.png', subtitle: 'Prop trading firm' },
+            ];
             const cols = 3;
             const rows = [];
             for (let i = 0; i < propFirms.length; i += cols) {
               rows.push(propFirms.slice(i, i + cols));
             }
-            // Find which row contains the expanded broker
             const expandedRowIdx = rows.findIndex(row => row.some(b => b.key === expandedBroker));
+
+            const getPropFirmStatus = (b) => {
+              if (b.key === 'projectx') {
+                const configured = pxConnections.filter(c => c.configured && !c.expired).length;
+                const expired = pxConnections.filter(c => c.expired).length;
+                return { configured, expired };
+              }
+              const hook = brokerHooks[b.key];
+              const conns = hook?.connections || [];
+              return {
+                configured: conns.filter(c => c.configured && !c.expired).length,
+                expired: conns.filter(c => c.expired).length,
+              };
+            };
 
             return rows.map((row, rowIdx) => (
               <React.Fragment key={rowIdx}>
                 <div className={`grid grid-cols-2 lg:grid-cols-3 gap-3 ${rowIdx > 0 ? 'mt-3' : ''}`}>
                   {row.map(b => {
-                    const hook = brokerHooks[b.key];
-                    const conns = hook?.connections || [];
-                    const configured = conns.filter(c => c.configured && !c.expired).length;
-                    const expired = conns.filter(c => c.expired).length;
+                    const { configured, expired } = getPropFirmStatus(b);
                     const isExpanded = expandedBroker === b.key;
 
                     return (
@@ -922,7 +935,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                     );
                   })}
                 </div>
-                {expandedRowIdx === rowIdx && brokerHooks[expandedBroker] && (
+                {expandedRowIdx === rowIdx && expandedBroker !== 'projectx' && brokerHooks[expandedBroker] && (
                   <div className="mt-3">
                     <TradovateBrokerSection
                       hook={brokerHooks[expandedBroker]}
@@ -933,319 +946,202 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                     />
                   </div>
                 )}
-              </React.Fragment>
-            ));
-          })()}
-
-          {/* ============== ProjectX / Topstep ============== */}
-          <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
-            <button
-              onClick={() => toggleBroker('projectx')}
-              className="w-full flex items-center justify-between p-5 hover:bg-bg-page/50 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <img src="/assets/img/topstep.png" alt="ProjectX" className="w-10 h-10 rounded-lg object-contain" />
-                <div className="text-left">
-                  <h3 className="text-text-primary font-semibold text-sm">ProjectX / Topstep</h3>
-                  <p className="text-text-tertiary text-xs">Futures trading platform</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                {brokerHeaderBadge(pxConnections)}
-                {expandedBroker === 'projectx' ? <Icons.ChevronUp className="w-4 h-4 text-text-secondary" /> : <Icons.ChevronDown className="w-4 h-4 text-text-secondary" />}
-              </div>
-            </button>
-
-            {expandedBroker === 'projectx' && (
-              <div className="px-5 pb-5 border-t border-border pt-4 space-y-4">
-                {!pxCanUseBrokerSync ? (
-                  <div className="bg-accent/5 border border-accent/20 rounded-lg p-4 text-center">
-                    <p className="text-sm text-text-primary font-medium mb-1">Pro or Elite plan required</p>
-                    <p className="text-xs text-text-secondary mb-3">Broker sync is available on Pro and Elite plans.</p>
-                    <button
-                      onClick={() => window.location.href = '/upgrade'}
-                      className="px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all"
-                    >
-                      Upgrade Now
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    {/* Existing connection cards */}
-                    {pxConnections.map(conn => (
-                      <div key={conn.connectionId} className="bg-bg-page/50 border border-border rounded-lg p-4 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2.5">
-                            <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${statusDot(conn)}`}></span>
-                            <span className="text-sm text-text-primary font-medium">
-                              ProjectX <span className="capitalize">{conn.environment}</span>
-                            </span>
-                            {conn.label && (
-                              <span className="text-xs text-text-secondary">— {conn.label}</span>
-                            )}
+                {expandedRowIdx === rowIdx && expandedBroker === 'projectx' && (
+                  <div className="mt-3">
+                    <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
+                      <div className="flex items-center justify-between p-5">
+                        <div className="flex items-center gap-3">
+                          <img src="/assets/img/topstep.png" alt="ProjectX" className="w-10 h-10 rounded-lg object-contain" />
+                          <div className="text-left">
+                            <h3 className="text-text-primary font-semibold text-sm">ProjectX / Topstep</h3>
+                            <p className="text-text-tertiary text-xs">Prop trading firm</p>
                           </div>
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${
-                            conn.configured && !conn.expired ? 'bg-positive/10 text-positive' :
-                            conn.expired ? 'bg-warning/10 text-warning' :
-                            'bg-text-secondary/10 text-text-secondary'
-                          }`}>
-                            {conn.configured && !conn.expired ? 'Active' : conn.expired ? 'Expired' : 'Inactive'}
-                          </span>
                         </div>
-
-                        {conn.lastSyncTime && (
-                          <p className="text-xs text-text-muted">
-                            Last sync: {relativeTime(conn.lastSyncTime)}
-                          </p>
-                        )}
-
-                        {/* Account settings editing for this connection */}
-                        {pxEditingConnId === conn.connectionId && (
-                          <div className="space-y-3 pt-2 border-t border-border">
-                            {/* Account Selection */}
-                            {(conn.accounts || []).length > 0 && (
-                              <div>
-                                <div className="flex items-center justify-between mb-2">
-                                  <h4 className="text-sm font-medium text-text-primary">Accounts</h4>
+                        {brokerHeaderBadge(pxConnections)}
+                      </div>
+                      <div className="px-5 pb-5 border-t border-border pt-4 space-y-4">
+                        {!pxCanUseBrokerSync ? (
+                          <div className="bg-accent/5 border border-accent/20 rounded-lg p-4 text-center">
+                            <p className="text-sm text-text-primary font-medium mb-1">Pro or Elite plan required</p>
+                            <p className="text-xs text-text-secondary mb-3">Broker sync is available on Pro and Elite plans.</p>
+                            <button onClick={() => window.location.href = '/upgrade'} className="px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all">Upgrade Now</button>
+                          </div>
+                        ) : (
+                          <>
+                            {pxConnections.map(conn => (
+                              <div key={conn.connectionId} className="bg-bg-page/50 border border-border rounded-lg p-4 space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2.5">
+                                    <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${statusDot(conn)}`}></span>
+                                    <span className="text-sm text-text-primary font-medium">ProjectX <span className="capitalize">{conn.environment}</span></span>
+                                    {conn.label && <span className="text-xs text-text-secondary">— {conn.label}</span>}
+                                  </div>
+                                  <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                    conn.configured && !conn.expired ? 'bg-positive/10 text-positive' :
+                                    conn.expired ? 'bg-warning/10 text-warning' : 'bg-text-secondary/10 text-text-secondary'
+                                  }`}>
+                                    {conn.configured && !conn.expired ? 'Active' : conn.expired ? 'Expired' : 'Inactive'}
+                                  </span>
                                 </div>
-                                <div className="space-y-2">
-                                  {(conn.accounts || []).map(account => (
-                                    <label key={account.id} className="flex items-center gap-3 p-2.5 bg-bg-surface/50 rounded-lg cursor-pointer hover:bg-bg-surface transition-colors">
-                                      <input
-                                        type="checkbox"
-                                        checked={pxEditSelectedAccounts.includes(account.id)}
-                                        onChange={() => togglePxEditAccount(account.id)}
-                                        className="w-4 h-4 rounded border-border text-accent focus:ring-accent disabled:opacity-40"
-                                      />
-                                      <div className="flex-1">
-                                        <span className="text-sm text-text-primary font-medium">{account.name}</span>
-                                        {account.balance !== undefined && (
-                                          <span className="text-xs text-text-secondary ml-2">
-                                            ${account.balance?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                          </span>
-                                        )}
+
+                                {conn.lastSyncTime && <p className="text-xs text-text-muted">Last sync: {relativeTime(conn.lastSyncTime)}</p>}
+
+                                {pxEditingConnId === conn.connectionId && (
+                                  <div className="space-y-3 pt-2 border-t border-border">
+                                    {(conn.accounts || []).length > 0 && (
+                                      <div>
+                                        <div className="flex items-center justify-between mb-2">
+                                          <h4 className="text-sm font-medium text-text-primary">Accounts</h4>
+                                        </div>
+                                        <div className="space-y-2">
+                                          {(conn.accounts || []).map(account => (
+                                            <label key={account.id} className="flex items-center gap-3 p-2.5 bg-bg-surface/50 rounded-lg cursor-pointer hover:bg-bg-surface transition-colors">
+                                              <input type="checkbox" checked={pxEditSelectedAccounts.includes(account.id)} onChange={() => togglePxEditAccount(account.id)}
+                                                className="w-4 h-4 rounded border-border text-accent focus:ring-accent disabled:opacity-40" />
+                                              <div className="flex-1">
+                                                <span className="text-sm text-text-primary font-medium">{account.name}</span>
+                                                {account.balance !== undefined && (
+                                                  <span className="text-xs text-text-secondary ml-2">${account.balance?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                                )}
+                                              </div>
+                                              {account.canTrade && <span className="text-xs text-positive bg-positive/10 px-2 py-0.5 rounded-full">Active</span>}
+                                            </label>
+                                          ))}
+                                        </div>
                                       </div>
-                                      {account.canTrade && (
-                                        <span className="text-xs text-positive bg-positive/10 px-2 py-0.5 rounded-full">Active</span>
+                                    )}
+
+                                    <div className="border border-border rounded-lg p-4 space-y-3">
+                                      <label className="flex items-center gap-3 cursor-pointer">
+                                        <input type="checkbox" checked={pxEditCopytradeEnabled}
+                                          onChange={(e) => { setPxEditCopytradeEnabled(e.target.checked); if (!e.target.checked) { setPxEditLeadAccount(null); setPxEditMultiplier(1); } }}
+                                          className="w-4 h-4 rounded border-border text-accent focus:ring-accent" />
+                                        <div>
+                                          <span className="text-sm text-text-primary font-medium">I am copytrading / tradesyncing</span>
+                                          <p className="text-xs text-text-secondary mt-0.5">Only sync from a lead account and multiply quantity and P&L</p>
+                                        </div>
+                                      </label>
+                                      {pxEditCopytradeEnabled && (
+                                        <div className="pl-7 space-y-3">
+                                          <div>
+                                            <label className="block text-xs font-medium text-text-secondary mb-1">Lead Account</label>
+                                            <select value={pxEditLeadAccount || ''} onChange={(e) => setPxEditLeadAccount(Number(e.target.value))}
+                                              className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-accent">
+                                              <option value="">Select lead account</option>
+                                              {(conn.accounts || []).filter(a => pxEditSelectedAccounts.includes(a.id)).map(account => (
+                                                <option key={account.id} value={account.id}>{account.name}</option>
+                                              ))}
+                                            </select>
+                                          </div>
+                                          <div>
+                                            <label className="block text-xs font-medium text-text-secondary mb-1">Total Accounts (multiplier)</label>
+                                            <input type="number" min="1" max="50" value={pxEditMultiplier}
+                                              onChange={(e) => setPxEditMultiplier(Math.max(1, parseInt(e.target.value) || 1))}
+                                              className="w-24 px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-accent" />
+                                            <p className="text-xs text-text-muted mt-1">Quantity and P&L will be multiplied by this number</p>
+                                          </div>
+                                        </div>
                                       )}
-                                    </label>
-                                  ))}
+                                    </div>
+
+                                    <div className="flex gap-2">
+                                      <button onClick={() => handlePxSaveAccounts(conn.connectionId)}
+                                        className="px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all">Save Settings</button>
+                                      <button onClick={() => setPxEditingConnId(null)}
+                                        className="px-4 py-2 text-text-secondary text-sm font-medium hover:text-text-primary transition-colors">Cancel</button>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {pxEditingConnId !== conn.connectionId && (
+                                  <div className="flex items-center gap-2">
+                                    {conn.configured && !conn.expired && (
+                                      <>
+                                        <button onClick={() => handlePxSync(conn.connectionId)} disabled={pxSyncingId !== null}
+                                          className="px-3 py-1.5 bg-accent text-accent-text text-xs font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50 flex items-center gap-1.5">
+                                          <Icons.RefreshCw className={`w-3.5 h-3.5 ${pxSyncingId === conn.connectionId ? 'animate-spin' : ''}`} />
+                                          {pxSyncingId === conn.connectionId ? 'Syncing...' : 'Sync Now'}
+                                        </button>
+                                        <button onClick={() => startEditingPxConnection(conn)}
+                                          className="px-3 py-1.5 text-text-secondary text-xs font-medium hover:text-text-primary hover:bg-bg-surface rounded-lg transition-colors">Settings</button>
+                                      </>
+                                    )}
+                                    <button onClick={() => handlePxDisconnect(conn.connectionId)}
+                                      className="px-3 py-1.5 text-text-secondary text-xs font-medium hover:text-negative hover:bg-negative/10 rounded-lg transition-colors">Disconnect</button>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+
+                            {pxConnections.length === 0 ? (
+                              <>
+                                <div className="bg-bg-page/50 rounded-lg p-3">
+                                  <p className="text-xs text-text-secondary leading-relaxed">Connect your Topstep account via the ProjectX API to automatically sync trades. You'll need a paid API subscription from Topstep ($29/month).</p>
                                 </div>
+                                <div className="space-y-3">
+                                  <div>
+                                    <label className="block text-xs font-medium text-text-secondary mb-1">Username</label>
+                                    <input type="text" value={pxUsername} onChange={(e) => setPxUsername(e.target.value)} placeholder="Your Topstep username"
+                                      className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent" />
+                                  </div>
+                                  <div>
+                                    <label className="block text-xs font-medium text-text-secondary mb-1">API Key</label>
+                                    <input type="password" value={pxApiKey} onChange={(e) => setPxApiKey(e.target.value)} placeholder="Your ProjectX API key"
+                                      className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent" />
+                                  </div>
+                                  <button onClick={handlePxConnect} disabled={pxConnecting}
+                                    className="px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50">
+                                    {pxConnecting ? 'Connecting...' : 'Connect'}
+                                  </button>
+                                </div>
+                                <a href="https://help.topstep.com/en/articles/11187768-topstepx-api-access" target="_blank" rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-2 text-accent text-xs hover:underline">
+                                  <Icons.FileText className="w-3.5 h-3.5" />How to get your API key
+                                </a>
+                              </>
+                            ) : (
+                              <div className="flex items-center justify-between pt-2 border-t border-border">
+                                <span className="text-xs text-text-muted">{pxConnectionsUsed} / {pxConnectionLimit} broker connections</span>
+                                <button onClick={() => setPxShowNewForm(true)} disabled={pxConnectionsUsed >= pxConnectionLimit && pxConnectionLimit > 0}
+                                  className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-input border border-border text-text-primary text-xs font-medium rounded-lg hover:border-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                  title={pxConnectionsUsed >= pxConnectionLimit && pxConnectionLimit > 0 ? 'Connection limit reached' : 'Add another ProjectX connection'}>
+                                  <Icons.Plus className="w-3.5 h-3.5" />Connect Another
+                                </button>
                               </div>
                             )}
 
-                            {/* Copytrading Toggle */}
-                            <div className="border border-border rounded-lg p-4 space-y-3">
-                              <label className="flex items-center gap-3 cursor-pointer">
-                                <input
-                                  type="checkbox"
-                                  checked={pxEditCopytradeEnabled}
-                                  onChange={(e) => {
-                                    setPxEditCopytradeEnabled(e.target.checked);
-                                    if (!e.target.checked) {
-                                      setPxEditLeadAccount(null);
-                                      setPxEditMultiplier(1);
-                                    }
-                                  }}
-                                  className="w-4 h-4 rounded border-border text-accent focus:ring-accent"
-                                />
+                            {pxConnections.length > 0 && pxShowNewForm && (
+                              <div className="bg-bg-page/50 border border-border rounded-lg p-4 space-y-3">
+                                <h4 className="text-sm font-medium text-text-primary">New ProjectX Connection</h4>
                                 <div>
-                                  <span className="text-sm text-text-primary font-medium">I am copytrading / tradesyncing</span>
-                                  <p className="text-xs text-text-secondary mt-0.5">Only sync from a lead account and multiply quantity and P&L</p>
+                                  <label className="block text-xs font-medium text-text-secondary mb-1">Username</label>
+                                  <input type="text" value={pxUsername} onChange={(e) => setPxUsername(e.target.value)} placeholder="Your Topstep username"
+                                    className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent" />
                                 </div>
-                              </label>
-
-                              {pxEditCopytradeEnabled && (
-                                <div className="pl-7 space-y-3">
-                                  <div>
-                                    <label className="block text-xs font-medium text-text-secondary mb-1">Lead Account</label>
-                                    <select
-                                      value={pxEditLeadAccount || ''}
-                                      onChange={(e) => setPxEditLeadAccount(Number(e.target.value))}
-                                      className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-accent"
-                                    >
-                                      <option value="">Select lead account</option>
-                                      {(conn.accounts || []).filter(a => pxEditSelectedAccounts.includes(a.id)).map(account => (
-                                        <option key={account.id} value={account.id}>{account.name}</option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                  <div>
-                                    <label className="block text-xs font-medium text-text-secondary mb-1">Total Accounts (multiplier)</label>
-                                    <input
-                                      type="number"
-                                      min="1"
-                                      max="50"
-                                      value={pxEditMultiplier}
-                                      onChange={(e) => setPxEditMultiplier(Math.max(1, parseInt(e.target.value) || 1))}
-                                      className="w-24 px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary focus:outline-none focus:border-accent"
-                                    />
-                                    <p className="text-xs text-text-muted mt-1">Quantity and P&L will be multiplied by this number</p>
-                                  </div>
+                                <div>
+                                  <label className="block text-xs font-medium text-text-secondary mb-1">API Key</label>
+                                  <input type="password" value={pxApiKey} onChange={(e) => setPxApiKey(e.target.value)} placeholder="Your ProjectX API key"
+                                    className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent" />
                                 </div>
-                              )}
-                            </div>
-
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => handlePxSaveAccounts(conn.connectionId)}
-                                className="px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all"
-                              >
-                                Save Settings
-                              </button>
-                              <button
-                                onClick={() => setPxEditingConnId(null)}
-                                className="px-4 py-2 text-text-secondary text-sm font-medium hover:text-text-primary transition-colors"
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Action buttons */}
-                        {pxEditingConnId !== conn.connectionId && (
-                          <div className="flex items-center gap-2">
-                            {conn.configured && !conn.expired && (
-                              <>
-                                <button
-                                  onClick={() => handlePxSync(conn.connectionId)}
-                                  disabled={pxSyncingId !== null}
-                                  className="px-3 py-1.5 bg-accent text-accent-text text-xs font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50 flex items-center gap-1.5"
-                                >
-                                  <Icons.RefreshCw className={`w-3.5 h-3.5 ${pxSyncingId === conn.connectionId ? 'animate-spin' : ''}`} />
-                                  {pxSyncingId === conn.connectionId ? 'Syncing...' : 'Sync Now'}
-                                </button>
-                                <button
-                                  onClick={() => startEditingPxConnection(conn)}
-                                  className="px-3 py-1.5 text-text-secondary text-xs font-medium hover:text-text-primary hover:bg-bg-surface rounded-lg transition-colors"
-                                >
-                                  Settings
-                                </button>
-                              </>
+                                <div className="flex gap-2">
+                                  <button onClick={handlePxConnect} disabled={pxConnecting}
+                                    className="px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50">
+                                    {pxConnecting ? 'Connecting...' : 'Connect'}
+                                  </button>
+                                  <button onClick={() => setPxShowNewForm(false)}
+                                    className="px-4 py-2 text-text-secondary text-sm font-medium hover:text-text-primary transition-colors">Cancel</button>
+                                </div>
+                              </div>
                             )}
-                            <button
-                              onClick={() => handlePxDisconnect(conn.connectionId)}
-                              className="px-3 py-1.5 text-text-secondary text-xs font-medium hover:text-negative hover:bg-negative/10 rounded-lg transition-colors"
-                            >
-                              Disconnect
-                            </button>
-                          </div>
+                          </>
                         )}
                       </div>
-                    ))}
-
-                    {/* Connect new / not connected state */}
-                    {pxConnections.length === 0 ? (
-                      <>
-                        <div className="bg-bg-page/50 rounded-lg p-3">
-                          <p className="text-xs text-text-secondary leading-relaxed">
-                            Connect your Topstep account via the ProjectX API to automatically sync trades. You'll need a paid API subscription from Topstep ($29/month).
-                          </p>
-                        </div>
-                        <div className="space-y-3">
-                          <div>
-                            <label className="block text-xs font-medium text-text-secondary mb-1">Username</label>
-                            <input
-                              type="text"
-                              value={pxUsername}
-                              onChange={(e) => setPxUsername(e.target.value)}
-                              placeholder="Your Topstep username"
-                              className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium text-text-secondary mb-1">API Key</label>
-                            <input
-                              type="password"
-                              value={pxApiKey}
-                              onChange={(e) => setPxApiKey(e.target.value)}
-                              placeholder="Your ProjectX API key"
-                              className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent"
-                            />
-                          </div>
-                          <button
-                            onClick={handlePxConnect}
-                            disabled={pxConnecting}
-                            className="px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
-                          >
-                            {pxConnecting ? 'Connecting...' : 'Connect'}
-                          </button>
-                        </div>
-                        <a
-                          href="https://help.topstep.com/en/articles/11187768-topstepx-api-access"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-2 text-accent text-xs hover:underline"
-                        >
-                          <Icons.FileText className="w-3.5 h-3.5" />
-                          How to get your API key
-                        </a>
-                      </>
-                    ) : (
-                      /* "+ Connect Another" for ProjectX */
-                      <div className="flex items-center justify-between pt-2 border-t border-border">
-                        <span className="text-xs text-text-muted">
-                          {pxConnectionsUsed} / {pxConnectionLimit} broker connections
-                        </span>
-                        <button
-                          onClick={() => setPxShowNewForm(true)}
-                          disabled={atConnectionLimit}
-                          className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-input border border-border text-text-primary text-xs font-medium rounded-lg hover:border-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          title={atConnectionLimit ? 'Connection limit reached' : 'Add another ProjectX connection'}
-                        >
-                          <Icons.Plus className="w-3.5 h-3.5" />
-                          Connect Another
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Inline connect form when adding another ProjectX connection */}
-                    {pxConnections.length > 0 && pxShowNewForm && (
-                      <div className="bg-bg-page/50 border border-border rounded-lg p-4 space-y-3">
-                        <h4 className="text-sm font-medium text-text-primary">New ProjectX Connection</h4>
-                        <div>
-                          <label className="block text-xs font-medium text-text-secondary mb-1">Username</label>
-                          <input
-                            type="text"
-                            value={pxUsername}
-                            onChange={(e) => setPxUsername(e.target.value)}
-                            placeholder="Your Topstep username"
-                            className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-text-secondary mb-1">API Key</label>
-                          <input
-                            type="password"
-                            value={pxApiKey}
-                            onChange={(e) => setPxApiKey(e.target.value)}
-                            placeholder="Your ProjectX API key"
-                            className="w-full px-3 py-2 bg-bg-input border border-border rounded-lg text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent"
-                          />
-                        </div>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={handlePxConnect}
-                            disabled={pxConnecting}
-                            className="px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
-                          >
-                            {pxConnecting ? 'Connecting...' : 'Connect'}
-                          </button>
-                          <button
-                            onClick={() => setPxShowNewForm(false)}
-                            className="px-4 py-2 text-text-secondary text-sm font-medium hover:text-text-primary transition-colors"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </>
+                    </div>
+                  </div>
                 )}
-              </div>
-            )}
-          </div>
+              </React.Fragment>
+            ));
+          })()}
 
         </div>
       )}
