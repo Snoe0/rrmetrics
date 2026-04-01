@@ -72,21 +72,16 @@ const CARD_STYLE = {
 };
 
 // =====================================================
-// CHECKOUT MODAL
+// CHECKOUT MODAL (2-step: Discounts → Payment)
 // =====================================================
 const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
-  const [step, setStep] = useState(1); // 1 = discounts, 2 = payment
+  // --- Step state ---
+  const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
-  const [cardError, setCardError] = useState(null);
-  const [cardState, setCardState] = useState(null);
-  const [cardValidity, setCardValidity] = useState(null);
-  const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
-  const [addressLine1, setAddressLine1] = useState('');
-  const [city, setCity] = useState('');
-  const [stateProvince, setStateProvince] = useState('');
-  const [postalCode, setPostalCode] = useState('');
-  const [country, setCountry] = useState('US');
+  const [error, setError] = useState(null);
+  const [paymentMethod, setPaymentMethod] = useState('card'); // 'card' | 'express'
+
+  // --- Discount state ---
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [couponError, setCouponError] = useState(null);
@@ -97,13 +92,36 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
   const [referralError, setReferralError] = useState(null);
   const [referralLoading, setReferralLoading] = useState(false);
 
+  // --- Card form state ---
+  const [cardState, setCardState] = useState(null);
+  const [cardValidity, setCardValidity] = useState(null);
   const handleCardChange = useCallback((state, validity) => {
     setCardState(state);
     setCardValidity(validity);
   }, []);
 
-  // Compute final price with discounts
+  // --- Billing state ---
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [addressLine1, setAddressLine1] = useState('');
+  const [city, setCity] = useState('');
+  const [stateProvince, setStateProvince] = useState('');
+  const [postalCode, setPostalCode] = useState('');
+  const [country, setCountry] = useState('US');
+
+  // --- Express checkout state ---
+  const expressRef = useRef(null);
+  const [expressReady, setExpressReady] = useState(false);
+  const elementsRef = useRef(null);
+  const expressElRef = useRef(null);
+
+  // --- Computed pricing ---
+  const isElite = plan.style === 'elite';
   const rawPrice = parseFloat(plan.price.replace('$', ''));
+  const period = plan.id.endsWith('_yearly') ? '/yr' : '/mo';
+  const fmt = (n) => Number.isInteger(n) ? `$${n}` : `$${n.toFixed(2)}`;
+
+  // Coupon takes priority over referral
   let discountAmount = 0;
   let discountLabel = '';
   if (appliedCoupon) {
@@ -115,19 +133,25 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
     discountLabel = '15% referral discount';
   }
   const finalPrice = Math.max(0, rawPrice - discountAmount);
-  const period = plan.id.endsWith('_yearly') ? '/yr' : '/mo';
-  const fmt = (n) => Number.isInteger(n) ? `$${n}` : `$${n.toFixed(2)}`;
+  const finalCents = Math.round(finalPrice * 100);
 
-  // Close on Escape key
+  // Determine what discount params to send to the server
+  const getDiscountParams = () => ({
+    promoCodeId: appliedCoupon && !appliedCoupon.isCouponId ? appliedCoupon.id : null,
+    couponId: appliedCoupon?.isCouponId ? appliedCoupon.id : null,
+    hasReferral: !appliedCoupon && appliedReferral,
+  });
+
+  // --- Effects ---
+
+  // Close on Escape
   useEffect(() => {
     const handleKey = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [onClose]);
 
-  // Check DB for existing referral (source of truth)
-  // Must filter by referred_id — the RLS also exposes rows where the user is the referrer,
-  // which would falsely show the discount badge to users who have referred others.
+  // Check DB for existing referral on mount
   useEffect(() => {
     (async () => {
       try {
@@ -145,6 +169,76 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
     })();
   }, []);
 
+  // Mount Express Checkout Element when entering step 2
+  useEffect(() => {
+    if (step !== 2 || !stripeInstance || !expressRef.current || finalCents <= 0) return;
+
+    const elements = stripeInstance.elements({
+      mode: 'subscription',
+      amount: finalCents,
+      currency: 'usd',
+    });
+    elementsRef.current = elements;
+
+    const expressEl = elements.create('expressCheckout', {
+      buttonType: { applePay: 'subscribe', googlePay: 'subscribe' },
+      paymentMethods: { amazonPay: 'never' },
+    });
+    expressElRef.current = expressEl;
+    expressEl.mount(expressRef.current);
+
+    expressEl.on('ready', ({ availablePaymentMethods }) => {
+      if (availablePaymentMethods) setExpressReady(true);
+    });
+
+    expressEl.on('confirm', async () => {
+      setSubmitting(true);
+      setError(null);
+      try {
+        const { error: submitError } = await elements.submit();
+        if (submitError) { setError(submitError.message); setSubmitting(false); return; }
+
+        // Create subscription with discount already locked in from step 1
+        const res = await authFetch('/api/stripe/create-subscription', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ plan: plan.id, ...getDiscountParams() }),
+        });
+        const data = await res.json();
+        if (!res.ok) { setError(data.error || 'Something went wrong.'); setSubmitting(false); return; }
+
+        if (data.status === 'complete') { onSuccess(plan.id); return; }
+
+        const { error: confirmError } = await stripeInstance.confirmPayment({
+          elements,
+          clientSecret: data.clientSecret,
+          confirmParams: { return_url: window.location.href },
+          redirect: 'if_required',
+        });
+        if (confirmError) { setError(confirmError.message); setSubmitting(false); return; }
+
+        await authFetch('/api/stripe/confirm-subscription', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subscriptionId: data.subscriptionId }),
+        });
+        onSuccess(plan.id);
+      } catch {
+        setError('Payment failed. Please try again.');
+        setSubmitting(false);
+      }
+    });
+
+    return () => {
+      try { expressElRef.current?.unmount(); } catch {}
+      expressElRef.current = null;
+      elementsRef.current = null;
+      setExpressReady(false);
+    };
+  }, [step, stripeInstance, finalCents]);
+
+  // --- Handlers ---
+
   const handleApplyCoupon = async () => {
     const code = couponCode.trim();
     if (!code) return;
@@ -153,11 +247,8 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
     try {
       const res = await authFetch(`/api/stripe/validate-coupon?code=${encodeURIComponent(code)}`);
       let data;
-      try {
-        data = await res.json();
-      } catch {
-        setCouponError('Server returned an unexpected response. Please try again.');
-        return;
+      try { data = await res.json(); } catch {
+        setCouponError('Unexpected server response.'); return;
       }
       if (!res.ok) {
         setCouponError(data.error || 'Invalid coupon code.');
@@ -166,7 +257,7 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
         setCouponCode('');
       }
     } catch (err) {
-      setCouponError(err?.message || 'Network error. Please check your connection and try again.');
+      setCouponError(err?.message || 'Network error.');
     } finally {
       setCouponLoading(false);
     }
@@ -184,12 +275,8 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
         body: JSON.stringify({ code }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        setReferralError(data.error || 'Invalid referral code.');
-      } else {
-        setAppliedReferral(true);
-        setReferralCode('');
-      }
+      if (!res.ok) setReferralError(data.error || 'Invalid referral code.');
+      else { setAppliedReferral(true); setReferralCode(''); }
     } catch {
       setReferralError('Failed to apply referral code.');
     } finally {
@@ -197,11 +284,11 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
     }
   };
 
-  const handleSubmit = async (e) => {
+  const handleCardSubmit = async (e) => {
     e.preventDefault();
     if (!cardState || !cardValidity?.allValid || submitting) return;
     setSubmitting(true);
-    setCardError(null);
+    setError(null);
 
     const billingDetails = {
       name: fullName || cardState.holder,
@@ -210,7 +297,7 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
     };
 
     try {
-      // 1. Create a PaymentMethod server-side from the card details
+      // 1. Create PaymentMethod server-side
       const pmRes = await authFetch('/api/stripe/create-payment-method', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -223,69 +310,44 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
         }),
       });
       const pmData = await pmRes.json();
-      if (!pmRes.ok) {
-        setCardError(pmData.error || 'Invalid card details. Please check and try again.');
-        setSubmitting(false);
-        return;
-      }
-      const paymentMethodId = pmData.paymentMethodId;
+      if (!pmRes.ok) { setError(pmData.error || 'Invalid card details.'); setSubmitting(false); return; }
+      const pmId = pmData.paymentMethodId;
 
-      // 2. Create the subscription on the backend — returns a clientSecret
+      // 2. Create subscription with locked-in discounts
       const res = await authFetch('/api/stripe/create-subscription', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          plan: plan.id,
-          promoCodeId: appliedCoupon && !appliedCoupon.isCouponId ? appliedCoupon.id : null,
-          couponId: appliedCoupon?.isCouponId ? appliedCoupon.id : null,
-          hasReferral: !appliedCoupon && appliedReferral,
-        }),
+        body: JSON.stringify({ plan: plan.id, ...getDiscountParams() }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        setCardError(data.error || 'Something went wrong. Please try again.');
-        setSubmitting(false);
-        return;
-      }
+      if (!res.ok) { setError(data.error || 'Something went wrong.'); setSubmitting(false); return; }
 
-      // $0 invoice — subscription is already active, but still save payment method
+      // 3a. $0 invoice — save card for future billing
       if (data.status === 'complete') {
         if (data.setupIntentSecret) {
-          const { error: setupError } = await stripeInstance.confirmCardSetup(data.setupIntentSecret, {
-            payment_method: paymentMethodId,
-          });
-          if (setupError) {
-            setCardError(setupError.message);
-            setSubmitting(false);
-            return;
-          }
+          const { error: setupErr } = await stripeInstance.confirmCardSetup(
+            data.setupIntentSecret, { payment_method: pmId }
+          );
+          if (setupErr) { setError(setupErr.message); setSubmitting(false); return; }
           await authFetch('/api/stripe/confirm-payment-method', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ paymentMethodId }),
+            body: JSON.stringify({ paymentMethodId: pmId }),
           });
         }
         onSuccess(plan.id);
         return;
       }
 
-      // 3. Confirm the payment using the confirmation secret
-      const { error: confirmError, paymentIntent } = await stripeInstance.confirmPayment({
+      // 3b. Payment required — confirm with card
+      const { error: confirmErr, paymentIntent } = await stripeInstance.confirmPayment({
         clientSecret: data.clientSecret,
-        confirmParams: {
-          payment_method: paymentMethodId,
-          return_url: window.location.href,
-        },
+        confirmParams: { payment_method: pmId, return_url: window.location.href },
         redirect: 'if_required',
       });
+      if (confirmErr) { setError(confirmErr.message); setSubmitting(false); return; }
 
-      if (confirmError) {
-        setCardError(confirmError.message);
-        setSubmitting(false);
-        return;
-      }
-
-      if (paymentIntent && paymentIntent.status === 'succeeded') {
+      if (paymentIntent?.status === 'succeeded') {
         await authFetch('/api/stripe/confirm-subscription', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -293,34 +355,27 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
         });
         onSuccess(plan.id);
       }
-    } catch (err) {
-      setCardError('Payment failed. Please try again.');
+    } catch {
+      setError('Payment failed. Please try again.');
       setSubmitting(false);
     }
   };
 
-  const isElite = plan.style === 'elite';
+  // --- Shared styles ---
   const inputClass = 'w-full bg-bg-input border border-border rounded-lg px-3 py-[11px] text-text-primary text-sm placeholder:text-text-tertiary focus:outline-none focus:border-accent/60 transition-colors';
   const labelClass = 'text-text-secondary text-xs font-medium uppercase tracking-wider block mb-1.5';
+  const accentBtn = isElite ? 'bg-yellow-500 text-black hover:brightness-110' : 'bg-accent text-accent-text hover:brightness-110';
 
+  // --- Render ---
   return (
-    <div
-      className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-bg-surface border border-border rounded-xl w-full max-w-md shadow-2xl max-h-[90vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Modal header */}
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-bg-surface border border-border rounded-xl w-full max-w-md shadow-2xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+
+        {/* Header */}
         <div className="flex items-center justify-between px-6 pt-6 pb-5 border-b border-border flex-shrink-0">
           <div className="flex items-center gap-3">
             {step === 2 && (
-              <button
-                onClick={() => { setStep(1); setCardError(null); }}
-                className="text-text-tertiary hover:text-text-primary transition-colors w-8 h-8 flex items-center justify-center rounded-lg hover:bg-bg-input"
-                aria-label="Back"
-              >
+              <button onClick={() => { setStep(1); setError(null); }} className="text-text-tertiary hover:text-text-primary transition-colors w-8 h-8 flex items-center justify-center rounded-lg hover:bg-bg-input" aria-label="Back">
                 <Icons.ArrowLeft className="w-4 h-4" />
               </button>
             )}
@@ -329,41 +384,27 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
                 {step === 1 ? `Subscribe to ${plan.name}` : 'Payment'}
               </h2>
               <p className="text-text-secondary text-sm mt-0.5">
-                {step === 1 ? 'Apply discounts before checkout' : `${plan.name} — ${discountAmount ? fmt(finalPrice) : plan.price}${period}`}
+                {step === 1 ? 'Apply discounts before checkout' : `${plan.name} — ${fmt(finalPrice)}${period}`}
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="text-text-tertiary hover:text-text-primary transition-colors w-8 h-8 flex items-center justify-center rounded-lg hover:bg-bg-input"
-            aria-label="Close"
-          >
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
+          <button onClick={onClose} className="text-text-tertiary hover:text-text-primary transition-colors w-8 h-8 flex items-center justify-center rounded-lg hover:bg-bg-input" aria-label="Close">
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
 
+        {/* Body */}
         <div className="px-6 py-5 overflow-y-auto flex-1">
 
-          {/* ========== STEP 1: Discounts & Price ========== */}
+          {/* =================== STEP 1: DISCOUNTS =================== */}
           {step === 1 && (
             <>
               {/* Plan summary */}
-              <div className={`rounded-lg p-4 mb-5 border ${
-                isElite
-                  ? 'border-yellow-500/30 bg-yellow-500/5'
-                  : 'border-accent/30 bg-accent/5'
-              }`}>
+              <div className={`rounded-lg p-4 mb-5 border ${isElite ? 'border-yellow-500/30 bg-yellow-500/5' : 'border-accent/30 bg-accent/5'}`}>
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className={`font-semibold text-sm ${isElite ? 'text-yellow-400' : 'text-accent'}`}>
-                      {plan.name}
-                    </p>
-                    <p className="text-text-secondary text-xs mt-0.5">
-                      {plan.id.endsWith('_yearly') ? 'Billed annually' : 'Billed monthly'} · Cancel anytime
-                    </p>
+                    <p className={`font-semibold text-sm ${isElite ? 'text-yellow-400' : 'text-accent'}`}>{plan.name}</p>
+                    <p className="text-text-secondary text-xs mt-0.5">{plan.id.endsWith('_yearly') ? 'Billed annually' : 'Billed monthly'} · Cancel anytime</p>
                   </div>
                   <div className="text-right">
                     <span className="text-text-primary font-mono font-bold text-2xl">{plan.price}</span>
@@ -372,94 +413,75 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
                 </div>
               </div>
 
-              {/* Referral code */}
-              {referralChecking ? null : !appliedReferral ? (
-                <div className="mb-4">
-                  <label className={labelClass}>
-                    Referral Code
-                    <span className="ml-2 normal-case text-positive font-normal text-[11px]">Get 15% off your first month!</span>
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="RRM-XXXXXX"
-                      value={referralCode}
-                      onChange={(e) => { setReferralCode(e.target.value.toUpperCase()); setReferralError(null); }}
-                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleApplyReferral(); } }}
-                      className={`${inputClass} flex-1 font-mono`}
-                    />
-                    <button
-                      type="button"
-                      onClick={handleApplyReferral}
-                      disabled={!referralCode.trim() || referralLoading}
-                      className="px-4 py-[11px] text-sm font-medium bg-bg-input border border-border rounded-lg text-text-secondary hover:text-text-primary hover:border-accent/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
-                    >
-                      {referralLoading ? '...' : 'Apply'}
-                    </button>
-                  </div>
-                  {referralError && (
-                    <p className="text-negative text-xs mt-1.5">{referralError}</p>
-                  )}
-                </div>
-              ) : (
-                <div className="mb-4">
-                  <label className={labelClass}>Referral Code</label>
-                  <div className="flex items-center justify-between bg-positive/10 border border-positive/30 rounded-lg px-3 py-2.5">
-                    <div className="flex items-center gap-2">
-                      <Icons.Check className="w-4 h-4 text-positive flex-shrink-0" />
-                      <span className="text-positive text-sm font-medium">15% referral discount applied</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Coupon code */}
+              {/* Coupon code (first — takes priority) */}
               <div className="mb-4">
-                <label className={labelClass}>Coupon code</label>
+                <label className={labelClass}>Discount Code</label>
                 {appliedCoupon ? (
                   <div className="flex items-center justify-between bg-positive/10 border border-positive/30 rounded-lg px-3 py-2.5">
                     <div className="flex items-center gap-2">
                       <Icons.Check className="w-4 h-4 text-positive flex-shrink-0" />
                       <span className="text-positive text-sm font-medium">{appliedCoupon.display}</span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setAppliedCoupon(null)}
-                      className="text-text-tertiary hover:text-text-primary transition-colors ml-2"
-                      aria-label="Remove coupon"
-                    >
-                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                      </svg>
+                    <button type="button" onClick={() => setAppliedCoupon(null)} className="text-text-tertiary hover:text-text-primary transition-colors ml-2" aria-label="Remove coupon">
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                     </button>
                   </div>
                 ) : (
                   <>
                     <div className="flex gap-2">
                       <input
-                        type="text"
-                        placeholder="Enter code"
-                        value={couponCode}
+                        type="text" placeholder="Enter coupon code" value={couponCode}
                         onChange={(e) => { setCouponCode(e.target.value); setCouponError(null); }}
                         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleApplyCoupon(); } }}
                         className={`${inputClass} flex-1`}
                       />
-                      <button
-                        type="button"
-                        onClick={handleApplyCoupon}
-                        disabled={!couponCode.trim() || couponLoading}
-                        className="px-4 py-[11px] text-sm font-medium bg-bg-input border border-border rounded-lg text-text-secondary hover:text-text-primary hover:border-accent/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
-                      >
+                      <button type="button" onClick={handleApplyCoupon} disabled={!couponCode.trim() || couponLoading}
+                        className="px-4 py-[11px] text-sm font-medium bg-bg-input border border-border rounded-lg text-text-secondary hover:text-text-primary hover:border-accent/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap">
                         {couponLoading ? '...' : 'Apply'}
                       </button>
                     </div>
-                    {couponError && (
-                      <p className="text-negative text-xs mt-1.5">{couponError}</p>
-                    )}
+                    {couponError && <p className="text-negative text-xs mt-1.5">{couponError}</p>}
                   </>
                 )}
               </div>
+
+              {/* Referral code (only visible if no coupon applied — coupon overrides) */}
+              {!appliedCoupon && (
+                referralChecking ? null : !appliedReferral ? (
+                  <div className="mb-4">
+                    <label className={labelClass}>
+                      Referral Code
+                      <span className="ml-2 normal-case text-positive font-normal text-[11px]">15% off your first month!</span>
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text" placeholder="RRM-XXXXXX" value={referralCode}
+                        onChange={(e) => { setReferralCode(e.target.value.toUpperCase()); setReferralError(null); }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleApplyReferral(); } }}
+                        className={`${inputClass} flex-1 font-mono`}
+                      />
+                      <button type="button" onClick={handleApplyReferral} disabled={!referralCode.trim() || referralLoading}
+                        className="px-4 py-[11px] text-sm font-medium bg-bg-input border border-border rounded-lg text-text-secondary hover:text-text-primary hover:border-accent/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap">
+                        {referralLoading ? '...' : 'Apply'}
+                      </button>
+                    </div>
+                    {referralError && <p className="text-negative text-xs mt-1.5">{referralError}</p>}
+                  </div>
+                ) : (
+                  <div className="mb-4">
+                    <label className={labelClass}>Referral Code</label>
+                    <div className="flex items-center gap-2 bg-positive/10 border border-positive/30 rounded-lg px-3 py-2.5">
+                      <Icons.Check className="w-4 h-4 text-positive flex-shrink-0" />
+                      <span className="text-positive text-sm font-medium">15% referral discount applied</span>
+                    </div>
+                  </div>
+                )
+              )}
+
+              {/* If coupon applied, show referral as overridden */}
+              {appliedCoupon && appliedReferral && (
+                <p className="text-text-tertiary text-xs mb-4">Referral discount not combined — coupon code takes priority.</p>
+              )}
 
               {/* Cost breakdown */}
               <div className="mb-5 rounded-lg border border-border divide-y divide-border text-sm overflow-hidden">
@@ -479,25 +501,16 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
                 </div>
               </div>
 
-              {/* Continue to payment */}
-              <button
-                type="button"
-                onClick={() => setStep(2)}
-                className={`w-full py-3 text-sm font-semibold rounded-lg transition-all ${
-                  isElite
-                    ? 'bg-yellow-500 text-black hover:brightness-110'
-                    : 'bg-accent text-accent-text hover:brightness-110'
-                }`}
-              >
+              <button type="button" onClick={() => setStep(2)} className={`w-full py-3 text-sm font-semibold rounded-lg transition-all ${accentBtn}`}>
                 Continue to Payment
               </button>
             </>
           )}
 
-          {/* ========== STEP 2: Payment ========== */}
+          {/* =================== STEP 2: PAYMENT =================== */}
           {step === 2 && (
             <>
-              {/* Compact price summary */}
+              {/* Compact price badge */}
               <div className="flex items-center justify-between mb-5 px-3 py-2.5 rounded-lg border border-border text-sm">
                 <div className="flex items-center gap-2">
                   <span className="text-text-secondary">{plan.name}</span>
@@ -508,85 +521,42 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
                 <span className="text-text-primary font-mono font-bold">{fmt(finalPrice)}{period}</span>
               </div>
 
-              <form onSubmit={handleSubmit}>
-                {/* Full name */}
+              {/* Express Checkout (Link, Apple Pay, Google Pay — no Amazon Pay) */}
+              <div ref={expressRef} className={`transition-all ${expressReady ? 'mb-0' : 'h-0 overflow-hidden'}`} />
+              {expressReady && (
+                <div className="flex items-center gap-3 my-4">
+                  <div className="flex-1 border-t border-border" />
+                  <span className="text-text-tertiary text-xs uppercase tracking-wider">or pay with card</span>
+                  <div className="flex-1 border-t border-border" />
+                </div>
+              )}
+
+              {/* Card payment form */}
+              <form onSubmit={handleCardSubmit}>
                 <div className="mb-4">
                   <label className={labelClass}>Full name</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Jane Smith"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    className={inputClass}
-                  />
+                  <input type="text" required placeholder="Jane Smith" value={fullName} onChange={(e) => setFullName(e.target.value)} className={inputClass} autoComplete="name" />
                 </div>
 
-                {/* Email */}
                 <div className="mb-4">
                   <label className={labelClass}>Email</label>
-                  <input
-                    type="email"
-                    required
-                    placeholder="jane@example.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className={inputClass}
-                  />
+                  <input type="email" required placeholder="jane@example.com" value={email} onChange={(e) => setEmail(e.target.value)} className={inputClass} autoComplete="email" />
                 </div>
 
-                {/* Card details */}
                 <div className="mb-4">
-                  <CreditCardForm
-                    defaultHolder={fullName}
-                    maskMiddle
-                    onChange={handleCardChange}
-                  />
+                  <CreditCardForm defaultHolder={fullName} maskMiddle onChange={handleCardChange} />
                 </div>
 
-                {/* Billing address */}
                 <div className="mb-4">
                   <label className={labelClass}>Billing address</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Address line 1"
-                    value={addressLine1}
-                    onChange={(e) => setAddressLine1(e.target.value)}
-                    className={`${inputClass} mb-2`}
-                  />
+                  <input type="text" required placeholder="Address line 1" value={addressLine1} onChange={(e) => setAddressLine1(e.target.value)} className={`${inputClass} mb-2`} autoComplete="address-line1" />
                   <div className="grid grid-cols-2 gap-2 mb-2">
-                    <input
-                      type="text"
-                      required
-                      placeholder="City"
-                      value={city}
-                      onChange={(e) => setCity(e.target.value)}
-                      className={inputClass}
-                    />
-                    <input
-                      type="text"
-                      required
-                      placeholder="State / Province"
-                      value={stateProvince}
-                      onChange={(e) => setStateProvince(e.target.value)}
-                      className={inputClass}
-                    />
+                    <input type="text" required placeholder="City" value={city} onChange={(e) => setCity(e.target.value)} className={inputClass} autoComplete="address-level2" />
+                    <input type="text" required placeholder="State / Province" value={stateProvince} onChange={(e) => setStateProvince(e.target.value)} className={inputClass} autoComplete="address-level1" />
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <input
-                      type="text"
-                      required
-                      placeholder="ZIP / Postal code"
-                      value={postalCode}
-                      onChange={(e) => setPostalCode(e.target.value)}
-                      className={inputClass}
-                    />
-                    <select
-                      value={country}
-                      onChange={(e) => setCountry(e.target.value)}
-                      className={`${inputClass} cursor-pointer`}
-                    >
+                    <input type="text" required placeholder="ZIP / Postal code" value={postalCode} onChange={(e) => setPostalCode(e.target.value)} className={inputClass} autoComplete="postal-code" />
+                    <select value={country} onChange={(e) => setCountry(e.target.value)} className={`${inputClass} cursor-pointer`} autoComplete="country">
                       <option value="US">United States</option>
                       <option value="CA">Canada</option>
                       <option value="GB">United Kingdom</option>
@@ -606,28 +576,18 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
                   </div>
                 </div>
 
-                {cardError && (
+                {error && (
                   <div className="flex items-start gap-2 mb-4 p-3 bg-negative/10 border border-negative/20 rounded-lg">
                     <Icons.AlertCircle className="w-4 h-4 text-negative flex-shrink-0 mt-0.5" />
-                    <p className="text-negative text-sm">{cardError}</p>
+                    <p className="text-negative text-sm">{error}</p>
                   </div>
                 )}
 
-                <button
-                  type="submit"
-                  disabled={submitting || !cardValidity?.allValid}
-                  className={`w-full py-3 text-sm font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
-                    isElite
-                      ? 'bg-yellow-500 text-black hover:brightness-110'
-                      : 'bg-accent text-accent-text hover:brightness-110'
-                  }`}
-                >
+                <button type="submit" disabled={submitting || !cardValidity?.allValid}
+                  className={`w-full py-3 text-sm font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed ${accentBtn}`}>
                   {submitting ? (
                     <span className="flex items-center justify-center gap-2">
-                      <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                      </svg>
+                      <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
                       Processing...
                     </span>
                   ) : `Subscribe — ${fmt(finalPrice)}${period}`}
@@ -637,7 +597,7 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
           )}
         </div>
 
-        {/* Powered by Stripe footer */}
+        {/* Stripe footer */}
         <div className="flex items-center justify-center gap-2 px-6 py-4 border-t border-border flex-shrink-0">
           <Icons.Lock className="w-3.5 h-3.5 text-text-muted" />
           <span className="text-text-muted text-xs">Powered by</span>
