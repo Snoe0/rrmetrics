@@ -75,7 +75,6 @@ const CARD_STYLE = {
 // CHECKOUT MODAL
 // =====================================================
 const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
-  const expressRef = useRef(null);
   const [step, setStep] = useState(1); // 1 = discounts, 2 = payment
   const [submitting, setSubmitting] = useState(false);
   const [cardError, setCardError] = useState(null);
@@ -97,9 +96,6 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
   const [referralChecking, setReferralChecking] = useState(true);
   const [referralError, setReferralError] = useState(null);
   const [referralLoading, setReferralLoading] = useState(false);
-  const [expressReady, setExpressReady] = useState(false);
-  const elementsRef = useRef(null);
-  const expressElRef = useRef(null);
 
   const handleCardChange = useCallback((state, validity) => {
     setCardState(state);
@@ -119,108 +115,8 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
     discountLabel = '15% referral discount';
   }
   const finalPrice = Math.max(0, rawPrice - discountAmount);
-  const finalCents = Math.round(finalPrice * 100);
   const period = plan.id.endsWith('_yearly') ? '/yr' : '/mo';
   const fmt = (n) => Number.isInteger(n) ? `$${n}` : `$${n.toFixed(2)}`;
-
-  // Mount Stripe Express Checkout Element on step 2 with final discounted amount
-  useEffect(() => {
-    if (step !== 2 || !stripeInstance || !expressRef.current) return;
-    if (finalCents <= 0) return;
-
-    // Clean up previous instance if going back and returning
-    if (expressElRef.current) {
-      try { expressElRef.current.unmount(); } catch {}
-      expressElRef.current = null;
-      elementsRef.current = null;
-      setExpressReady(false);
-    }
-
-    const elements = stripeInstance.elements({
-      mode: 'subscription',
-      amount: finalCents,
-      currency: 'usd',
-    });
-    elementsRef.current = elements;
-
-    const expressEl = elements.create('expressCheckout', {
-      buttonType: { applePay: 'subscribe', googlePay: 'subscribe' },
-      paymentMethods: { amazonPay: 'never' },
-    });
-    expressElRef.current = expressEl;
-    expressEl.mount(expressRef.current);
-
-    expressEl.on('ready', ({ availablePaymentMethods }) => {
-      if (availablePaymentMethods) setExpressReady(true);
-    });
-
-    expressEl.on('confirm', async () => {
-      setSubmitting(true);
-      setCardError(null);
-      try {
-        const { error: submitError } = await elements.submit();
-        if (submitError) {
-          setCardError(submitError.message);
-          setSubmitting(false);
-          return;
-        }
-
-        const res = await authFetch('/api/stripe/create-subscription', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            plan: plan.id,
-            promoCodeId: appliedCoupon && !appliedCoupon.isCouponId ? appliedCoupon.id : null,
-            couponId: appliedCoupon?.isCouponId ? appliedCoupon.id : null,
-            hasReferral: !appliedCoupon && appliedReferral,
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          setCardError(data.error || 'Something went wrong.');
-          setSubmitting(false);
-          return;
-        }
-
-        if (data.status === 'complete') {
-          onSuccess(plan.id);
-          return;
-        }
-
-        const { error: confirmError } = await stripeInstance.confirmPayment({
-          elements,
-          clientSecret: data.clientSecret,
-          confirmParams: { return_url: window.location.href },
-          redirect: 'if_required',
-        });
-
-        if (confirmError) {
-          setCardError(confirmError.message);
-          setSubmitting(false);
-          return;
-        }
-
-        await authFetch('/api/stripe/confirm-subscription', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ subscriptionId: data.subscriptionId }),
-        });
-        onSuccess(plan.id);
-      } catch (err) {
-        setCardError('Payment failed. Please try again.');
-        setSubmitting(false);
-      }
-    });
-
-    return () => {
-      if (expressElRef.current) {
-        try { expressElRef.current.unmount(); } catch {}
-        expressElRef.current = null;
-      }
-      elementsRef.current = null;
-      setExpressReady(false);
-    };
-  }, [step, stripeInstance, finalCents]);
 
   // Close on Escape key
   useEffect(() => {
@@ -611,19 +507,6 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
                 </div>
                 <span className="text-text-primary font-mono font-bold">{fmt(finalPrice)}{period}</span>
               </div>
-
-              {/* Express Checkout (Link, Apple Pay, Google Pay) */}
-              <div
-                ref={expressRef}
-                className={`mb-4 transition-all ${expressReady ? '' : 'h-0 overflow-hidden'}`}
-              />
-              {expressReady && (
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="flex-1 border-t border-border" />
-                  <span className="text-text-tertiary text-xs uppercase tracking-wider">or pay with card</span>
-                  <div className="flex-1 border-t border-border" />
-                </div>
-              )}
 
               <form onSubmit={handleSubmit}>
                 {/* Full name */}

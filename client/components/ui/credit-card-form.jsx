@@ -168,6 +168,7 @@ const CreditCardForm = ({
           <div className="cc-card__number-row">
             <input
               className="cc-input cc-input--number"
+              name="cardnumber"
               inputMode="numeric"
               autoComplete="cc-number"
               placeholder="0000 0000 0000 0000"
@@ -184,6 +185,7 @@ const CreditCardForm = ({
               <div className="cc-card__label">Card Holder</div>
               <input
                 className="cc-input cc-input--holder"
+                name="ccname"
                 type="text"
                 autoComplete="cc-name"
                 placeholder="NAME ON CARD"
@@ -199,6 +201,8 @@ const CreditCardForm = ({
                 <input
                   className="cc-input cc-input--expire"
                   inputMode="numeric"
+                  name="cc-exp-month"
+                  autoComplete="cc-exp-month"
                   placeholder="MM"
                   maxLength={2}
                   value={month}
@@ -213,6 +217,8 @@ const CreditCardForm = ({
                 <input
                   className="cc-input cc-input--expire"
                   inputMode="numeric"
+                  name="cc-exp-year"
+                  autoComplete="cc-exp-year"
                   placeholder="YY"
                   maxLength={2}
                   value={year ? year.slice(-2) : ''}
@@ -237,6 +243,7 @@ const CreditCardForm = ({
             <div className="cc-cvv-field">
               <input
                 className="cc-input cc-input--cvv"
+                name="cvc"
                 inputMode="numeric"
                 autoComplete="cc-csc"
                 placeholder={cardType === 'amex' ? '****' : '***'}
