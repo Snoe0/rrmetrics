@@ -76,6 +76,7 @@ const CARD_STYLE = {
 // =====================================================
 const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
   const expressRef = useRef(null);
+  const [step, setStep] = useState(1); // 1 = discounts, 2 = payment
   const [submitting, setSubmitting] = useState(false);
   const [cardError, setCardError] = useState(null);
   const [cardState, setCardState] = useState(null);
@@ -98,29 +99,55 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
   const [referralLoading, setReferralLoading] = useState(false);
   const [expressReady, setExpressReady] = useState(false);
   const elementsRef = useRef(null);
+  const expressElRef = useRef(null);
 
   const handleCardChange = useCallback((state, validity) => {
     setCardState(state);
     setCardValidity(validity);
   }, []);
 
-  // Mount Stripe Express Checkout Element (Link, Apple Pay, Google Pay)
+  // Compute final price with discounts
+  const rawPrice = parseFloat(plan.price.replace('$', ''));
+  let discountAmount = 0;
+  let discountLabel = '';
+  if (appliedCoupon) {
+    if (appliedCoupon.percentOff) discountAmount = rawPrice * appliedCoupon.percentOff / 100;
+    else if (appliedCoupon.amountOff) discountAmount = appliedCoupon.amountOff / 100;
+    discountLabel = appliedCoupon.display;
+  } else if (appliedReferral) {
+    discountAmount = rawPrice * 0.15;
+    discountLabel = '15% referral discount';
+  }
+  const finalPrice = Math.max(0, rawPrice - discountAmount);
+  const finalCents = Math.round(finalPrice * 100);
+  const period = plan.id.endsWith('_yearly') ? '/yr' : '/mo';
+  const fmt = (n) => Number.isInteger(n) ? `$${n}` : `$${n.toFixed(2)}`;
+
+  // Mount Stripe Express Checkout Element on step 2 with final discounted amount
   useEffect(() => {
-    if (!stripeInstance || !expressRef.current) return;
-    const rawPrice = parseFloat(plan.price.replace('$', ''));
-    const amountCents = Math.round(rawPrice * 100);
-    if (amountCents <= 0) return;
+    if (step !== 2 || !stripeInstance || !expressRef.current) return;
+    if (finalCents <= 0) return;
+
+    // Clean up previous instance if going back and returning
+    if (expressElRef.current) {
+      try { expressElRef.current.unmount(); } catch {}
+      expressElRef.current = null;
+      elementsRef.current = null;
+      setExpressReady(false);
+    }
 
     const elements = stripeInstance.elements({
       mode: 'subscription',
-      amount: amountCents,
+      amount: finalCents,
       currency: 'usd',
     });
     elementsRef.current = elements;
 
     const expressEl = elements.create('expressCheckout', {
       buttonType: { applePay: 'subscribe', googlePay: 'subscribe' },
+      paymentMethods: { amazonPay: 'never' },
     });
+    expressElRef.current = expressEl;
     expressEl.mount(expressRef.current);
 
     expressEl.on('ready', ({ availablePaymentMethods }) => {
@@ -138,7 +165,6 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
           return;
         }
 
-        // Create subscription on server
         const res = await authFetch('/api/stripe/create-subscription', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -186,8 +212,15 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
       }
     });
 
-    return () => { expressEl.unmount(); elementsRef.current = null; };
-  }, [stripeInstance, plan]);
+    return () => {
+      if (expressElRef.current) {
+        try { expressElRef.current.unmount(); } catch {}
+        expressElRef.current = null;
+      }
+      elementsRef.current = null;
+      setExpressReady(false);
+    };
+  }, [step, stripeInstance, finalCents]);
 
   // Close on Escape key
   useEffect(() => {
@@ -385,9 +418,24 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
       >
         {/* Modal header */}
         <div className="flex items-center justify-between px-6 pt-6 pb-5 border-b border-border flex-shrink-0">
-          <div>
-            <h2 className="text-text-primary font-semibold text-lg">Subscribe to {plan.name}</h2>
-            <p className="text-text-secondary text-sm mt-0.5">Start your subscription today</p>
+          <div className="flex items-center gap-3">
+            {step === 2 && (
+              <button
+                onClick={() => { setStep(1); setCardError(null); }}
+                className="text-text-tertiary hover:text-text-primary transition-colors w-8 h-8 flex items-center justify-center rounded-lg hover:bg-bg-input"
+                aria-label="Back"
+              >
+                <Icons.ArrowLeft className="w-4 h-4" />
+              </button>
+            )}
+            <div>
+              <h2 className="text-text-primary font-semibold text-lg">
+                {step === 1 ? `Subscribe to ${plan.name}` : 'Payment'}
+              </h2>
+              <p className="text-text-secondary text-sm mt-0.5">
+                {step === 1 ? 'Apply discounts before checkout' : `${plan.name} — ${discountAmount ? fmt(finalPrice) : plan.price}${period}`}
+              </p>
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -402,303 +450,308 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
         </div>
 
         <div className="px-6 py-5 overflow-y-auto flex-1">
-          {/* Plan summary */}
-          <div className={`rounded-lg p-4 mb-5 border ${
-            isElite
-              ? 'border-yellow-500/30 bg-yellow-500/5'
-              : 'border-accent/30 bg-accent/5'
-          }`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className={`font-semibold text-sm ${isElite ? 'text-yellow-400' : 'text-accent'}`}>
-                  {plan.name}
-                </p>
-                <p className="text-text-secondary text-xs mt-0.5">
-                  {plan.id.endsWith('_yearly') ? 'Billed annually' : 'Billed monthly'} · Cancel anytime
-                </p>
-              </div>
-              <div className="text-right">
-                <span className="text-text-primary font-mono font-bold text-2xl">{plan.price}</span>
-                <span className="text-text-tertiary text-xs">{plan.id.endsWith('_yearly') ? '/yr' : '/mo'}</span>
-              </div>
-            </div>
-          </div>
 
-          {/* Express Checkout (Link, Apple Pay, Google Pay) */}
-          <div
-            ref={expressRef}
-            className={`mb-4 transition-all ${expressReady ? '' : 'h-0 overflow-hidden'}`}
-          />
-          {expressReady && (
-            <div className="flex items-center gap-3 mb-4">
-              <div className="flex-1 border-t border-border" />
-              <span className="text-text-tertiary text-xs uppercase tracking-wider">or pay with card</span>
-              <div className="flex-1 border-t border-border" />
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit}>
-            {/* Full name */}
-            <div className="mb-4">
-              <label className={labelClass}>Full name</label>
-              <input
-                type="text"
-                required
-                placeholder="Jane Smith"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                className={inputClass}
-              />
-            </div>
-
-            {/* Email */}
-            <div className="mb-4">
-              <label className={labelClass}>Email</label>
-              <input
-                type="email"
-                required
-                placeholder="jane@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className={inputClass}
-              />
-            </div>
-
-            {/* Card details */}
-            <div className="mb-4">
-              <CreditCardForm
-                defaultHolder={fullName}
-                maskMiddle
-                onChange={handleCardChange}
-              />
-            </div>
-
-            {/* Billing address */}
-            <div className="mb-4">
-              <label className={labelClass}>Billing address</label>
-              <input
-                type="text"
-                required
-                placeholder="Address line 1"
-                value={addressLine1}
-                onChange={(e) => setAddressLine1(e.target.value)}
-                className={`${inputClass} mb-2`}
-              />
-              <div className="grid grid-cols-2 gap-2 mb-2">
-                <input
-                  type="text"
-                  required
-                  placeholder="City"
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                  className={inputClass}
-                />
-                <input
-                  type="text"
-                  required
-                  placeholder="State / Province"
-                  value={stateProvince}
-                  onChange={(e) => setStateProvince(e.target.value)}
-                  className={inputClass}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  type="text"
-                  required
-                  placeholder="ZIP / Postal code"
-                  value={postalCode}
-                  onChange={(e) => setPostalCode(e.target.value)}
-                  className={inputClass}
-                />
-                <select
-                  value={country}
-                  onChange={(e) => setCountry(e.target.value)}
-                  className={`${inputClass} cursor-pointer`}
-                >
-                  <option value="US">United States</option>
-                  <option value="CA">Canada</option>
-                  <option value="GB">United Kingdom</option>
-                  <option value="AU">Australia</option>
-                  <option value="NZ">New Zealand</option>
-                  <option value="IE">Ireland</option>
-                  <option value="DE">Germany</option>
-                  <option value="FR">France</option>
-                  <option value="NL">Netherlands</option>
-                  <option value="CH">Switzerland</option>
-                  <option value="SE">Sweden</option>
-                  <option value="NO">Norway</option>
-                  <option value="DK">Denmark</option>
-                  <option value="SG">Singapore</option>
-                  <option value="JP">Japan</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Referral code */}
-            {referralChecking ? null : !appliedReferral ? (
-              <div className="mb-4">
-                <label className={labelClass}>
-                  Referral Code
-                  <span className="ml-2 normal-case text-positive font-normal text-[11px]">Get 15% off your first month!</span>
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="RRM-XXXXXX"
-                    value={referralCode}
-                    onChange={(e) => { setReferralCode(e.target.value.toUpperCase()); setReferralError(null); }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleApplyReferral(); } }}
-                    className={`${inputClass} flex-1 font-mono`}
-                  />
-                  <button
-                    type="button"
-                    onClick={handleApplyReferral}
-                    disabled={!referralCode.trim() || referralLoading}
-                    className="px-4 py-[11px] text-sm font-medium bg-bg-input border border-border rounded-lg text-text-secondary hover:text-text-primary hover:border-accent/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
-                  >
-                    {referralLoading ? '...' : 'Apply'}
-                  </button>
-                </div>
-                {referralError && (
-                  <p className="text-negative text-xs mt-1.5">{referralError}</p>
-                )}
-              </div>
-            ) : (
-              <div className="mb-4">
-                <label className={labelClass}>Referral Code</label>
-                <div className="flex items-center justify-between bg-positive/10 border border-positive/30 rounded-lg px-3 py-2.5">
-                  <div className="flex items-center gap-2">
-                    <Icons.Check className="w-4 h-4 text-positive flex-shrink-0" />
-                    <span className="text-positive text-sm font-medium">15% referral discount applied</span>
+          {/* ========== STEP 1: Discounts & Price ========== */}
+          {step === 1 && (
+            <>
+              {/* Plan summary */}
+              <div className={`rounded-lg p-4 mb-5 border ${
+                isElite
+                  ? 'border-yellow-500/30 bg-yellow-500/5'
+                  : 'border-accent/30 bg-accent/5'
+              }`}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className={`font-semibold text-sm ${isElite ? 'text-yellow-400' : 'text-accent'}`}>
+                      {plan.name}
+                    </p>
+                    <p className="text-text-secondary text-xs mt-0.5">
+                      {plan.id.endsWith('_yearly') ? 'Billed annually' : 'Billed monthly'} · Cancel anytime
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-text-primary font-mono font-bold text-2xl">{plan.price}</span>
+                    <span className="text-text-tertiary text-xs">{period}</span>
                   </div>
                 </div>
               </div>
-            )}
 
-            {/* Coupon code */}
-            <div className="mb-4">
-              <label className={labelClass}>Coupon code</label>
-              {appliedCoupon ? (
-                <div className="flex items-center justify-between bg-positive/10 border border-positive/30 rounded-lg px-3 py-2.5">
-                  <div className="flex items-center gap-2">
-                    <Icons.Check className="w-4 h-4 text-positive flex-shrink-0" />
-                    <span className="text-positive text-sm font-medium">{appliedCoupon.display}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setAppliedCoupon(null)}
-                    className="text-text-tertiary hover:text-text-primary transition-colors ml-2"
-                    aria-label="Remove coupon"
-                  >
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <line x1="18" y1="6" x2="6" y2="18"></line>
-                      <line x1="6" y1="6" x2="18" y2="18"></line>
-                    </svg>
-                  </button>
-                </div>
-              ) : (
-                <>
+              {/* Referral code */}
+              {referralChecking ? null : !appliedReferral ? (
+                <div className="mb-4">
+                  <label className={labelClass}>
+                    Referral Code
+                    <span className="ml-2 normal-case text-positive font-normal text-[11px]">Get 15% off your first month!</span>
+                  </label>
                   <div className="flex gap-2">
                     <input
                       type="text"
-                      placeholder="Enter code"
-                      value={couponCode}
-                      onChange={(e) => { setCouponCode(e.target.value); setCouponError(null); }}
-                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleApplyCoupon(); } }}
-                      className={`${inputClass} flex-1`}
+                      placeholder="RRM-XXXXXX"
+                      value={referralCode}
+                      onChange={(e) => { setReferralCode(e.target.value.toUpperCase()); setReferralError(null); }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleApplyReferral(); } }}
+                      className={`${inputClass} flex-1 font-mono`}
                     />
                     <button
                       type="button"
-                      onClick={handleApplyCoupon}
-                      disabled={!couponCode.trim() || couponLoading}
+                      onClick={handleApplyReferral}
+                      disabled={!referralCode.trim() || referralLoading}
                       className="px-4 py-[11px] text-sm font-medium bg-bg-input border border-border rounded-lg text-text-secondary hover:text-text-primary hover:border-accent/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
                     >
-                      {couponLoading ? '...' : 'Apply'}
+                      {referralLoading ? '...' : 'Apply'}
                     </button>
                   </div>
-                  {couponError && (
-                    <p className="text-negative text-xs mt-1.5">{couponError}</p>
+                  {referralError && (
+                    <p className="text-negative text-xs mt-1.5">{referralError}</p>
                   )}
-                </>
-              )}
-            </div>
-
-            {/* Cost breakdown */}
-            {(() => {
-              const rawPrice = parseFloat(plan.price.replace('$', ''));
-              let discountAmount = 0;
-              let discountLabel = '';
-              if (appliedCoupon) {
-                if (appliedCoupon.percentOff) {
-                  discountAmount = rawPrice * appliedCoupon.percentOff / 100;
-                } else if (appliedCoupon.amountOff) {
-                  discountAmount = appliedCoupon.amountOff / 100;
-                }
-                discountLabel = appliedCoupon.display;
-              } else if (appliedReferral) {
-                discountAmount = rawPrice * 0.15;
-                discountLabel = '15% referral discount';
-              }
-              if (!discountAmount) return null;
-              const total = Math.max(0, rawPrice - discountAmount);
-              const fmt = (n) => Number.isInteger(n) ? `$${n}` : `$${n.toFixed(2)}`;
-              const period = plan.id.endsWith('_yearly') ? '/yr' : '/mo';
-              return (
-                <div className="mb-4 rounded-lg border border-border divide-y divide-border text-sm overflow-hidden">
-                  <div className="flex justify-between items-center px-3 py-2 text-text-secondary">
-                    <span>{plan.name}</span>
-                    <span className="font-mono">{plan.price}{period}</span>
+                </div>
+              ) : (
+                <div className="mb-4">
+                  <label className={labelClass}>Referral Code</label>
+                  <div className="flex items-center justify-between bg-positive/10 border border-positive/30 rounded-lg px-3 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <Icons.Check className="w-4 h-4 text-positive flex-shrink-0" />
+                      <span className="text-positive text-sm font-medium">15% referral discount applied</span>
+                    </div>
                   </div>
-                  <div className="flex justify-between items-center px-3 py-2 text-positive">
+                </div>
+              )}
+
+              {/* Coupon code */}
+              <div className="mb-4">
+                <label className={labelClass}>Coupon code</label>
+                {appliedCoupon ? (
+                  <div className="flex items-center justify-between bg-positive/10 border border-positive/30 rounded-lg px-3 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <Icons.Check className="w-4 h-4 text-positive flex-shrink-0" />
+                      <span className="text-positive text-sm font-medium">{appliedCoupon.display}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setAppliedCoupon(null)}
+                      className="text-text-tertiary hover:text-text-primary transition-colors ml-2"
+                      aria-label="Remove coupon"
+                    >
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                      </svg>
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Enter code"
+                        value={couponCode}
+                        onChange={(e) => { setCouponCode(e.target.value); setCouponError(null); }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleApplyCoupon(); } }}
+                        className={`${inputClass} flex-1`}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleApplyCoupon}
+                        disabled={!couponCode.trim() || couponLoading}
+                        className="px-4 py-[11px] text-sm font-medium bg-bg-input border border-border rounded-lg text-text-secondary hover:text-text-primary hover:border-accent/60 transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                      >
+                        {couponLoading ? '...' : 'Apply'}
+                      </button>
+                    </div>
+                    {couponError && (
+                      <p className="text-negative text-xs mt-1.5">{couponError}</p>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Cost breakdown */}
+              <div className="mb-5 rounded-lg border border-border divide-y divide-border text-sm overflow-hidden">
+                <div className="flex justify-between items-center px-3 py-2.5 text-text-secondary">
+                  <span>{plan.name}</span>
+                  <span className="font-mono">{plan.price}{period}</span>
+                </div>
+                {discountAmount > 0 && (
+                  <div className="flex justify-between items-center px-3 py-2.5 text-positive">
                     <span>{discountLabel}</span>
                     <span className="font-mono">-{fmt(discountAmount)}</span>
                   </div>
-                  <div className="flex justify-between items-center px-3 py-2 text-text-primary font-semibold">
-                    <span>Total</span>
-                    <span className="font-mono">{fmt(total)}{period}</span>
+                )}
+                <div className="flex justify-between items-center px-3 py-2.5 text-text-primary font-semibold bg-bg-input/30">
+                  <span>Total</span>
+                  <span className="font-mono text-lg">{fmt(finalPrice)}{period}</span>
+                </div>
+              </div>
+
+              {/* Continue to payment */}
+              <button
+                type="button"
+                onClick={() => setStep(2)}
+                className={`w-full py-3 text-sm font-semibold rounded-lg transition-all ${
+                  isElite
+                    ? 'bg-yellow-500 text-black hover:brightness-110'
+                    : 'bg-accent text-accent-text hover:brightness-110'
+                }`}
+              >
+                Continue to Payment
+              </button>
+            </>
+          )}
+
+          {/* ========== STEP 2: Payment ========== */}
+          {step === 2 && (
+            <>
+              {/* Compact price summary */}
+              <div className="flex items-center justify-between mb-5 px-3 py-2.5 rounded-lg border border-border text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-text-secondary">{plan.name}</span>
+                  {discountAmount > 0 && (
+                    <span className="text-positive text-xs bg-positive/10 px-1.5 py-0.5 rounded">{discountLabel}</span>
+                  )}
+                </div>
+                <span className="text-text-primary font-mono font-bold">{fmt(finalPrice)}{period}</span>
+              </div>
+
+              {/* Express Checkout (Link, Apple Pay, Google Pay) */}
+              <div
+                ref={expressRef}
+                className={`mb-4 transition-all ${expressReady ? '' : 'h-0 overflow-hidden'}`}
+              />
+              {expressReady && (
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="flex-1 border-t border-border" />
+                  <span className="text-text-tertiary text-xs uppercase tracking-wider">or pay with card</span>
+                  <div className="flex-1 border-t border-border" />
+                </div>
+              )}
+
+              <form onSubmit={handleSubmit}>
+                {/* Full name */}
+                <div className="mb-4">
+                  <label className={labelClass}>Full name</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Jane Smith"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    className={inputClass}
+                  />
+                </div>
+
+                {/* Email */}
+                <div className="mb-4">
+                  <label className={labelClass}>Email</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="jane@example.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className={inputClass}
+                  />
+                </div>
+
+                {/* Card details */}
+                <div className="mb-4">
+                  <CreditCardForm
+                    defaultHolder={fullName}
+                    maskMiddle
+                    onChange={handleCardChange}
+                  />
+                </div>
+
+                {/* Billing address */}
+                <div className="mb-4">
+                  <label className={labelClass}>Billing address</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Address line 1"
+                    value={addressLine1}
+                    onChange={(e) => setAddressLine1(e.target.value)}
+                    className={`${inputClass} mb-2`}
+                  />
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    <input
+                      type="text"
+                      required
+                      placeholder="City"
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
+                      className={inputClass}
+                    />
+                    <input
+                      type="text"
+                      required
+                      placeholder="State / Province"
+                      value={stateProvince}
+                      onChange={(e) => setStateProvince(e.target.value)}
+                      className={inputClass}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      required
+                      placeholder="ZIP / Postal code"
+                      value={postalCode}
+                      onChange={(e) => setPostalCode(e.target.value)}
+                      className={inputClass}
+                    />
+                    <select
+                      value={country}
+                      onChange={(e) => setCountry(e.target.value)}
+                      className={`${inputClass} cursor-pointer`}
+                    >
+                      <option value="US">United States</option>
+                      <option value="CA">Canada</option>
+                      <option value="GB">United Kingdom</option>
+                      <option value="AU">Australia</option>
+                      <option value="NZ">New Zealand</option>
+                      <option value="IE">Ireland</option>
+                      <option value="DE">Germany</option>
+                      <option value="FR">France</option>
+                      <option value="NL">Netherlands</option>
+                      <option value="CH">Switzerland</option>
+                      <option value="SE">Sweden</option>
+                      <option value="NO">Norway</option>
+                      <option value="DK">Denmark</option>
+                      <option value="SG">Singapore</option>
+                      <option value="JP">Japan</option>
+                    </select>
                   </div>
                 </div>
-              );
-            })()}
 
-            {cardError && (
-              <div className="flex items-start gap-2 mb-4 p-3 bg-negative/10 border border-negative/20 rounded-lg">
-                <Icons.AlertCircle className="w-4 h-4 text-negative flex-shrink-0 mt-0.5" />
-                <p className="text-negative text-sm">{cardError}</p>
-              </div>
-            )}
+                {cardError && (
+                  <div className="flex items-start gap-2 mb-4 p-3 bg-negative/10 border border-negative/20 rounded-lg">
+                    <Icons.AlertCircle className="w-4 h-4 text-negative flex-shrink-0 mt-0.5" />
+                    <p className="text-negative text-sm">{cardError}</p>
+                  </div>
+                )}
 
-            <button
-              type="submit"
-              disabled={submitting || !cardValidity?.allValid}
-              className={`w-full py-3 text-sm font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
-                isElite
-                  ? 'bg-yellow-500 text-black hover:brightness-110'
-                  : 'bg-accent text-accent-text hover:brightness-110'
-              }`}
-            >
-              {submitting ? (
-                <span className="flex items-center justify-center gap-2">
-                  <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                  </svg>
-                  Processing...
-                </span>
-              ) : (() => {
-                const rawPrice = parseFloat(plan.price.replace('$', ''));
-                let discountAmount = 0;
-                if (appliedCoupon?.percentOff) discountAmount = rawPrice * appliedCoupon.percentOff / 100;
-                else if (appliedCoupon?.amountOff) discountAmount = appliedCoupon.amountOff / 100;
-                else if (appliedReferral) discountAmount = rawPrice * 0.15;
-                const total = Math.max(0, rawPrice - discountAmount);
-                const fmt = (n) => Number.isInteger(n) ? `$${n}` : `$${n.toFixed(2)}`;
-                const period = plan.id.endsWith('_yearly') ? 'yr' : 'mo';
-                return discountAmount ? `Subscribe — ${fmt(total)}/${period}` : `Subscribe — ${plan.price}/${period}`;
-              })()}
-            </button>
-          </form>
+                <button
+                  type="submit"
+                  disabled={submitting || !cardValidity?.allValid}
+                  className={`w-full py-3 text-sm font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                    isElite
+                      ? 'bg-yellow-500 text-black hover:brightness-110'
+                      : 'bg-accent text-accent-text hover:brightness-110'
+                  }`}
+                >
+                  {submitting ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                      </svg>
+                      Processing...
+                    </span>
+                  ) : `Subscribe — ${fmt(finalPrice)}${period}`}
+                </button>
+              </form>
+            </>
+          )}
         </div>
 
         {/* Powered by Stripe footer */}
