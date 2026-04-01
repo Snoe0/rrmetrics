@@ -233,3 +233,38 @@ export async function deleteAnnouncement(
     .eq('id', id);
   if (error) throw error;
 }
+
+// ─── Storage costs ───────────────────────────────────────────────────────────
+
+export interface UserStorageCost {
+  userId: string;
+  storageMB: number;
+  dbMB: number;
+  estimatedCostCents: number;
+}
+
+const STORAGE_COST_PER_GB = 0.021; // $/GB/month
+const DB_COST_PER_GB = 0.125;      // $/GB/month
+
+export async function getUserStorageCosts(
+  supabase: SupabaseClient,
+): Promise<Record<string, UserStorageCost>> {
+  const { data, error } = await supabase.rpc('get_user_storage_costs');
+  if (error) throw error;
+
+  const result: Record<string, UserStorageCost> = {};
+  for (const row of data ?? []) {
+    const storageMB = (row.storage_bytes || 0) / (1024 * 1024);
+    const dbMB = (row.db_bytes || 0) / (1024 * 1024);
+    const costDollars =
+      (storageMB / 1024) * STORAGE_COST_PER_GB +
+      (dbMB / 1024) * DB_COST_PER_GB;
+    result[row.user_id] = {
+      userId: row.user_id,
+      storageMB: Math.round(storageMB * 100) / 100,
+      dbMB: Math.round(dbMB * 100) / 100,
+      estimatedCostCents: Math.round(costDollars * 100),
+    };
+  }
+  return result;
+}

@@ -53,6 +53,20 @@ admin.get('/api/admin/users', async (c) => {
   }
 });
 
+// ─── Storage costs ───────────────────────────────────────────────────────────
+
+// GET /api/admin/storage-costs
+admin.get('/api/admin/storage-costs', async (c) => {
+  const supabase = createServiceClient(c.env);
+  try {
+    const costs = await adminDb.getUserStorageCosts(supabase);
+    return c.json({ costs });
+  } catch (err) {
+    console.error('admin storage costs error:', err);
+    return c.json({ error: 'Failed to fetch storage costs.' }, 500);
+  }
+});
+
 // ─── Suspicious accounts ──────────────────────────────────────────────────────
 
 // GET /api/admin/suspicious

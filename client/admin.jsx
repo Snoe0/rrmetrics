@@ -103,6 +103,7 @@ const UsersView = ({ token }) => {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [managingUser, setManagingUser] = useState(null);
+  const [storageCosts, setStorageCosts] = useState({});
 
   const load = useCallback((p) => {
     setLoading(true);
@@ -110,6 +111,13 @@ const UsersView = ({ token }) => {
       .then((r) => r.json())
       .then((d) => { setData(d); setLoading(false); })
       .catch(() => setLoading(false));
+  }, [token]);
+
+  useEffect(() => {
+    adminFetch(token, '/api/admin/storage-costs')
+      .then((r) => r.json())
+      .then((d) => { if (d.costs) setStorageCosts(d.costs); })
+      .catch(() => {});
   }, [token]);
 
   useEffect(() => { load(page); }, [page, load]);
@@ -135,6 +143,7 @@ const UsersView = ({ token }) => {
                 <th className="pb-2 font-medium">Tier</th>
                 <th className="pb-2 font-medium">Joined</th>
                 <th className="pb-2 font-medium">IP</th>
+                <th className="pb-2 font-medium">Est. Cost</th>
                 <th className="pb-2 font-medium">Actions</th>
               </tr>
             </thead>
@@ -145,6 +154,15 @@ const UsersView = ({ token }) => {
                   <td className="py-2">{planBadge(u.plan, u.role)}</td>
                   <td className="py-2 text-text-secondary font-mono text-xs">{new Date(u.createdAt).toLocaleDateString()}</td>
                   <td className="py-2 text-text-muted font-mono text-xs">{u.registrationIp || '—'}</td>
+                  <td className="py-2 font-mono text-xs">
+                    {storageCosts[u.id] ? (
+                      <span className={storageCosts[u.id].estimatedCostCents > 0 ? 'text-warning' : 'text-text-muted'} title={`Storage: ${storageCosts[u.id].storageMB} MB | DB: ${storageCosts[u.id].dbMB} MB`}>
+                        ${(storageCosts[u.id].estimatedCostCents / 100).toFixed(2)}/mo
+                      </span>
+                    ) : (
+                      <span className="text-text-muted">$0.00/mo</span>
+                    )}
+                  </td>
                   <td className="py-2">
                     <button
                       type="button"
