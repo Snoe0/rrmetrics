@@ -1,26 +1,6 @@
 const React = require('react');
-const { useState, useEffect, useMemo } = React;
+const { useState, useEffect, useMemo, useRef } = React;
 require('../../styles/credit-card-form.css');
-
-function clampDigits(value, maxLen) {
-  return value.replace(/\D/g, '').slice(0, maxLen);
-}
-
-function formatNumberSpaces(num) {
-  return num.replace(/\s+/g, '').replace(/(\d{4})(?=\d)/g, '$1 ');
-}
-
-// Card type detection by BIN prefix
-function detectCardType(number) {
-  const n = number.replace(/\s/g, '');
-  if (/^4/.test(n)) return 'visa';
-  if (/^5[1-5]/.test(n) || /^2[2-7]/.test(n)) return 'mastercard';
-  if (/^3[47]/.test(n)) return 'amex';
-  if (/^6(?:011|5)/.test(n)) return 'discover';
-  if (/^35/.test(n)) return 'jcb';
-  if (/^3(?:0[0-5]|[68])/.test(n)) return 'diners';
-  return null;
-}
 
 // Card brand SVG logos
 const CardLogos = {
@@ -53,21 +33,8 @@ const CardLogos = {
       <text x="280" y="290" fill="#1a1a2e" fontFamily="Arial,sans-serif" fontWeight="bold" fontSize="100">D</text>
     </svg>
   ),
-  jcb: () => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="60" height="40" viewBox="0 0 780 500">
-      <rect width="780" height="500" rx="40" fill="#fff"/>
-      <text x="390" y="290" textAnchor="middle" fill="#0e4c92" fontFamily="Arial,sans-serif" fontWeight="bold" fontSize="140">JCB</text>
-    </svg>
-  ),
-  diners: () => (
-    <svg xmlns="http://www.w3.org/2000/svg" width="60" height="40" viewBox="0 0 780 500">
-      <rect width="780" height="500" rx="40" fill="#fff"/>
-      <circle cx="390" cy="250" r="150" fill="none" stroke="#0079be" strokeWidth="30"/>
-    </svg>
-  ),
 };
 
-// Generic card icon when type not detected
 const GenericCardLogo = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="60" height="40" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
@@ -75,102 +42,151 @@ const GenericCardLogo = () => (
   </svg>
 );
 
+// Stripe Element style — white text on transparent background
+const ELEMENT_STYLE = {
+  base: {
+    color: '#ffffff',
+    fontSize: '16px',
+    fontFamily: '"JetBrains Mono", "SF Mono", "Fira Code", monospace',
+    fontSmoothing: 'antialiased',
+    '::placeholder': { color: 'rgba(255,255,255,0.25)' },
+  },
+  invalid: { color: '#ef4444' },
+};
+
+const NUMBER_STYLE = {
+  ...ELEMENT_STYLE,
+  base: { ...ELEMENT_STYLE.base, fontSize: '20px', letterSpacing: '2px' },
+};
+
+/**
+ * CreditCardForm — uses Stripe Elements (cardNumber, cardExpiry, cardCvc)
+ * mounted directly on a visual card face. PCI compliant.
+ *
+ * Props:
+ *   stripeInstance - initialized Stripe.js instance
+ *   defaultHolder - prefill holder name
+ *   ring1, ring2  - accent gradient colors
+ *   onChange({ cardNumberElement, holder, complete, error })
+ */
 const CreditCardForm = ({
-  defaultNumber = '',
+  stripeInstance,
   defaultHolder = '',
-  defaultMonth = '',
-  defaultYear = '',
-  defaultCVV = '',
-  maskMiddle = true,
   ring1 = '#ff6be7',
   ring2 = '#7288ff',
   onChange,
   className = '',
 }) => {
-  const [number, setNumber] = useState(clampDigits(defaultNumber, 19));
+  const numberRef = useRef(null);
+  const expiryRef = useRef(null);
+  const cvcRef = useRef(null);
+  const cardNumberElRef = useRef(null);
+
   const [holder, setHolder] = useState(defaultHolder.toUpperCase());
-  const [month, setMonth] = useState(defaultMonth);
-  const [year, setYear] = useState(defaultYear);
-  const [cvv, setCVV] = useState(clampDigits(defaultCVV, 4));
+  const [brand, setBrand] = useState(null);
+  const [fieldStatus, setFieldStatus] = useState({ number: false, expiry: false, cvc: false });
+  const [fieldError, setFieldError] = useState(null);
   const [focusField, setFocusField] = useState(null);
 
-  const cardType = useMemo(() => detectCardType(number), [number]);
-  const maxCvv = cardType === 'amex' ? 4 : 3;
+  const holderValid = holder.trim().length >= 2;
+  const allComplete = fieldStatus.number && fieldStatus.expiry && fieldStatus.cvc && holderValid;
 
-  const validity = useMemo(() => {
-    const minLen = cardType === 'amex' ? 15 : 13;
-    const numberValid = number.length >= minLen;
-    const holderValid = holder.trim().length >= 2;
-    const monthValid = !!month && +month >= 1 && +month <= 12;
-    const yearValid = !!year && +year >= new Date().getFullYear();
-    const cvvLen = cardType === 'amex' ? 4 : 3;
-    const cvvValid = new RegExp(`^\\d{${cvvLen}}$`).test(cvv);
-    return {
-      number: numberValid,
-      holder: holderValid,
-      month: monthValid,
-      year: yearValid,
-      cvv: cvvValid,
-      allValid: numberValid && holderValid && monthValid && yearValid && cvvValid,
-    };
-  }, [number, holder, month, year, cvv, cardType]);
-
+  // Sync holder with parent's name
   useEffect(() => {
     if (defaultHolder) setHolder(defaultHolder.toUpperCase());
   }, [defaultHolder]);
 
+  // Notify parent
   useEffect(() => {
-    onChange?.({ number, holder, month, year, cvv }, validity);
-  }, [number, holder, month, year, cvv, validity, onChange]);
+    onChange?.({
+      cardNumberElement: cardNumberElRef.current,
+      holder,
+      complete: allComplete,
+      error: fieldError,
+    });
+  }, [holder, allComplete, fieldError, onChange]);
 
-  const CardLogo = cardType && CardLogos[cardType] ? CardLogos[cardType] : GenericCardLogo;
+  // Mount Stripe Elements on card
+  useEffect(() => {
+    if (!stripeInstance || !numberRef.current) return;
+
+    const elements = stripeInstance.elements();
+
+    const cardNumber = elements.create('cardNumber', {
+      style: NUMBER_STYLE,
+      placeholder: '0000 0000 0000 0000',
+    });
+    cardNumber.mount(numberRef.current);
+    cardNumberElRef.current = cardNumber;
+
+    cardNumber.on('change', (e) => {
+      setBrand(e.brand !== 'unknown' ? e.brand : null);
+      setFieldStatus((prev) => ({ ...prev, number: e.complete }));
+      setFieldError(e.error?.message || null);
+    });
+    cardNumber.on('focus', () => setFocusField('number'));
+    cardNumber.on('blur', () => setFocusField(null));
+
+    const cardExpiry = elements.create('cardExpiry', {
+      style: ELEMENT_STYLE,
+      placeholder: 'MM / YY',
+    });
+    cardExpiry.mount(expiryRef.current);
+
+    cardExpiry.on('change', (e) => {
+      setFieldStatus((prev) => ({ ...prev, expiry: e.complete }));
+      if (e.error) setFieldError(e.error.message);
+    });
+    cardExpiry.on('focus', () => setFocusField('expiry'));
+    cardExpiry.on('blur', () => setFocusField(null));
+
+    const cardCvc = elements.create('cardCvc', {
+      style: ELEMENT_STYLE,
+      placeholder: '···',
+    });
+    cardCvc.mount(cvcRef.current);
+
+    cardCvc.on('change', (e) => {
+      setFieldStatus((prev) => ({ ...prev, cvc: e.complete }));
+      if (e.error) setFieldError(e.error.message);
+    });
+    cardCvc.on('focus', () => setFocusField('cvc'));
+    cardCvc.on('blur', () => setFocusField(null));
+
+    return () => {
+      cardNumber.unmount();
+      cardExpiry.unmount();
+      cardCvc.unmount();
+      cardNumberElRef.current = null;
+    };
+  }, [stripeInstance]);
+
+  const CardLogo = brand && CardLogos[brand] ? CardLogos[brand] : GenericCardLogo;
 
   return (
     <div className={`cc-wrap ${className}`}>
-      {/* Single-face card — no flip */}
       <div className="cc-card">
         <div className="cc-card__front" style={{ '--ring1': ring1, '--ring2': ring2 }}>
           {/* Header: chip + brand logo */}
           <div className="cc-card__header">
             <div className="cc-chip" />
-            <div className={`cc-logo ${cardType ? 'cc-logo--detected' : ''}`}>
+            <div className={`cc-logo ${brand ? 'cc-logo--detected' : ''}`}>
               <CardLogo />
             </div>
           </div>
 
-          {/* Card number input */}
+          {/* Card number (Stripe Element) */}
           <div className="cc-card__number-row">
-            <input
-              className="cc-input cc-input--number"
-              name="cardnumber"
-              inputMode="numeric"
-              autoComplete="cc-number"
-              placeholder="0000 0000 0000 0000"
-              value={formatNumberSpaces(number)}
-              onChange={(e) => setNumber(clampDigits(e.target.value, cardType === 'amex' ? 15 : 19))}
-              onFocus={() => setFocusField('number')}
-              onBlur={() => setFocusField(null)}
-            />
+            <div ref={numberRef} className="cc-stripe-mount cc-stripe-mount--number" />
           </div>
 
-          {/* CVV row — right below card number */}
+          {/* CVV (Stripe Element) */}
           <div className="cc-card__cvv-row">
             <div className="cc-card__label">CVV</div>
-            <input
-              className="cc-input cc-input--cvv-inline"
-              name="cvc"
-              inputMode="numeric"
-              autoComplete="cc-csc"
-              placeholder={cardType === 'amex' ? '····' : '···'}
-              maxLength={maxCvv}
-              value={cvv}
-              onChange={(e) => setCVV(clampDigits(e.target.value, maxCvv))}
-              onFocus={() => setFocusField('cvv')}
-              onBlur={() => setFocusField(null)}
-            />
+            <div ref={cvcRef} className="cc-stripe-mount cc-stripe-mount--cvc" />
           </div>
 
-          {/* Footer: holder + expiry */}
+          {/* Footer: holder (regular input) + expiry (Stripe Element) */}
           <div className="cc-card__footer">
             <div className="cc-card__holder-area">
               <div className="cc-card__label">Card Holder</div>
@@ -188,37 +204,7 @@ const CreditCardForm = ({
             </div>
             <div className="cc-card__expires-area">
               <div className="cc-card__label">Expires</div>
-              <div className="cc-card__expire-inputs">
-                <input
-                  className="cc-input cc-input--expire"
-                  inputMode="numeric"
-                  name="cc-exp-month"
-                  autoComplete="cc-exp-month"
-                  placeholder="MM"
-                  maxLength={2}
-                  value={month}
-                  onChange={(e) => setMonth(clampDigits(e.target.value, 2))}
-                  onFocus={() => setFocusField('expire')}
-                  onBlur={() => setFocusField(null)}
-                />
-                <span className="cc-expire-sep">/</span>
-                <input
-                  className="cc-input cc-input--expire"
-                  inputMode="numeric"
-                  name="cc-exp-year"
-                  autoComplete="cc-exp-year"
-                  placeholder="YY"
-                  maxLength={2}
-                  value={year ? year.slice(-2) : ''}
-                  onChange={(e) => {
-                    const v = clampDigits(e.target.value, 2);
-                    const prefix = String(new Date().getFullYear()).slice(0, 2);
-                    setYear(v.length === 2 ? prefix + v : v);
-                  }}
-                  onFocus={() => setFocusField('expire')}
-                  onBlur={() => setFocusField(null)}
-                />
-              </div>
+              <div ref={expiryRef} className="cc-stripe-mount cc-stripe-mount--expiry" />
             </div>
           </div>
         </div>

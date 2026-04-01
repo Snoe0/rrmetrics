@@ -1,5 +1,5 @@
 /* ===================================================
-   Credit Card Form — Single-face card with inputs
+   Credit Card Form — Stripe Elements on card face
    =================================================== */
 
 .cc-wrap {
@@ -32,6 +32,7 @@
   flex-direction: column;
   padding: 24px 28px;
   gap: 6px;
+  position: relative;
 }
 
 /* Accent rings */
@@ -60,6 +61,14 @@
   filter: blur(40px);
   opacity: 0.3;
   pointer-events: none;
+}
+
+/* Focus glow */
+.cc-card__front:focus-within {
+  box-shadow:
+    0 25px 50px -12px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.1) inset,
+    0 0 30px rgba(99, 102, 241, 0.15);
 }
 
 /* ---------- Card header ---------- */
@@ -103,66 +112,44 @@
   transform: scale(1);
 }
 
-/* ---------- Transparent inputs on card ---------- */
-.cc-input {
-  background: none;
-  border: none;
-  outline: none;
-  color: #fff;
-  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
-  padding: 0;
-  margin: 0;
-  width: 100%;
-  caret-color: var(--ring1, #ff6be7);
-}
-.cc-input::placeholder {
-  color: rgba(255, 255, 255, 0.25);
-}
-.cc-input:focus {
-  outline: none;
-}
-
-/* Focus glow on card */
-.cc-card__front:focus-within {
-  box-shadow:
-    0 25px 50px -12px rgba(0, 0, 0, 0.5),
-    0 0 0 1px rgba(255, 255, 255, 0.1) inset,
-    0 0 30px rgba(99, 102, 241, 0.15);
-}
-
-/* Card number input */
-.cc-card__number-row {
+/* ---------- Stripe Element mount points ---------- */
+.cc-stripe-mount {
   position: relative;
   z-index: 1;
 }
-.cc-input--number {
-  font-size: 22px;
-  letter-spacing: 3px;
+
+.cc-stripe-mount--number {
   height: 36px;
-}
-.cc-input--number::placeholder {
-  letter-spacing: 3px;
+  margin-bottom: 2px;
 }
 
-/* ---------- CVV row (below card number) ---------- */
+.cc-stripe-mount--cvc {
+  width: 70px;
+  height: 24px;
+}
+
+.cc-stripe-mount--expiry {
+  width: 80px;
+  height: 24px;
+}
+
+/* Stripe iframe inherits from container — ensure no extra borders */
+.cc-stripe-mount iframe {
+  display: block;
+}
+
+/* ---------- CVV row ---------- */
 .cc-card__cvv-row {
   position: relative;
   z-index: 1;
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-bottom: 2px;
 }
 .cc-card__cvv-row .cc-card__label {
   flex-shrink: 0;
-}
-.cc-input--cvv-inline {
-  width: 60px;
-  font-size: 16px;
-  letter-spacing: 3px;
-  height: 24px;
-}
-.cc-input--cvv-inline::placeholder {
-  letter-spacing: 3px;
+  margin-bottom: 0;
 }
 
 /* ---------- Card footer ---------- */
@@ -193,40 +180,33 @@
   margin-bottom: 4px;
 }
 
+/* ---------- Holder name (regular input) ---------- */
+.cc-input {
+  background: none;
+  border: none;
+  outline: none;
+  color: #fff;
+  font-family: 'Inter', sans-serif;
+  padding: 0;
+  margin: 0;
+  width: 100%;
+  caret-color: var(--ring1, #ff6be7);
+}
+.cc-input::placeholder {
+  color: rgba(255, 255, 255, 0.25);
+}
+
 .cc-input--holder {
   font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 1px;
   height: 24px;
-  font-family: 'Inter', sans-serif;
-}
-
-/* Expire inputs */
-.cc-card__expire-inputs {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-.cc-input--expire {
-  width: 26px;
-  text-align: center;
-  font-size: 15px;
-  height: 24px;
-}
-.cc-expire-sep {
-  color: rgba(255, 255, 255, 0.4);
-  font-size: 15px;
-  font-family: 'JetBrains Mono', monospace;
 }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 450px) {
   .cc-card__front {
     padding: 16px 18px;
-  }
-  .cc-input--number {
-    font-size: 17px;
-    letter-spacing: 2px;
   }
   .cc-input--holder {
     font-size: 11px;

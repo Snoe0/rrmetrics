@@ -92,12 +92,10 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
   const [referralError, setReferralError] = useState(null);
   const [referralLoading, setReferralLoading] = useState(false);
 
-  // --- Card form state ---
-  const [cardState, setCardState] = useState(null);
-  const [cardValidity, setCardValidity] = useState(null);
-  const handleCardChange = useCallback((state, validity) => {
-    setCardState(state);
-    setCardValidity(validity);
+  // --- Card form state (Stripe Elements) ---
+  const [cardData, setCardData] = useState(null);
+  const handleCardChange = useCallback((data) => {
+    setCardData(data);
   }, []);
 
   // --- Billing state ---
@@ -286,32 +284,25 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
 
   const handleCardSubmit = async (e) => {
     e.preventDefault();
-    if (!cardState || !cardValidity?.allValid || submitting) return;
+    if (!cardData?.complete || !cardData?.cardNumberElement || submitting) return;
     setSubmitting(true);
     setError(null);
 
     const billingDetails = {
-      name: fullName || cardState.holder,
+      name: fullName || cardData.holder,
       email,
       address: { line1: addressLine1, city, state: stateProvince, postal_code: postalCode, country },
     };
 
     try {
-      // 1. Create PaymentMethod server-side
-      const pmRes = await authFetch('/api/stripe/create-payment-method', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          number: cardState.number,
-          exp_month: cardState.month,
-          exp_year: cardState.year,
-          cvc: cardState.cvv,
-          billing_details: billingDetails,
-        }),
+      // 1. Create PaymentMethod client-side via Stripe.js (PCI compliant)
+      const { paymentMethod: pm, error: pmError } = await stripeInstance.createPaymentMethod({
+        type: 'card',
+        card: cardData.cardNumberElement,
+        billing_details: billingDetails,
       });
-      const pmData = await pmRes.json();
-      if (!pmRes.ok) { setError(pmData.error || 'Invalid card details.'); setSubmitting(false); return; }
-      const pmId = pmData.paymentMethodId;
+      if (pmError) { setError(pmError.message); setSubmitting(false); return; }
+      const pmId = pm.id;
 
       // 2. Create subscription with locked-in discounts
       const res = await authFetch('/api/stripe/create-subscription', {
@@ -544,7 +535,7 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
                 </div>
 
                 <div className="mb-4">
-                  <CreditCardForm defaultHolder={fullName} maskMiddle onChange={handleCardChange} />
+                  <CreditCardForm stripeInstance={stripeInstance} defaultHolder={fullName} onChange={handleCardChange} />
                 </div>
 
                 <div className="mb-4">
@@ -583,7 +574,7 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
                   </div>
                 )}
 
-                <button type="submit" disabled={submitting || !cardValidity?.allValid}
+                <button type="submit" disabled={submitting || !cardData?.complete}
                   className={`w-full py-3 text-sm font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed ${accentBtn}`}>
                   {submitting ? (
                     <span className="flex items-center justify-center gap-2">
