@@ -879,48 +879,63 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
             <h3 className="text-text-secondary text-xs font-semibold uppercase tracking-wider mb-3">Prop Firms</h3>
           </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-            {TRADOVATE_BROKERS.filter(b => b.subtitle.includes('Prop')).map(b => {
-              const hook = brokerHooks[b.key];
-              const conns = hook?.connections || [];
-              const configured = conns.filter(c => c.configured && !c.expired).length;
-              const expired = conns.filter(c => c.expired).length;
-              const isExpanded = expandedBroker === b.key;
+          {(() => {
+            const propFirms = TRADOVATE_BROKERS.filter(b => b.subtitle.includes('Prop'));
+            const cols = 3;
+            const rows = [];
+            for (let i = 0; i < propFirms.length; i += cols) {
+              rows.push(propFirms.slice(i, i + cols));
+            }
+            // Find which row contains the expanded broker
+            const expandedRowIdx = rows.findIndex(row => row.some(b => b.key === expandedBroker));
 
-              return (
-                <button
-                  key={b.key}
-                  onClick={() => toggleBroker(b.key)}
-                  className={`bg-bg-surface border rounded-xl p-4 flex flex-col items-center gap-2 text-center transition-all cursor-pointer hover:bg-bg-page/50 ${
-                    isExpanded ? 'border-accent ring-1 ring-accent/20' : 'border-border hover:border-accent/40'
-                  }`}
-                >
-                  <img src={b.icon} alt={b.label} className="w-10 h-10 rounded-lg object-contain" />
-                  <span className="text-text-primary font-semibold text-sm leading-tight">{b.label}</span>
-                  {configured > 0 ? (
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-positive/10 text-positive font-medium">
-                      {configured} Connected{expired > 0 ? `, ${expired} Expired` : ''}
-                    </span>
-                  ) : expired > 0 ? (
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-warning/10 text-warning font-medium">{expired} Expired</span>
-                  ) : (
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-text-secondary/10 text-text-secondary">Not Connected</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
+            return rows.map((row, rowIdx) => (
+              <React.Fragment key={rowIdx}>
+                <div className={`grid grid-cols-2 lg:grid-cols-3 gap-3 ${rowIdx > 0 ? 'mt-3' : ''}`}>
+                  {row.map(b => {
+                    const hook = brokerHooks[b.key];
+                    const conns = hook?.connections || [];
+                    const configured = conns.filter(c => c.configured && !c.expired).length;
+                    const expired = conns.filter(c => c.expired).length;
+                    const isExpanded = expandedBroker === b.key;
 
-          {/* Expanded prop firm details */}
-          {TRADOVATE_BROKERS.filter(b => b.subtitle.includes('Prop')).some(b => expandedBroker === b.key) && (
-            <TradovateBrokerSection
-              hook={brokerHooks[expandedBroker]}
-              expandedBroker={expandedBroker}
-              toggleBroker={toggleBroker}
-              brokerHeaderBadge={brokerHeaderBadge}
-              statusDot={statusDot}
-            />
-          )}
+                    return (
+                      <button
+                        key={b.key}
+                        onClick={() => toggleBroker(b.key)}
+                        className={`bg-bg-surface border rounded-xl p-4 flex flex-col items-center gap-2 text-center transition-all cursor-pointer hover:bg-bg-page/50 ${
+                          isExpanded ? 'border-accent ring-1 ring-accent/20' : 'border-border hover:border-accent/40'
+                        }`}
+                      >
+                        <img src={b.icon} alt={b.label} className="w-10 h-10 rounded-lg object-contain" />
+                        <span className="text-text-primary font-semibold text-sm leading-tight">{b.label}</span>
+                        {configured > 0 ? (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-positive/10 text-positive font-medium">
+                            {configured} Connected{expired > 0 ? `, ${expired} Expired` : ''}
+                          </span>
+                        ) : expired > 0 ? (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-warning/10 text-warning font-medium">{expired} Expired</span>
+                        ) : (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-text-secondary/10 text-text-secondary">Not Connected</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                {expandedRowIdx === rowIdx && brokerHooks[expandedBroker] && (
+                  <div className="mt-3">
+                    <TradovateBrokerSection
+                      hook={brokerHooks[expandedBroker]}
+                      expandedBroker={expandedBroker}
+                      toggleBroker={toggleBroker}
+                      brokerHeaderBadge={brokerHeaderBadge}
+                      statusDot={statusDot}
+                    />
+                  </div>
+                )}
+              </React.Fragment>
+            ));
+          })()}
 
           {/* ============== ProjectX / Topstep ============== */}
           <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">

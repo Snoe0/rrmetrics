@@ -324,11 +324,11 @@ const BrokerMarquee = () => {
     { name: 'Robinhood', src: '/assets/img/robinhood.svg' },
     { name: 'Alpha Futures', src: '/assets/img/alphafutures.png' },
     { name: 'Apex Trader', src: '/assets/img/apex.png' },
-    { name: 'Tradeify', src: '/assets/img/tradeify.svg' },
-    { name: 'My Funded Futures', src: '/assets/img/myfundedfutures.svg' },
+    { name: 'Tradeify', src: '/assets/img/tradeify.png' },
+    { name: 'My Funded Futures', src: '/assets/img/myfundedfutures.png' },
     { name: 'Lucid Trading', src: '/assets/img/lucidtrading.png' },
-    { name: 'Top One Futures', src: '/assets/img/toponefutures.svg' },
-    { name: 'FundedNext Futures', src: '/assets/img/fundednext.svg' },
+    { name: 'Top One Futures', src: '/assets/img/toponefutures.png' },
+    { name: 'FundedNext Futures', src: '/assets/img/fundednext.png' },
     { name: 'Blue Guardian', src: '/assets/img/blueguardian.png' },
   ];
 
