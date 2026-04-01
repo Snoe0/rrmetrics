@@ -122,6 +122,35 @@ stripeRoutes.get('/api/stripe/validate-coupon', requiresLogin, async (c) => {
   }
 });
 
+// POST /api/stripe/create-payment-method — creates a PaymentMethod from raw card data
+stripeRoutes.post('/api/stripe/create-payment-method', requiresLogin, async (c) => {
+  const stripe = getStripe(c.env);
+  if (!stripe) return c.json({ error: 'Stripe not configured.' }, 503);
+
+  const { number, exp_month, exp_year, cvc, billing_details } = await c.req.json();
+
+  if (!number || !exp_month || !exp_year || !cvc) {
+    return c.json({ error: 'Missing card details.' }, 400);
+  }
+
+  try {
+    const paymentMethod = await stripe.paymentMethods.create({
+      type: 'card',
+      card: {
+        number: String(number).replace(/\s/g, ''),
+        exp_month: parseInt(exp_month, 10),
+        exp_year: parseInt(exp_year, 10),
+        cvc: String(cvc),
+      },
+      ...(billing_details ? { billing_details } : {}),
+    });
+    return c.json({ paymentMethodId: paymentMethod.id });
+  } catch (err) {
+    const stripeErr = err as Stripe.errors.StripeError;
+    return c.json({ error: stripeErr?.message || 'Invalid card details.' }, 400);
+  }
+});
+
 // POST /api/stripe/create-subscription
 stripeRoutes.post('/api/stripe/create-subscription', requiresLogin, async (c) => {
   const stripe = getStripe(c.env);

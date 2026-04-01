@@ -1,0 +1,279 @@
+/* ===================================================
+   Credit Card Form — Visual 3D card + input styles
+   Adapted for dark theme using app CSS variables
+   =================================================== */
+
+.cc-wrap {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  align-items: center;
+}
+
+/* ---------- Highlight overlay ---------- */
+.cc-highlight {
+  position: absolute;
+  border: 1px solid #fff;
+  border-radius: 12px;
+  z-index: 1;
+  width: 0;
+  height: 0;
+  top: 0;
+  left: 0;
+  box-shadow: 0 0 5px #fff;
+  transition: 0.3s;
+}
+.cc-highlight.hl-number { width: 346px; height: 40px; top: 92px; left: 18px; }
+.cc-highlight.hl-holder { width: 264px; height: 56px; top: 156px; left: 18px; }
+.cc-highlight.hl-expire { width: 86px; height: 56px; top: 156px; left: 323px; }
+.cc-highlight.hl-cvv    { width: 381px; height: 91px; top: 83px;  left: 18px; }
+.cc-highlight.hl-hidden { display: none; }
+
+/* ---------- Card container ---------- */
+.cc-card {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+  transform-style: preserve-3d;
+  transition: 0.8s;
+  perspective: 1000px;
+}
+.cc-card.flip { transform: rotateY(180deg); }
+
+/* ---------- Front / Back faces ---------- */
+.cc-card__front,
+.cc-card__back {
+  width: 100%;
+  max-width: 420px;
+  height: 233px;
+  border-radius: 20px;
+  padding: 24px 30px 30px;
+  background: linear-gradient(to right bottom, #323941, #061018);
+  box-shadow: 0 33px 50px -15px rgba(50, 55, 63, 0.66);
+  color: #fff;
+  overflow: hidden;
+  margin: 0 auto;
+  backface-visibility: hidden;
+  position: relative;
+}
+
+.cc-card__back {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: rotateY(180deg);
+  padding: 24px 0 0;
+}
+
+/* Accent rings (pseudo-elements) */
+.cc-card__front::before,
+.cc-card__back::before {
+  content: "";
+  position: absolute;
+  border: 16px solid var(--ring1, #ff6be7);
+  border-radius: 100%;
+  left: -17%;
+  top: -45px;
+  height: 300px;
+  width: 300px;
+  filter: blur(13px);
+}
+.cc-card__front::after,
+.cc-card__back::after {
+  content: "";
+  position: absolute;
+  border: 16px solid var(--ring2, #7288ff);
+  border-radius: 100%;
+  width: 300px;
+  top: 55%;
+  left: -200px;
+  height: 300px;
+  filter: blur(13px);
+}
+
+/* ---------- Card header ---------- */
+.cc-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+  margin-bottom: 32px;
+  position: relative;
+  z-index: 1;
+}
+
+/* ---------- Card number slots ---------- */
+.cc-card__number {
+  font-size: 22px;
+  margin-bottom: 32px;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  height: 33px;
+  overflow: hidden;
+  color: #fff;
+}
+.cc-card__number .cc-slot {
+  display: inline-flex;
+  margin-right: 0;
+}
+.cc-card__number .cc-slot:nth-child(4n) {
+  margin-right: 10px;
+}
+.cc-card__number .cc-digit {
+  display: flex;
+  flex-direction: column;
+  height: 33px;
+  line-height: 33px;
+  transition: transform 0.2s;
+}
+.cc-card__number .cc-digit.filed {
+  transform: translateY(-33px);
+}
+.cc-card__number .cc-row {
+  height: 33px;
+  display: block;
+}
+
+/* ---------- Card footer ---------- */
+.cc-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: relative;
+  z-index: 1;
+}
+.cc-card__holder {
+  text-transform: uppercase;
+}
+.cc-card__section-title {
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+/* ---------- Card back ---------- */
+.cc-hide-line {
+  height: 40px;
+  width: 100%;
+  background-color: #6b7280;
+  position: relative;
+  z-index: 1;
+}
+.cc-cvv-area {
+  position: relative;
+  z-index: 1;
+  margin-top: 24px;
+  padding: 0 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.cc-cvv-field {
+  margin-top: 6px;
+  background-color: #fff;
+  border-radius: 12px;
+  height: 44px;
+  width: 100%;
+  color: #000;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 12px;
+  font-size: 25px;
+  line-height: 21px;
+}
+
+/* ---------- Form (dark theme) ---------- */
+.cc-form {
+  width: 100%;
+  display: grid;
+  gap: 12px;
+}
+
+.cc-form label {
+  display: block;
+  margin: 2px 0 4px;
+  color: var(--text-secondary, #a1a1aa);
+  font-weight: 500;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.cc-form input,
+.cc-form select {
+  height: 42px;
+  display: block;
+  width: 100%;
+  border: 1px solid var(--border, #2e2e2e);
+  padding: 10px 14px;
+  transition: border-color 200ms ease;
+  border-radius: 8px;
+  outline: none;
+  background-color: var(--bg-input, #1a1a1a);
+  color: var(--text-primary, #fff);
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.cc-form input::placeholder {
+  color: var(--text-tertiary, #6e6e6e);
+}
+
+.cc-form input:focus,
+.cc-form select:focus {
+  border-color: var(--accent, #6366f1);
+}
+
+.cc-form select {
+  padding: 0 14px;
+  cursor: pointer;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236e6e6e' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+}
+
+.cc-form select option {
+  background-color: var(--bg-surface, #1e1e1e);
+  color: var(--text-primary, #fff);
+}
+
+.cc-filed-group {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 16px;
+}
+.cc-filed-date {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.cc-err {
+  color: var(--negative, #ef4444);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 450px) {
+  .cc-card__front,
+  .cc-card__back {
+    padding: 12px 14px 16px;
+    height: 206px;
+  }
+  .cc-highlight.hl-number { width: 300px; left: 14px; }
+  .cc-highlight.hl-holder { width: 220px; left: 14px; }
+  .cc-highlight.hl-expire { left: 280px; }
+  .cc-highlight.hl-cvv    { width: 330px; left: 14px; }
+  .cc-filed-group { grid-template-columns: 1fr; }
+}

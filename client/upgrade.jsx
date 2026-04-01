@@ -1,7 +1,8 @@
 const React = require('react');
-const { useState, useEffect, useRef } = React;
+const { useState, useEffect, useRef, useCallback } = React;
 const { createRoot } = require('react-dom/client');
 const { authFetch, supabase } = require('./helper.js');
+const { CreditCardForm } = require('./components/ui/credit-card-form.jsx');
 require('./styles/globals.css');
 
 // =====================================================
@@ -74,10 +75,10 @@ const CARD_STYLE = {
 // CHECKOUT MODAL
 // =====================================================
 const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
-  const cardRef = useRef(null);
-  const [cardEl, setCardEl] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [cardError, setCardError] = useState(null);
+  const [cardState, setCardState] = useState(null);
+  const [cardValidity, setCardValidity] = useState(null);
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [addressLine1, setAddressLine1] = useState('');
@@ -95,16 +96,10 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
   const [referralError, setReferralError] = useState(null);
   const [referralLoading, setReferralLoading] = useState(false);
 
-  // Mount the Stripe Card Element when modal opens
-  useEffect(() => {
-    if (!cardRef.current || !stripeInstance) return;
-    const elements = stripeInstance.elements();
-    const card = elements.create('card', { style: CARD_STYLE, hidePostalCode: true });
-    card.mount(cardRef.current);
-    card.on('change', (e) => setCardError(e.error ? e.error.message : null));
-    setCardEl(card);
-    return () => { card.unmount(); };
-  }, [stripeInstance]);
+  const handleCardChange = useCallback((state, validity) => {
+    setCardState(state);
+    setCardValidity(validity);
+  }, []);
 
   // Close on Escape key
   useEffect(() => {
@@ -187,12 +182,38 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!cardEl || submitting) return;
+    if (!cardState || !cardValidity?.allValid || submitting) return;
     setSubmitting(true);
     setCardError(null);
 
+    const billingDetails = {
+      name: fullName || cardState.holder,
+      email,
+      address: { line1: addressLine1, city, state: stateProvince, postal_code: postalCode, country },
+    };
+
     try {
-      // 1. Create the subscription on the backend — returns a clientSecret
+      // 1. Create a PaymentMethod server-side from the card details
+      const pmRes = await authFetch('/api/stripe/create-payment-method', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          number: cardState.number,
+          exp_month: cardState.month,
+          exp_year: cardState.year,
+          cvc: cardState.cvv,
+          billing_details: billingDetails,
+        }),
+      });
+      const pmData = await pmRes.json();
+      if (!pmRes.ok) {
+        setCardError(pmData.error || 'Invalid card details. Please check and try again.');
+        setSubmitting(false);
+        return;
+      }
+      const paymentMethodId = pmData.paymentMethodId;
+
+      // 2. Create the subscription on the backend — returns a clientSecret
       const res = await authFetch('/api/stripe/create-subscription', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -210,64 +231,32 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
         return;
       }
 
-      // $0 invoice — subscription is already active, but still collect payment method
-      // for future billing (e.g. temporary 100% coupons that expire after first period)
+      // $0 invoice — subscription is already active, but still save payment method
       if (data.status === 'complete') {
         if (data.setupIntentSecret) {
-          const { setupIntent, error: setupError } = await stripeInstance.confirmCardSetup(data.setupIntentSecret, {
-            payment_method: {
-              card: cardEl,
-              billing_details: {
-                name: fullName,
-                email,
-                address: { line1: addressLine1, city, state: stateProvince, postal_code: postalCode, country },
-              },
-            },
+          const { error: setupError } = await stripeInstance.confirmCardSetup(data.setupIntentSecret, {
+            payment_method: paymentMethodId,
           });
           if (setupError) {
             setCardError(setupError.message);
             setSubmitting(false);
             return;
           }
-          // Set the saved payment method as default on subscription and customer
           await authFetch('/api/stripe/confirm-payment-method', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ paymentMethodId: setupIntent.payment_method }),
+            body: JSON.stringify({ paymentMethodId }),
           });
         }
         onSuccess(plan.id);
         return;
       }
 
-      // 2. Create a PaymentMethod from the card element
-      const { error: pmError, paymentMethod } = await stripeInstance.createPaymentMethod({
-        type: 'card',
-        card: cardEl,
-        billing_details: {
-          name: fullName,
-          email,
-          address: {
-            line1: addressLine1,
-            city,
-            state: stateProvince,
-            postal_code: postalCode,
-            country,
-          },
-        },
-      });
-
-      if (pmError) {
-        setCardError(pmError.message);
-        setSubmitting(false);
-        return;
-      }
-
-      // 3. Confirm the payment using the confirmation secret (Stripe v20+ flow)
+      // 3. Confirm the payment using the confirmation secret
       const { error: confirmError, paymentIntent } = await stripeInstance.confirmPayment({
         clientSecret: data.clientSecret,
         confirmParams: {
-          payment_method: paymentMethod.id,
+          payment_method: paymentMethodId,
           return_url: window.location.href,
         },
         redirect: 'if_required',
@@ -280,7 +269,6 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
       }
 
       if (paymentIntent && paymentIntent.status === 'succeeded') {
-        // Confirm subscription is active and update the database
         await authFetch('/api/stripe/confirm-subscription', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -377,10 +365,10 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
 
             {/* Card details */}
             <div className="mb-4">
-              <label className={labelClass}>Card details</label>
-              <div
-                ref={cardRef}
-                className="bg-bg-input border border-border rounded-lg px-3 py-[11px] min-h-[42px] transition-colors focus-within:border-accent/60"
+              <CreditCardForm
+                defaultHolder={fullName}
+                maskMiddle
+                onChange={handleCardChange}
               />
             </div>
 
@@ -582,7 +570,7 @@ const CheckoutModal = ({ plan, stripeInstance, onClose, onSuccess }) => {
 
             <button
               type="submit"
-              disabled={submitting || !cardEl}
+              disabled={submitting || !cardValidity?.allValid}
               className={`w-full py-3 text-sm font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
                 isElite
                   ? 'bg-yellow-500 text-black hover:brightness-110'
