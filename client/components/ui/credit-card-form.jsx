@@ -94,14 +94,8 @@ const CreditCardForm = ({
   const [cvv, setCVV] = useState(clampDigits(defaultCVV, 4));
   const [focusField, setFocusField] = useState(null);
 
-  const flip = focusField === 'cvv';
   const cardType = useMemo(() => detectCardType(number), [number]);
   const maxCvv = cardType === 'amex' ? 4 : 3;
-
-  const years = useMemo(() => {
-    const start = new Date().getFullYear();
-    return Array.from({ length: 10 }, (_, i) => String(start + i));
-  }, []);
 
   const validity = useMemo(() => {
     const minLen = cardType === 'amex' ? 15 : 13;
@@ -129,32 +123,12 @@ const CreditCardForm = ({
     onChange?.({ number, holder, month, year, cvv }, validity);
   }, [number, holder, month, year, cvv, validity, onChange]);
 
-  // Display digits for card face
-  const maxDigits = cardType === 'amex' ? 15 : 16;
-  const displayDigits = useMemo(() => number.slice(0, maxDigits).split(''), [number, maxDigits]);
-  const displayedSlots = useMemo(() => {
-    const arr = [];
-    for (let i = 0; i < maxDigits; i++) {
-      let content = '#';
-      if (i < displayDigits.length) {
-        const d = displayDigits[i];
-        const shouldMask = maskMiddle && i >= 4 && i <= (maxDigits - 5);
-        content = shouldMask ? '*' : d;
-      }
-      arr.push({ textTop: content, filed: i < displayDigits.length });
-    }
-    return arr;
-  }, [displayDigits, maskMiddle, maxDigits]);
-
-  // Amex groups: 4-6-5, others: 4-4-4-4
-  const groupBreaks = cardType === 'amex' ? [4, 10] : [4, 8, 12];
-
   const CardLogo = cardType && CardLogos[cardType] ? CardLogos[cardType] : GenericCardLogo;
 
   return (
     <div className={`cc-wrap ${className}`}>
-      <div className={`cc-card ${flip ? 'flip' : ''}`}>
-        {/* FRONT — inputs on card */}
+      {/* Single-face card — no flip */}
+      <div className="cc-card">
         <div className="cc-card__front" style={{ '--ring1': ring1, '--ring2': ring2 }}>
           {/* Header: chip + brand logo */}
           <div className="cc-card__header">
@@ -175,6 +149,23 @@ const CreditCardForm = ({
               value={formatNumberSpaces(number)}
               onChange={(e) => setNumber(clampDigits(e.target.value, cardType === 'amex' ? 15 : 19))}
               onFocus={() => setFocusField('number')}
+              onBlur={() => setFocusField(null)}
+            />
+          </div>
+
+          {/* CVV row — right below card number */}
+          <div className="cc-card__cvv-row">
+            <div className="cc-card__label">CVV</div>
+            <input
+              className="cc-input cc-input--cvv-inline"
+              name="cvc"
+              inputMode="numeric"
+              autoComplete="cc-csc"
+              placeholder={cardType === 'amex' ? '····' : '···'}
+              maxLength={maxCvv}
+              value={cvv}
+              onChange={(e) => setCVV(clampDigits(e.target.value, maxCvv))}
+              onFocus={() => setFocusField('cvv')}
               onBlur={() => setFocusField(null)}
             />
           </div>
@@ -206,10 +197,7 @@ const CreditCardForm = ({
                   placeholder="MM"
                   maxLength={2}
                   value={month}
-                  onChange={(e) => {
-                    const v = clampDigits(e.target.value, 2);
-                    setMonth(v);
-                  }}
+                  onChange={(e) => setMonth(clampDigits(e.target.value, 2))}
                   onFocus={() => setFocusField('expire')}
                   onBlur={() => setFocusField(null)}
                 />
@@ -234,37 +222,6 @@ const CreditCardForm = ({
             </div>
           </div>
         </div>
-
-        {/* BACK — CVV input */}
-        <div className="cc-card__back" style={{ '--ring1': ring1, '--ring2': ring2 }}>
-          <div className="cc-hide-line" />
-          <div className="cc-cvv-area">
-            <span>CVV</span>
-            <div className="cc-cvv-field">
-              <input
-                className="cc-input cc-input--cvv"
-                name="cvc"
-                inputMode="numeric"
-                autoComplete="cc-csc"
-                placeholder={cardType === 'amex' ? '****' : '***'}
-                maxLength={maxCvv}
-                value={cvv}
-                onChange={(e) => setCVV(clampDigits(e.target.value, maxCvv))}
-                onFocus={() => setFocusField('cvv')}
-                onBlur={() => setFocusField(null)}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Hint text */}
-      <div className="cc-hint">
-        {focusField === 'cvv'
-          ? 'Enter the security code on the back of your card'
-          : !focusField && !validity.allValid
-            ? 'Click on the card to enter your details'
-            : ''}
       </div>
     </div>
   );

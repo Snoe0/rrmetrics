@@ -1,12 +1,11 @@
 /* ===================================================
-   Credit Card Form — Inputs directly on card
+   Credit Card Form — Single-face card with inputs
    =================================================== */
 
 .cc-wrap {
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 8px;
   align-items: center;
 }
 
@@ -15,21 +14,13 @@
   position: relative;
   width: 100%;
   max-width: 420px;
-  aspect-ratio: 1.586 / 1; /* standard credit card ratio */
   margin: 0 auto;
-  transform-style: preserve-3d;
-  transition: transform 0.7s cubic-bezier(0.4, 0, 0.2, 1);
-  perspective: 1000px;
-}
-.cc-card.flip {
-  transform: rotateY(180deg);
 }
 
-/* ---------- Front / Back faces ---------- */
-.cc-card__front,
-.cc-card__back {
+/* ---------- Card face ---------- */
+.cc-card__front {
   width: 100%;
-  height: 100%;
+  max-width: 420px;
   border-radius: 16px;
   background: linear-gradient(135deg, #1e293b 0%, #0f172a 50%, #020617 100%);
   box-shadow:
@@ -37,25 +28,14 @@
     0 0 0 1px rgba(255, 255, 255, 0.05) inset;
   color: #fff;
   overflow: hidden;
-  backface-visibility: hidden;
-  position: absolute;
-  top: 0;
-  left: 0;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
   padding: 24px 28px;
-}
-
-.cc-card__back {
-  transform: rotateY(180deg);
-  padding: 28px 0 24px;
-  justify-content: flex-start;
+  gap: 6px;
 }
 
 /* Accent rings */
-.cc-card__front::before,
-.cc-card__back::before {
+.cc-card__front::before {
   content: "";
   position: absolute;
   border: 14px solid var(--ring1, #ff6be7);
@@ -68,8 +48,7 @@
   opacity: 0.4;
   pointer-events: none;
 }
-.cc-card__front::after,
-.cc-card__back::after {
+.cc-card__front::after {
   content: "";
   position: absolute;
   border: 14px solid var(--ring2, #7288ff);
@@ -90,7 +69,7 @@
   justify-content: space-between;
   position: relative;
   z-index: 1;
-  flex-shrink: 0;
+  margin-bottom: 12px;
 }
 
 /* Chip */
@@ -142,8 +121,8 @@
 .cc-input:focus {
   outline: none;
 }
-/* Focus glow on card face */
-.cc-input:focus ~ .cc-focus-glow,
+
+/* Focus glow on card */
 .cc-card__front:focus-within {
   box-shadow:
     0 25px 50px -12px rgba(0, 0, 0, 0.5),
@@ -155,7 +134,6 @@
 .cc-card__number-row {
   position: relative;
   z-index: 1;
-  flex-shrink: 0;
 }
 .cc-input--number {
   font-size: 22px;
@@ -163,6 +141,27 @@
   height: 36px;
 }
 .cc-input--number::placeholder {
+  letter-spacing: 3px;
+}
+
+/* ---------- CVV row (below card number) ---------- */
+.cc-card__cvv-row {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cc-card__cvv-row .cc-card__label {
+  flex-shrink: 0;
+}
+.cc-input--cvv-inline {
+  width: 60px;
+  font-size: 16px;
+  letter-spacing: 3px;
+  height: 24px;
+}
+.cc-input--cvv-inline::placeholder {
   letter-spacing: 3px;
 }
 
@@ -174,7 +173,7 @@
   gap: 16px;
   position: relative;
   z-index: 1;
-  flex-shrink: 0;
+  margin-top: 4px;
 }
 
 .cc-card__holder-area {
@@ -220,71 +219,10 @@
   font-family: 'JetBrains Mono', monospace;
 }
 
-/* ---------- Card back ---------- */
-.cc-hide-line {
-  height: 44px;
-  width: 100%;
-  background: #374151;
-  position: relative;
-  z-index: 1;
-}
-
-.cc-cvv-area {
-  position: relative;
-  z-index: 1;
-  margin-top: 20px;
-  padding: 0 28px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: rgba(255, 255, 255, 0.5);
-}
-
-.cc-cvv-field {
-  margin-top: 8px;
-  background: rgba(255, 255, 255, 0.9);
-  border-radius: 6px;
-  height: 38px;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding: 0 14px;
-}
-
-.cc-input--cvv {
-  color: #0f172a;
-  font-size: 18px;
-  text-align: right;
-  letter-spacing: 4px;
-  height: 100%;
-  caret-color: #6366f1;
-}
-.cc-input--cvv::placeholder {
-  color: rgba(0, 0, 0, 0.2);
-  letter-spacing: 4px;
-}
-
-/* ---------- Hint ---------- */
-.cc-hint {
-  text-align: center;
-  font-size: 12px;
-  color: var(--text-tertiary, #6e6e6e);
-  min-height: 18px;
-  transition: opacity 0.3s;
-}
-
 /* ---------- Responsive ---------- */
 @media (max-width: 450px) {
   .cc-card__front {
     padding: 16px 18px;
-  }
-  .cc-card__back {
-    padding: 20px 0 16px;
   }
   .cc-input--number {
     font-size: 17px;
@@ -292,8 +230,5 @@
   }
   .cc-input--holder {
     font-size: 11px;
-  }
-  .cc-cvv-area {
-    padding: 0 18px;
   }
 }
