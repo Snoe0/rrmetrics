@@ -17,7 +17,7 @@ type HonoEnv = {
 };
 
 /** All broker types that use the Tradovate OAuth + API infrastructure. */
-const TRADOVATE_COMPATIBLE_BROKERS = ['tradovate', 'ninjatrader', 'alpha_futures', 'apex_trader_funding'] as const;
+const TRADOVATE_COMPATIBLE_BROKERS = ['tradovate', 'ninjatrader', 'alpha_futures', 'apex_trader_funding', 'tradeify', 'my_funded_futures', 'lucid_trading', 'top_one_futures', 'fundednext_futures', 'blue_guardian'] as const;
 type TradovateBrokerType = typeof TRADOVATE_COMPATIBLE_BROKERS[number];
 
 /** Human-readable labels for broker-aware messages. */
@@ -26,6 +26,12 @@ const BROKER_LABELS: Record<string, string> = {
   ninjatrader: 'NinjaTrader',
   alpha_futures: 'Alpha Futures',
   apex_trader_funding: 'Apex Trader Funding',
+  tradeify: 'Tradeify',
+  my_funded_futures: 'My Funded Futures',
+  lucid_trading: 'Lucid Trading',
+  top_one_futures: 'Top One Futures',
+  fundednext_futures: 'FundedNext Futures',
+  blue_guardian: 'Blue Guardian Futures',
 };
 
 function isValidTradovateBroker(broker: string): broker is TradovateBrokerType {

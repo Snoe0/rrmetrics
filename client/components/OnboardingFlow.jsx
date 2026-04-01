@@ -95,13 +95,26 @@ const WhatWeDoPage = ({ onNext, ready }) => (
   </div>
 );
 
-const ONBOARD_BROKERS = [
+const PRIMARY_BROKERS = [
   { key: 'tradovate', label: 'Tradovate', icon: '/assets/img/tradovate.png', subtitle: 'Futures trading' },
-  { key: 'ninjatrader', label: 'NinjaTrader', icon: '/assets/img/ninjatrader.jpeg', subtitle: 'Advanced charting & trading' },
-  { key: 'alpha_futures', label: 'Alpha Futures', icon: '/assets/img/alphafutures.png', subtitle: 'Prop trading firm' },
-  { key: 'apex_trader_funding', label: 'Apex Trader Funding', icon: '/assets/img/apex.png', subtitle: 'Prop trading firm' },
-  { key: 'topstep', label: 'Topstep (ProjectX)', icon: '/assets/img/topstep.png', subtitle: 'Prop trading firm', separate: true },
+  { key: 'webull', label: 'Webull', icon: '/assets/img/webull.svg', subtitle: 'Stocks, options & futures', comingSoon: true },
+  { key: 'robinhood', label: 'Robinhood', icon: '/assets/img/robinhood.svg', subtitle: 'Stocks & options', comingSoon: true },
 ];
+
+const MORE_BROKERS = [
+  { key: 'ninjatrader', label: 'NinjaTrader', icon: '/assets/img/ninjatrader.jpeg', subtitle: 'Advanced charting' },
+  { key: 'alpha_futures', label: 'Alpha Futures', icon: '/assets/img/alphafutures.png', subtitle: 'Prop firm' },
+  { key: 'apex_trader_funding', label: 'Apex Trader Funding', icon: '/assets/img/apex.png', subtitle: 'Prop firm' },
+  { key: 'tradeify', label: 'Tradeify', icon: '/assets/img/tradeify.svg', subtitle: 'Prop firm' },
+  { key: 'my_funded_futures', label: 'My Funded Futures', icon: '/assets/img/myfundedfutures.svg', subtitle: 'Prop firm' },
+  { key: 'lucid_trading', label: 'Lucid Trading', icon: '/assets/img/lucidtrading.png', subtitle: 'Prop firm' },
+  { key: 'top_one_futures', label: 'Top One Futures', icon: '/assets/img/toponefutures.svg', subtitle: 'Prop firm' },
+  { key: 'fundednext_futures', label: 'FundedNext Futures', icon: '/assets/img/fundednext.svg', subtitle: 'Prop firm' },
+  { key: 'blue_guardian', label: 'Blue Guardian Futures', icon: '/assets/img/blueguardian.png', subtitle: 'Prop firm' },
+  { key: 'topstep', label: 'Topstep (ProjectX)', icon: '/assets/img/topstep.png', subtitle: 'Prop firm', separate: true },
+];
+
+const ALL_ONBOARD_BROKERS = [...PRIMARY_BROKERS, ...MORE_BROKERS];
 
 const BrokerConnectPage = ({ onNext, onSkip, ready }) => {
   const [connecting, setConnecting] = useState(false);
@@ -111,6 +124,7 @@ const BrokerConnectPage = ({ onNext, onSkip, ready }) => {
   const [connectedAccounts, setConnectedAccounts] = useState([]);
   const [environment, setEnvironment] = useState('demo');
   const [error, setError] = useState(null);
+  const [showMore, setShowMore] = useState(false);
 
   // Check for OAuth callback params
   useEffect(() => {
@@ -131,7 +145,7 @@ const BrokerConnectPage = ({ onNext, onSkip, ready }) => {
   const handleOAuthCallback = async (code, connectionId, broker) => {
     setSyncing(true);
     setError(null);
-    const brokerLabel = ONBOARD_BROKERS.find(b => b.key === broker)?.label || broker;
+    const brokerLabel = ALL_ONBOARD_BROKERS.find(b => b.key === broker)?.label || broker;
     try {
       const exchangeRes = await authFetch('/api/tradovate/exchange', {
         method: 'POST',
@@ -233,10 +247,10 @@ const BrokerConnectPage = ({ onNext, onSkip, ready }) => {
       </h1>
       <p className="text-text-secondary text-lg mb-8">Which broker do you use?</p>
 
-      {/* Broker cards */}
+      {/* Primary broker cards */}
       <div className="w-full max-w-sm mx-auto mb-4 space-y-3">
-        {ONBOARD_BROKERS.filter(b => !b.separate).map((broker) => (
-          <div key={broker.key} className="bg-bg-surface border border-border rounded-xl p-4">
+        {PRIMARY_BROKERS.map((broker) => (
+          <div key={broker.key} className={`bg-bg-surface border border-border rounded-xl p-4 ${broker.comingSoon ? 'opacity-60' : ''}`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <img src={broker.icon} alt={broker.label} className="w-9 h-9 rounded-lg object-contain" />
@@ -245,30 +259,53 @@ const BrokerConnectPage = ({ onNext, onSkip, ready }) => {
                   <div className="text-text-tertiary text-xs">{broker.subtitle}</div>
                 </div>
               </div>
-              <button
-                onClick={() => handleConnect(broker.key)}
-                disabled={connecting}
-                className="px-4 py-2 bg-accent text-accent-text text-xs font-semibold rounded-lg hover:brightness-110 transition-all disabled:opacity-50 cursor-pointer"
-              >
-                {connectingBroker === broker.key ? 'Connecting...' : 'Connect'}
-              </button>
+              {broker.comingSoon ? (
+                <span className="text-xs px-2.5 py-1 rounded-full bg-accent/10 text-accent font-medium">Coming Soon</span>
+              ) : (
+                <button
+                  onClick={() => handleConnect(broker.key)}
+                  disabled={connecting}
+                  className="px-4 py-2 bg-accent text-accent-text text-xs font-semibold rounded-lg hover:brightness-110 transition-all disabled:opacity-50 cursor-pointer"
+                >
+                  {connectingBroker === broker.key ? 'Connecting...' : 'Connect'}
+                </button>
+              )}
             </div>
           </div>
         ))}
 
-        {/* Topstep — available but separate system */}
-        <div className="bg-bg-surface/50 border border-border/50 rounded-xl p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <img src="/assets/img/topstep.png" alt="Topstep" className="w-9 h-9 rounded-lg object-contain" />
-              <div className="text-left">
-                <div className="text-text-primary font-semibold text-sm">Topstep (ProjectX)</div>
-                <div className="text-text-tertiary text-xs">Prop trading firm</div>
-              </div>
-            </div>
-            <span className="text-xs px-2.5 py-1 rounded-full bg-positive/10 text-positive">In Settings</span>
+        {/* Show More toggle */}
+        <button
+          onClick={() => setShowMore(!showMore)}
+          className="w-full text-center text-sm text-accent hover:text-accent/80 transition-colors cursor-pointer py-2"
+        >
+          {showMore ? 'Show Less' : `Show More (${MORE_BROKERS.length} more)`}
+        </button>
+
+        {/* Expanded grid of all other brokers */}
+        {showMore && (
+          <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1">
+            {MORE_BROKERS.map((broker) => (
+              <button
+                key={broker.key}
+                onClick={() => !broker.separate && handleConnect(broker.key)}
+                disabled={connecting || broker.separate}
+                className={`flex flex-col items-center gap-1.5 p-3 bg-bg-surface border border-border rounded-xl
+                  ${broker.separate ? 'opacity-60' : 'hover:border-accent/50 hover:bg-accent/5 cursor-pointer'}
+                  transition-all disabled:cursor-default`}
+              >
+                <img src={broker.icon} alt={broker.label} className="w-8 h-8 rounded-lg object-contain" />
+                <span className="text-text-primary text-xs font-medium text-center leading-tight">{broker.label}</span>
+                {broker.separate && (
+                  <span className="text-[10px] text-positive">In Settings</span>
+                )}
+                {connectingBroker === broker.key && (
+                  <span className="text-[10px] text-accent">Connecting...</span>
+                )}
+              </button>
+            ))}
           </div>
-        </div>
+        )}
       </div>
 
       {/* Environment selector */}

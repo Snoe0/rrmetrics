@@ -324,17 +324,23 @@ const BrokerMarquee = () => {
     { name: 'Robinhood', src: '/assets/img/robinhood.svg' },
     { name: 'Alpha Futures', src: '/assets/img/alphafutures.png' },
     { name: 'Apex Trader', src: '/assets/img/apex.png' },
+    { name: 'Tradeify', src: '/assets/img/tradeify.svg' },
+    { name: 'My Funded Futures', src: '/assets/img/myfundedfutures.svg' },
+    { name: 'Lucid Trading', src: '/assets/img/lucidtrading.png' },
+    { name: 'Top One Futures', src: '/assets/img/toponefutures.svg' },
+    { name: 'FundedNext Futures', src: '/assets/img/fundednext.svg' },
+    { name: 'Blue Guardian', src: '/assets/img/blueguardian.png' },
   ];
 
-  // Three rows with different shuffled orders
+  // Three rows with different shuffled orders (13 brokers)
   const rows = [
-    [0, 3, 5, 1, 6, 2, 4], // Row 1: left
-    [6, 2, 0, 4, 5, 3, 1], // Row 2: right
-    [4, 5, 3, 0, 1, 6, 2], // Row 3: left
+    [0, 3, 7, 5, 10, 1, 12, 6, 9, 2, 4, 8, 11],  // Row 1: left
+    [12, 2, 8, 0, 11, 4, 9, 5, 3, 7, 1, 10, 6],   // Row 2: right
+    [4, 10, 5, 8, 3, 12, 0, 6, 1, 11, 7, 9, 2],   // Row 3: left
   ];
 
   const directions = ['left', 'right', 'left'];
-  // Each item is 48px (w-12) + 16px gap = 64px per item, 7 items per set = 448px
+  // Each item is 48px (w-12) + 16px gap = 64px per item
   const setWidth = brokers.length * (48 + 16);
 
   return (
@@ -713,7 +719,7 @@ const FAQSection = () => {
   const faqs = [
     {
       question: 'What brokers do you support?',
-      answer: 'We currently support Tradovate for auto-sync. ProjectX and NinjaTrader integrations are coming soon. You can also import trades via CSV from any broker.',
+      answer: 'We support auto-sync with Tradovate, NinjaTrader, TopstepX, and many prop firms including Alpha Futures, Apex Trader Funding, Tradeify, My Funded Futures, Lucid Trading, Top One Futures, FundedNext Futures, and Blue Guardian Futures. You can also import trades via CSV from any broker.',
     },
     {
       question: 'How does the free trial work?',

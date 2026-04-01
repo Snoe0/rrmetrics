@@ -390,6 +390,12 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
   const ninjatraderHook = useBrokerConnection('ninjatrader', hookOpts);
   const alphaFuturesHook = useBrokerConnection('alpha_futures', hookOpts);
   const apexHook = useBrokerConnection('apex_trader_funding', hookOpts);
+  const tradeifyHook = useBrokerConnection('tradeify', hookOpts);
+  const mffHook = useBrokerConnection('my_funded_futures', hookOpts);
+  const lucidHook = useBrokerConnection('lucid_trading', hookOpts);
+  const topOneHook = useBrokerConnection('top_one_futures', hookOpts);
+  const fundednextHook = useBrokerConnection('fundednext_futures', hookOpts);
+  const blueGuardianHook = useBrokerConnection('blue_guardian', hookOpts);
   const robinhoodHook = useBrokerConnection('robinhood', hookOpts);
   const webullHook = useBrokerConnection('webull', hookOpts);
   const brokerHooks = {
@@ -397,6 +403,12 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
     ninjatrader: ninjatraderHook,
     alpha_futures: alphaFuturesHook,
     apex_trader_funding: apexHook,
+    tradeify: tradeifyHook,
+    my_funded_futures: mffHook,
+    lucid_trading: lucidHook,
+    top_one_futures: topOneHook,
+    fundednext_futures: fundednextHook,
+    blue_guardian: blueGuardianHook,
     robinhood: robinhoodHook,
     webull: webullHook,
   };
@@ -862,21 +874,53 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
             </div>
           </div>
 
-          {/* ============== Prop Firms ============== */}
+          {/* ============== Prop Firms Grid ============== */}
           <div className="pt-2">
             <h3 className="text-text-secondary text-xs font-semibold uppercase tracking-wider mb-3">Prop Firms</h3>
           </div>
 
-          {TRADOVATE_BROKERS.filter(b => b.subtitle.includes('Prop')).map(b => (
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+            {TRADOVATE_BROKERS.filter(b => b.subtitle.includes('Prop')).map(b => {
+              const hook = brokerHooks[b.key];
+              const conns = hook?.connections || [];
+              const configured = conns.filter(c => c.configured && !c.expired).length;
+              const expired = conns.filter(c => c.expired).length;
+              const isExpanded = expandedBroker === b.key;
+
+              return (
+                <button
+                  key={b.key}
+                  onClick={() => toggleBroker(b.key)}
+                  className={`bg-bg-surface border rounded-xl p-4 flex flex-col items-center gap-2 text-center transition-all cursor-pointer hover:bg-bg-page/50 ${
+                    isExpanded ? 'border-accent ring-1 ring-accent/20' : 'border-border hover:border-accent/40'
+                  }`}
+                >
+                  <img src={b.icon} alt={b.label} className="w-10 h-10 rounded-lg object-contain" />
+                  <span className="text-text-primary font-semibold text-sm leading-tight">{b.label}</span>
+                  {configured > 0 ? (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-positive/10 text-positive font-medium">
+                      {configured} Connected{expired > 0 ? `, ${expired} Expired` : ''}
+                    </span>
+                  ) : expired > 0 ? (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-warning/10 text-warning font-medium">{expired} Expired</span>
+                  ) : (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-text-secondary/10 text-text-secondary">Not Connected</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Expanded prop firm details */}
+          {TRADOVATE_BROKERS.filter(b => b.subtitle.includes('Prop')).some(b => expandedBroker === b.key) && (
             <TradovateBrokerSection
-              key={b.key}
-              hook={brokerHooks[b.key]}
+              hook={brokerHooks[expandedBroker]}
               expandedBroker={expandedBroker}
               toggleBroker={toggleBroker}
               brokerHeaderBadge={brokerHeaderBadge}
               statusDot={statusDot}
             />
-          ))}
+          )}
 
           {/* ============== ProjectX / Topstep ============== */}
           <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
