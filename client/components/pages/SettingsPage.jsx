@@ -205,7 +205,7 @@ const TradovateBrokerSection = ({ hook, expandedBroker, toggleBroker, brokerHead
                 </>
               ) : (
                 <div className="flex items-center justify-between pt-2 border-t border-border">
-                  <span className="text-xs text-text-muted">{connectionsUsed} / {connectionLimit} broker connections</span>
+                  <span className="text-xs text-text-muted">{connectionLimit > 0 ? `${connectionsUsed} / ${connectionLimit} broker connections` : `${connectionsUsed} broker connections`}</span>
                   <div className="flex items-center gap-3">
                     {isTradovateGroup && (
                       <select value={environment} onChange={(e) => setEnvironment(e.target.value)}
@@ -347,7 +347,7 @@ const RobinhoodBrokerSection = ({ hook, expandedBroker, toggleBroker, brokerHead
                 </>
               ) : (
                 <div className="flex items-center justify-between pt-2 border-t border-border">
-                  <span className="text-xs text-text-muted">{connectionsUsed} / {connectionLimit} broker connections</span>
+                  <span className="text-xs text-text-muted">{connectionLimit > 0 ? `${connectionsUsed} / ${connectionLimit} broker connections` : `${connectionsUsed} broker connections`}</span>
                   <button onClick={handleConnect} disabled={connecting || atConnectionLimit}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-input border border-border text-text-primary text-xs font-medium rounded-lg hover:border-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     title={atConnectionLimit ? 'Connection limit reached' : `Add another ${label} connection`}>
@@ -864,7 +864,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
           {(brokerHooks.tradovate.connectionsUsed > 0 || pxConnectionsUsed > 0) && (
             <div className="flex items-center gap-2 text-xs text-text-secondary">
               <span className="px-2 py-1 bg-bg-surface border border-border rounded-md font-medium">
-                {brokerHooks.tradovate.connectionsUsed} / {brokerHooks.tradovate.connectionLimit} broker connections
+                {brokerHooks.tradovate.connectionLimit > 0 ? `${brokerHooks.tradovate.connectionsUsed} / ${brokerHooks.tradovate.connectionLimit}` : brokerHooks.tradovate.connectionsUsed} broker connections
               </span>
             </div>
           )}
@@ -1149,7 +1149,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                               </>
                             ) : (
                               <div className="flex items-center justify-between pt-2 border-t border-border">
-                                <span className="text-xs text-text-muted">{pxConnectionsUsed} / {pxConnectionLimit} broker connections</span>
+                                <span className="text-xs text-text-muted">{pxConnectionLimit > 0 ? `${pxConnectionsUsed} / ${pxConnectionLimit} broker connections` : `${pxConnectionsUsed} broker connections`}</span>
                                 <button onClick={() => setPxShowNewForm(true)} disabled={pxConnectionsUsed >= pxConnectionLimit && pxConnectionLimit > 0}
                                   className="flex items-center gap-1.5 px-3 py-1.5 bg-bg-input border border-border text-text-primary text-xs font-medium rounded-lg hover:border-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                   title={pxConnectionsUsed >= pxConnectionLimit && pxConnectionLimit > 0 ? 'Connection limit reached' : 'Add another ProjectX connection'}>
