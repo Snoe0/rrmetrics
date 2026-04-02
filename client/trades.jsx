@@ -158,9 +158,21 @@ const App = () => {
     if (customColors.accent) {
       const [r, g, b] = hexToChannels(customColors.accent);
       root.style.setProperty('--accent', toRgbStr(r, g, b));
-      // Auto-compute accent-text based on luminance (WCAG relative luminance)
-      const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-      root.style.setProperty('--accent-text', luminance > 0.5 ? '0 0 0' : '255 255 255');
+      // Use custom text color for accent buttons if set and not pure black/white
+      if (customColors.textPrimary) {
+        const tp = customColors.textPrimary.toLowerCase();
+        if (tp !== '#000000' && tp !== '#ffffff') {
+          const [tr, tg, tb] = hexToChannels(customColors.textPrimary);
+          root.style.setProperty('--accent-text', toRgbStr(tr, tg, tb));
+        } else {
+          const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+          root.style.setProperty('--accent-text', luminance > 0.5 ? '0 0 0' : '255 255 255');
+        }
+      } else {
+        // Auto-compute accent-text based on luminance (WCAG relative luminance)
+        const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        root.style.setProperty('--accent-text', luminance > 0.5 ? '0 0 0' : '255 255 255');
+      }
     } else {
       root.style.removeProperty('--accent');
       root.style.removeProperty('--accent-text');
@@ -181,7 +193,7 @@ const App = () => {
       if (customColors.textPrimary) {
         const [tr, tg, tb] = hexToChannels(customColors.textPrimary);
         root.style.setProperty('--text-primary', toRgbStr(tr, tg, tb));
-        const bgHex = customColors.bgPage || '#0B0E14';
+        const bgHex = customColors.bgPage || '#050505';
         const [br, bg2, bb] = hexToChannels(bgHex);
         const blend = (fg, bg, a) => clamp(fg * a + bg * (1 - a));
         root.style.setProperty('--text-secondary', toRgbStr(blend(tr, br, 0.6), blend(tg, bg2, 0.6), blend(tb, bb, 0.6)));

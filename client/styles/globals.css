@@ -5,7 +5,7 @@
 @layer base {
   :root {
     --accent: 191 255 0;
-    --bg-page: 0 0 0;
+    --bg-page: 5 5 5;
     --bg-surface: 17 17 17;
     --bg-input: 26 26 26;
     --border: 26 26 26;

@@ -1577,7 +1577,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                 <button
                   className="text-text-tertiary text-xs hover:text-text-secondary transition-colors"
                   onClick={() => {
-                    const defaults = { bgPage: '#0B0E14', bgSurface: '#111111', textPrimary: '#FFFFFF', accent: customColors.accent, positive: '#10B981', negative: '#EF4444' };
+                    const defaults = { bgPage: '#050505', bgSurface: '#111111', textPrimary: '#FFFFFF', accent: customColors.accent, positive: '#10B981', negative: '#EF4444' };
                     onThemeChange('custom', defaults);
                   }}
                 >
