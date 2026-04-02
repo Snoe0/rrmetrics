@@ -21,6 +21,8 @@ import emailRoutes from './routes/email';
 import robinhoodRoutes from './routes/robinhood';
 import webullRoutes from './routes/webull';
 import { processEmailDrips } from './scheduled/email-drips';
+import { maturePendingCommissions } from './db/commissions';
+import { createServiceClient } from './lib/supabase';
 import pageRoutes from './routes/pages';
 
 type HonoEnv = {
@@ -65,6 +67,7 @@ export default {
     ctx.waitUntil(refreshExpiringBrokerTokens(env));
     if (event.cron === '0 5 * * *') {
       ctx.waitUntil(processEmailDrips(env));
+      ctx.waitUntil(maturePendingCommissions(createServiceClient(env)));
     }
   },
 };

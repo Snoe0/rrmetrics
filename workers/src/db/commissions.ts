@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 export interface CommissionBalance {
   earnedCents: number;
+  pendingCents: number;
   reservedCents: number;
   availableCents: number;
 }
@@ -22,12 +23,12 @@ export interface PayoutRequestWithEmail extends PayoutRequest {
   stripe_connect_account_id: string | null;
 }
 
-/** Returns earned, reserved, and available balance in cents for a referrer */
+/** Returns earned, pending, reserved, and available balance in cents for a referrer */
 export async function getBalance(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<CommissionBalance> {
-  const [allCommissions, matureCommissions, payoutsResult] = await Promise.all([
+  const [allCommissions, availableCommissions, payoutsResult] = await Promise.all([
     supabase
       .from('referral_commissions')
       .select('amount_cents')
@@ -36,7 +37,7 @@ export async function getBalance(
       .from('referral_commissions')
       .select('amount_cents')
       .eq('referrer_id', userId)
-      .lte('created_at', new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()),
+      .eq('status', 'available'),
     supabase
       .from('payout_requests')
       .select('amount_cents, status')
@@ -48,7 +49,7 @@ export async function getBalance(
     (sum: number, row: { amount_cents: number }) => sum + row.amount_cents,
     0,
   );
-  const maturedEarned = (matureCommissions.data ?? []).reduce(
+  const availableTotal = (availableCommissions.data ?? []).reduce(
     (sum: number, row: { amount_cents: number }) => sum + row.amount_cents,
     0,
   );
@@ -63,8 +64,9 @@ export async function getBalance(
 
   return {
     earnedCents: totalEarned,
+    pendingCents: totalEarned - availableTotal,
     reservedCents: reserved,
-    availableCents: maturedEarned - reserved - paidOut,
+    availableCents: availableTotal - reserved - paidOut,
   };
 }
 
@@ -90,8 +92,15 @@ export async function recordCommission(
     invoiceId: string;
     amountCents: number;
     ratePercent: number;
+    invoicePeriodStart?: number | null;
+    invoicePeriodEnd?: number | null;
   },
 ): Promise<void> {
+  // Commission matures when the billing period ends; fallback to 30 days from now
+  const maturesAt = params.invoicePeriodEnd
+    ? new Date(params.invoicePeriodEnd * 1000).toISOString()
+    : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
   const { error } = await supabase.from('referral_commissions').upsert(
     {
       referrer_id: params.referrerId,
@@ -99,6 +108,14 @@ export async function recordCommission(
       stripe_invoice_id: params.invoiceId,
       amount_cents: params.amountCents,
       rate_percent: params.ratePercent,
+      status: 'pending',
+      matures_at: maturesAt,
+      invoice_period_start: params.invoicePeriodStart
+        ? new Date(params.invoicePeriodStart * 1000).toISOString()
+        : null,
+      invoice_period_end: params.invoicePeriodEnd
+        ? new Date(params.invoicePeriodEnd * 1000).toISOString()
+        : null,
     },
     { onConflict: 'stripe_invoice_id', ignoreDuplicates: true },
   );
@@ -176,4 +193,27 @@ export async function failPayoutRequest(
     })
     .eq('id', id);
   if (error) throw new Error(`failPayoutRequest failed: ${error.message}`);
+}
+
+/** Matures pending commissions whose billing period has ended */
+export async function maturePendingCommissions(
+  supabase: SupabaseClient,
+): Promise<number> {
+  const { data, error } = await supabase
+    .from('referral_commissions')
+    .update({ status: 'available' })
+    .eq('status', 'pending')
+    .lte('matures_at', new Date().toISOString())
+    .select('id');
+
+  if (error) {
+    console.error('Commission maturation failed:', error.message);
+    return 0;
+  }
+
+  const count = data?.length ?? 0;
+  if (count > 0) {
+    console.log(`Matured ${count} commissions to available`);
+  }
+  return count;
 }

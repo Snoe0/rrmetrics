@@ -249,14 +249,14 @@ const ReferralPage = ({ userRole }) => {
                   <div className="text-text-muted text-xs mt-1">Available</div>
                 </div>
                 <div className="text-center p-3 bg-bg-input rounded-lg border border-border">
-                  <div className="text-2xl font-bold font-mono text-text-secondary">{fmtCents(balance.reservedCents)}</div>
-                  <div className="text-text-muted text-xs mt-1">Reserved</div>
+                  <div className="text-2xl font-bold font-mono text-warning">{fmtCents(balance.pendingCents || 0)}</div>
+                  <div className="text-text-muted text-xs mt-1">Pending</div>
                 </div>
               </div>
 
-              {balance.earnedCents > balance.availableCents + balance.reservedCents && (
+              {(balance.pendingCents || 0) > 0 && (
                 <p className="text-text-muted text-xs mb-4">
-                  {fmtCents(balance.earnedCents - balance.availableCents - balance.reservedCents)} is still maturing (14-day hold period).
+                  {fmtCents(balance.pendingCents)} is pending until the billing period ends (~30 days).
                 </p>
               )}
 

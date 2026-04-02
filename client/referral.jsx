@@ -97,7 +97,7 @@ const BalanceSection = ({ balance }) => (
       </div>
       <div>
         <div className="text-text-secondary text-xs mb-1">Pending</div>
-        <div className="text-yellow-400 font-mono text-2xl font-bold">{fmt$(balance.reservedCents)}</div>
+        <div className="text-yellow-400 font-mono text-2xl font-bold">{fmt$(balance.pendingCents || 0)}</div>
       </div>
       <div>
         <div className="text-text-secondary text-xs mb-1">Available</div>
@@ -105,7 +105,7 @@ const BalanceSection = ({ balance }) => (
       </div>
     </div>
     <p className="text-text-muted text-xs mt-3">
-      Rate: 15% recurring on every payment from referred users. Minimum $25 to cash out. Commissions become available 14 days after earning.
+      Rate: 15% recurring on every payment from referred users. Minimum $15 to cash out. Commissions become available after the billing period ends (~30 days).
     </p>
   </div>
 );
@@ -259,6 +259,7 @@ const App = () => {
   const [stats, setStats] = useState({ total: 0, subscribed: 0, completed: 0 });
   const [balance, setBalance] = useState({
     earnedCents: 0,
+    pendingCents: 0,
     reservedCents: 0,
     availableCents: 0,
     connectAccountId: null,

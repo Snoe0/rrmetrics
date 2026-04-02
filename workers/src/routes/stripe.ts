@@ -388,6 +388,8 @@ stripeRoutes.post('/api/stripe/webhook', async (c) => {
             invoiceId: invoice.id,
             amountCents,
             ratePercent,
+            invoicePeriodStart: (invoice as any).period_start ?? null,
+            invoicePeriodEnd: (invoice as any).period_end ?? null,
           });
         }
 

@@ -441,6 +441,15 @@ CREATE POLICY "Users can view own referral use"
 
 -- Only the backend (service role) inserts/updates referral_uses rows
 -- (client calls /api/referral/apply which runs as service role)
+CREATE POLICY "Block user inserts on referral_uses"
+  ON public.referral_uses FOR INSERT
+  WITH CHECK (false);
+CREATE POLICY "Block user updates on referral_uses"
+  ON public.referral_uses FOR UPDATE
+  USING (false);
+CREATE POLICY "Block user deletes on referral_uses"
+  ON public.referral_uses FOR DELETE
+  USING (false);
 
 -- ============================================
 -- REFERRAL MONTHS EARNED (on profiles)
@@ -498,16 +507,32 @@ CREATE TABLE IF NOT EXISTS public.referral_commissions (
   stripe_invoice_id TEXT NOT NULL UNIQUE,
   amount_cents INTEGER NOT NULL,
   rate_percent INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'available')),
+  matures_at TIMESTAMPTZ,
+  invoice_period_start TIMESTAMPTZ,
+  invoice_period_end TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_referral_commissions_referrer ON public.referral_commissions(referrer_id);
+CREATE INDEX IF NOT EXISTS idx_referral_commissions_pending_maturity
+  ON public.referral_commissions(status, matures_at) WHERE status = 'pending';
 
 ALTER TABLE public.referral_commissions ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Users can view own commissions"
   ON public.referral_commissions FOR SELECT
   USING (auth.uid() = referrer_id);
+
+CREATE POLICY "Block user inserts on commissions"
+  ON public.referral_commissions FOR INSERT
+  WITH CHECK (false);
+CREATE POLICY "Block user updates on commissions"
+  ON public.referral_commissions FOR UPDATE
+  USING (false);
+CREATE POLICY "Block user deletes on commissions"
+  ON public.referral_commissions FOR DELETE
+  USING (false);
 
 -- ============================================
 -- PAYOUT REQUESTS
@@ -531,6 +556,16 @@ ALTER TABLE public.payout_requests ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can view own payout requests"
   ON public.payout_requests FOR SELECT
   USING (auth.uid() = referrer_id);
+
+CREATE POLICY "Block user inserts on payout_requests"
+  ON public.payout_requests FOR INSERT
+  WITH CHECK (false);
+CREATE POLICY "Block user updates on payout_requests"
+  ON public.payout_requests FOR UPDATE
+  USING (false);
+CREATE POLICY "Block user deletes on payout_requests"
+  ON public.payout_requests FOR DELETE
+  USING (false);
 
 -- ============================================
 -- BACKTESTING TABLES
@@ -575,7 +610,6 @@ CREATE OR REPLACE FUNCTION public.create_payout_atomic(
   p_user_id UUID,
   p_amount_cents INTEGER,
   p_min_cents INTEGER DEFAULT 1500,
-  p_maturity_days INTEGER DEFAULT 14,
   p_cooldown_hours INTEGER DEFAULT 24
 )
 RETURNS public.payout_requests
@@ -583,7 +617,7 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
-  v_matured_total INTEGER;
+  v_available_total INTEGER;
   v_reserved_total INTEGER;
   v_available INTEGER;
   v_last_payout TIMESTAMPTZ;
@@ -592,21 +626,21 @@ BEGIN
   -- Serialize concurrent payout requests for this user
   PERFORM pg_advisory_xact_lock(hashtext(p_user_id::text));
 
-  -- 1. Calculate matured earnings (commissions older than maturity window)
+  -- 1. Sum commissions with status = 'available' (billing period ended)
   SELECT COALESCE(SUM(amount_cents), 0)
-    INTO v_matured_total
+    INTO v_available_total
     FROM public.referral_commissions
    WHERE referrer_id = p_user_id
-     AND created_at <= NOW() - (p_maturity_days || ' days')::INTERVAL;
+     AND status = 'available';
 
-  -- 2. Calculate already-reserved or paid-out amounts
+  -- 2. Sum reserved + paid out amounts
   SELECT COALESCE(SUM(amount_cents), 0)
     INTO v_reserved_total
     FROM public.payout_requests
    WHERE referrer_id = p_user_id
      AND status IN ('pending_transfer', 'completed');
 
-  v_available := v_matured_total - v_reserved_total;
+  v_available := v_available_total - v_reserved_total;
 
   -- 3. Validate minimum payout amount
   IF p_amount_cents < p_min_cents THEN
