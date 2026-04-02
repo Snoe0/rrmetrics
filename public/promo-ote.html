@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>RR Metrics - OTE Promo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    /* ── Horizontal (landscape) version ── */
+    .promo-horizontal {
+      width: 1456px;
+      height: 560px;
+      background: #0a0a0a;
+      position: relative;
+      overflow: hidden;
+      font-family: 'Inter', sans-serif;
+    }
+
+    /* Subtle diagonal light streaks */
+    .promo-horizontal .streaks {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+    }
+    .promo-horizontal .streaks::before,
+    .promo-horizontal .streaks::after {
+      content: '';
+      position: absolute;
+      width: 200%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.06) 40%, rgba(255,255,255,0.06) 60%, transparent 100%);
+    }
+    .promo-horizontal .streaks::before {
+      top: 30%;
+      left: -50%;
+      transform: rotate(-15deg);
+    }
+    .promo-horizontal .streaks::after {
+      top: 65%;
+      left: -30%;
+      transform: rotate(-25deg);
+    }
+    .streak-1, .streak-2, .streak-3, .streak-4 {
+      position: absolute;
+      width: 200%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.04) 30%, rgba(255,255,255,0.04) 70%, transparent 100%);
+    }
+    .streak-1 { top: 15%; left: -20%; transform: rotate(-10deg); }
+    .streak-2 { top: 45%; left: -40%; transform: rotate(-20deg); }
+    .streak-3 { top: 75%; left: -10%; transform: rotate(-12deg); }
+    .streak-4 { top: 90%; left: -30%; transform: rotate(-18deg); }
+
+    /* Green glow behind code card */
+    .promo-horizontal .glow {
+      position: absolute;
+      right: 100px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 400px;
+      height: 400px;
+      background: radial-gradient(circle, rgba(163,230,53,0.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .promo-horizontal .content {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 100%;
+      padding: 60px 80px;
+    }
+
+    .promo-horizontal .left {
+      max-width: 600px;
+    }
+
+    .logo-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 40px;
+    }
+    .logo-icon {
+      font-size: 32px;
+      font-weight: 900;
+      color: #a3e635;
+      letter-spacing: -1px;
+      font-family: 'Inter', sans-serif;
+    }
+    .logo-icon span {
+      display: inline-block;
+      transform: scaleX(-1);
+    }
+    .logo-text {
+      font-size: 22px;
+      font-weight: 700;
+      color: #fff;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .promo-horizontal .headline {
+      font-size: 64px;
+      font-weight: 900;
+      color: #fff;
+      line-height: 1.05;
+      margin-bottom: 28px;
+      letter-spacing: -1px;
+    }
+    .promo-horizontal .headline .accent {
+      color: #a3e635;
+    }
+
+    .promo-horizontal .subheadline {
+      font-size: 19px;
+      font-weight: 400;
+      color: #9ca3af;
+      line-height: 1.6;
+      max-width: 520px;
+      font-family: 'Inter', sans-serif;
+    }
+
+    /* Promo code card */
+    .code-card {
+      width: 340px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(163,230,53,0.25);
+      border-radius: 16px;
+      padding: 36px 40px 32px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .code-card .label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #a3e635;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .code-card .code {
+      font-size: 96px;
+      font-weight: 800;
+      color: #a3e635;
+      letter-spacing: 16px;
+      line-height: 1;
+      margin-bottom: 16px;
+      text-shadow: 0 0 60px rgba(163,230,53,0.3), 0 0 120px rgba(163,230,53,0.1);
+      font-family: 'Inter', sans-serif;
+    }
+
+    .code-card .offer-main {
+      font-size: 17px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 4px;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .code-card .offer-sub {
+      font-size: 15px;
+      font-weight: 400;
+      color: #9ca3af;
+      margin-bottom: 20px;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 8px 24px;
+      border: 1px solid rgba(163,230,53,0.5);
+      border-radius: 999px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #a3e635;
+      letter-spacing: 0.5px;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .site-url {
+      position: absolute;
+      bottom: 30px;
+      right: 80px;
+      font-size: 15px;
+      font-weight: 400;
+      color: #6b7280;
+      z-index: 2;
+      font-family: 'Inter', sans-serif;
+    }
+
+    /* ── Vertical (portrait) version ── */
+    .promo-vertical {
+      width: 800px;
+      height: 1000px;
+      background: #0a0a0a;
+      position: relative;
+      overflow: hidden;
+      font-family: 'Inter', sans-serif;
+      margin-top: 60px;
+    }
+
+    .promo-vertical .streaks {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+    }
+    .promo-vertical .streaks .streak-1 { top: 10%; left: -20%; transform: rotate(-12deg); }
+    .promo-vertical .streaks .streak-2 { top: 30%; left: -40%; transform: rotate(-18deg); }
+    .promo-vertical .streaks .streak-3 { top: 55%; left: -10%; transform: rotate(-8deg); }
+    .promo-vertical .streaks .streak-4 { top: 80%; left: -30%; transform: rotate(-22deg); }
+
+    .promo-vertical .glow {
+      position: absolute;
+      left: 50%;
+      top: 55%;
+      transform: translate(-50%, -50%);
+      width: 500px;
+      height: 500px;
+      background: radial-gradient(circle, rgba(163,230,53,0.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .promo-vertical .content {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      height: 100%;
+      padding: 50px 60px 40px;
+    }
+
+    .promo-vertical .logo-row {
+      margin-bottom: 50px;
+    }
+
+    .promo-vertical .headline {
+      font-size: 56px;
+      font-weight: 900;
+      color: #fff;
+      line-height: 1.08;
+      margin-bottom: 24px;
+      letter-spacing: -1px;
+      text-align: center;
+    }
+    .promo-vertical .headline .accent {
+      color: #a3e635;
+    }
+
+    .promo-vertical .subheadline {
+      font-size: 18px;
+      font-weight: 400;
+      color: #9ca3af;
+      line-height: 1.6;
+      text-align: center;
+      max-width: 520px;
+      margin-bottom: 48px;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .promo-vertical .code-card {
+      width: 380px;
+    }
+
+    .promo-vertical .site-url {
+      position: absolute;
+      bottom: 30px;
+      right: 60px;
+      font-size: 15px;
+      font-weight: 400;
+      color: #6b7280;
+      z-index: 2;
+      font-family: 'Inter', sans-serif;
+    }
+
+    /* Page layout for preview */
+    body {
+      background: #1a1a1a;
+      padding: 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    h2.section-label {
+      font-family: 'Inter', sans-serif;
+      color: #9ca3af;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ═══════ HORIZONTAL VERSION ═══════ -->
+  <h2 class="section-label">Horizontal</h2>
+  <div class="promo-horizontal">
+    <div class="streaks">
+      <div class="streak-1"></div>
+      <div class="streak-2"></div>
+      <div class="streak-3"></div>
+      <div class="streak-4"></div>
+    </div>
+    <div class="glow"></div>
+
+    <div class="content">
+      <div class="left">
+        <div class="logo-row">
+          <div class="logo-icon"><span>R</span>R</div>
+          <div class="logo-text">RR Metrics</div>
+        </div>
+        <div class="headline">
+          Your <span class="accent">First Month</span><br>Is On Us.
+        </div>
+        <div class="subheadline">
+          Improving as a trader shouldn't cost a fortune. Track every trade, spot your edge, and grow — your first month is free.
+        </div>
+      </div>
+
+      <div class="code-card">
+        <div class="label">Promo Code</div>
+        <div class="code">O T E</div>
+        <div class="offer-main">First month FREE</div>
+        <div class="offer-sub">on any plan</div>
+        <div class="badge">Limited time offer</div>
+      </div>
+    </div>
+
+    <div class="site-url">rrmetrics.com</div>
+  </div>
+
+  <!-- ═══════ VERTICAL VERSION ═══════ -->
+  <h2 class="section-label" style="margin-top: 60px;">Vertical</h2>
+  <div class="promo-vertical">
+    <div class="streaks">
+      <div class="streak-1"></div>
+      <div class="streak-2"></div>
+      <div class="streak-3"></div>
+      <div class="streak-4"></div>
+    </div>
+    <div class="glow"></div>
+
+    <div class="content">
+      <div class="logo-row">
+        <div class="logo-icon"><span>R</span>R</div>
+        <div class="logo-text">RR Metrics</div>
+      </div>
+
+      <div class="headline">
+        Your <span class="accent">First Month</span><br>Is On Us.
+      </div>
+      <div class="subheadline">
+        Improving as a trader shouldn't cost a fortune. Track every trade, spot your edge, and grow — your first month is free.
+      </div>
+
+      <div class="code-card">
+        <div class="label">Promo Code</div>
+        <div class="code">O T E</div>
+        <div class="offer-main">First month FREE</div>
+        <div class="offer-sub">on any plan</div>
+        <div class="badge">Limited time offer</div>
+      </div>
+
+      <div class="site-url">rrmetrics.com</div>
+    </div>
+  </div>
+
+</body>
+</html>
