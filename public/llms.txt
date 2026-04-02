@@ -1,0 +1,44 @@
+# RR Metrics
+
+> RR Metrics is a trading journal web app for futures, stocks, and options traders. It provides trade logging, analytics, broker imports (Tradovate, Topstep, NinjaTrader, CSV), equity curves, tag-based performance tracking, and a pre-market planner.
+
+## Product Guides
+
+- [Getting Started](https://rrmetrics.com/guides/getting-started.md): Quick start guide for adding your first trades
+- [Dashboard Walkthrough](https://rrmetrics.com/guides/dashboard-walkthrough.md): Full walkthrough of the trading dashboard
+- [Analytics](https://rrmetrics.com/guides/analytics.md): Understanding your analytics and performance metrics
+- [Tags](https://rrmetrics.com/guides/tags.md): Using tags to categorize and filter trades
+- [Strategy](https://rrmetrics.com/guides/strategy.md): Setting up strategy checklists and playbooks
+- [Pre-Market Planner](https://rrmetrics.com/guides/premarket.md): Daily pre-market preparation tool
+- [Data Export](https://rrmetrics.com/guides/data-export.md): Exporting your trade data
+- [Subscription](https://rrmetrics.com/guides/subscription.md): Plans, pricing, and account management
+- [Copytrading](https://rrmetrics.com/guides/copytrading.md): Copy trading features and setup
+
+## Broker Import Guides
+
+- [Tradovate Import](https://rrmetrics.com/guides/tradovate-import.md): Import trades from Tradovate
+- [Topstep Import](https://rrmetrics.com/guides/topstep-import.md): Import trades from Topstep / ProjectX
+- [NinjaTrader API](https://rrmetrics.com/guides/ninjatrader-api.md): Connect NinjaTrader via API
+- [Generic CSV](https://rrmetrics.com/guides/generic-csv.md): Import trades from any broker via CSV
+
+## Trading Education
+
+- [Risk Management](https://rrmetrics.com/guides/risk-management.md): Position sizing, stop losses, and R:R ratios
+- [Trading Plan](https://rrmetrics.com/guides/trading-plan.md): Creating a complete trading plan
+- [Trading Psychology](https://rrmetrics.com/guides/trading-psychology.md): Managing emotions and discipline
+- [Technical Analysis](https://rrmetrics.com/guides/technical-analysis.md): Chart analysis fundamentals
+- [Supply and Demand](https://rrmetrics.com/guides/supply-demand.md): Supply and demand zone trading
+- [Order Flow](https://rrmetrics.com/guides/order-flow.md): Reading order flow and tape
+- [ICT Smart Money](https://rrmetrics.com/guides/ict-smart-money.md): ICT and Smart Money Concepts
+- [Day Trading Patterns](https://rrmetrics.com/guides/day-trading-patterns.md): Chart patterns to track in your journal
+- [Trading Journal Guide](https://rrmetrics.com/guides/trading-journal-guide.md): Complete guide to trading journals
+- [Backtesting](https://rrmetrics.com/guides/backtesting.md): How to backtest trading strategies
+- [Prop Firm Trading](https://rrmetrics.com/guides/prop-firm-trading.md): Prop firm challenges and funded trading
+
+## Comparisons
+
+- [RR Metrics vs TradeZella](https://rrmetrics.com/guides/vs-tradezella.md): Feature and pricing comparison
+- [RR Metrics vs TraderSync](https://rrmetrics.com/guides/vs-tradersync.md): Feature and pricing comparison
+- [RR Metrics vs Tradervue](https://rrmetrics.com/guides/vs-tradervue.md): Feature and pricing comparison
+- [RR Metrics vs Notion](https://rrmetrics.com/guides/vs-notion.md): Trading journal comparison
+- [RR Metrics vs Spreadsheets](https://rrmetrics.com/guides/vs-spreadsheets.md): Journal vs spreadsheet comparison
