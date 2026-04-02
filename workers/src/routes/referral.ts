@@ -1,16 +1,10 @@
 import { Hono } from 'hono';
-import Stripe from 'stripe';
 import type { Env, AuthContext } from '../bindings';
 import * as referralDb from '../db/referrals';
 import * as commissionsDb from '../db/commissions';
 import * as profilesDb from '../db/profiles';
 import { requiresLogin } from '../middleware/supabase-auth';
 import { createServiceClient } from '../lib/supabase';
-
-function getStripe(env: Env): Stripe | null {
-  if (!env.STRIPE_SECRET_KEY) return null;
-  return new Stripe(env.STRIPE_SECRET_KEY);
-}
 
 type HonoEnv = {
   Bindings: Env;
@@ -92,8 +86,7 @@ referral.get('/api/referral/balance', requiresLogin, async (c) => {
 
     return c.json({
       ...balance,
-      connectAccountId: profile.stripe_connect_account_id ?? null,
-      connectOnboarded: profile.stripe_connect_onboarded ?? false,
+      connectOnboarded: profile.wise_onboarded ?? false,
       payoutHistory,
     });
   } catch (err) {
@@ -102,138 +95,96 @@ referral.get('/api/referral/balance', requiresLogin, async (c) => {
   }
 });
 
-// POST /api/referral/connect — create Custom Connect account with inline form data
+// POST /api/referral/connect — create Wise recipient with bank details
 referral.post('/api/referral/connect', requiresLogin, async (c) => {
   const user = c.get('user');
   const profile = c.get('profile');
-  const stripe = getStripe(c.env);
-  if (!stripe) return c.json({ error: 'Stripe not configured.' }, 503);
+
+  if (!c.env.WISE_API_TOKEN || !c.env.WISE_PROFILE_ID) {
+    return c.json({ error: 'Payout service not configured.' }, 503);
+  }
 
   const serviceClient = createServiceClient(c.env);
 
   try {
     // Already onboarded
-    if (profile.stripe_connect_onboarded && profile.stripe_connect_account_id) {
+    if (profile.wise_onboarded && profile.wise_recipient_id) {
       return c.json({ ok: true, onboarded: true });
     }
 
     const body = await c.req.json();
-    const { firstName, lastName, dobYear, dobMonth, dobDay, ssnLast4, address, bankToken } = body;
+    const { firstName, lastName, accountType, routingNumber, accountNumber, address } = body;
 
-    // Validate required fields
-    if (!firstName || !lastName || !dobYear || !dobMonth || !dobDay || !ssnLast4 || !address || !bankToken) {
+    if (!firstName || !lastName || !routingNumber || !accountNumber || !address) {
       return c.json({ error: 'All fields are required.' }, 400);
     }
     if (!address.line1 || !address.city || !address.state || !address.postalCode) {
       return c.json({ error: 'Complete address is required.' }, 400);
     }
-    if (String(ssnLast4).length !== 4) {
-      return c.json({ error: 'SSN must be exactly 4 digits.' }, 400);
+    if (String(routingNumber).length !== 9) {
+      return c.json({ error: 'Routing number must be 9 digits.' }, 400);
     }
 
-    let accountId = profile.stripe_connect_account_id;
-
-    if (!accountId) {
-      // Create Custom Connect account with all details inline
-      const account = await stripe.accounts.create({
-        type: 'custom',
-        country: 'US',
-        email: profile.email,
-        business_type: 'individual',
-        individual: {
-          first_name: firstName,
-          last_name: lastName,
-          email: profile.email,
-          dob: {
-            year: Number(dobYear),
-            month: Number(dobMonth),
-            day: Number(dobDay),
-          },
-          ssn_last_4: String(ssnLast4),
+    // Create Wise recipient
+    const wiseRes = await fetch('https://api.wise.com/v1/accounts', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${c.env.WISE_API_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        profile: Number(c.env.WISE_PROFILE_ID),
+        accountHolderName: `${firstName} ${lastName}`,
+        currency: 'USD',
+        type: 'aba',
+        details: {
+          legalType: 'PRIVATE',
+          abartn: routingNumber,
+          accountNumber: accountNumber,
+          accountType: accountType || 'CHECKING',
           address: {
-            line1: address.line1,
-            line2: address.line2 || undefined,
+            firstLine: address.line1,
             city: address.city,
-            state: address.state,
-            postal_code: address.postalCode,
+            stateCode: address.state,
+            postCode: address.postalCode,
             country: 'US',
           },
         },
-        capabilities: {
-          transfers: { requested: true },
-        },
-        external_account: bankToken,
-        tos_acceptance: {
-          date: Math.floor(Date.now() / 1000),
-          ip: c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || '0.0.0.0',
-        },
-        metadata: { userId: user.id },
-      });
-      accountId = account.id;
-    } else {
-      // Account exists but not onboarded — update details
-      await stripe.accounts.update(accountId, {
-        individual: {
-          first_name: firstName,
-          last_name: lastName,
-          email: profile.email,
-          dob: {
-            year: Number(dobYear),
-            month: Number(dobMonth),
-            day: Number(dobDay),
-          },
-          ssn_last_4: String(ssnLast4),
-          address: {
-            line1: address.line1,
-            line2: address.line2 || undefined,
-            city: address.city,
-            state: address.state,
-            postal_code: address.postalCode,
-            country: 'US',
-          },
-        },
-        tos_acceptance: {
-          date: Math.floor(Date.now() / 1000),
-          ip: c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || '0.0.0.0',
-        },
-      });
-      // Attach bank account
-      await stripe.accounts.createExternalAccount(accountId, {
-        external_account: bankToken,
-      });
-    }
-
-    // Check if account is ready for transfers
-    const account = await stripe.accounts.retrieve(accountId);
-    const onboarded = !!(account.capabilities?.transfers === 'active' || account.charges_enabled);
-
-    await profilesDb.updateById(serviceClient, user.id, {
-      stripeConnectAccountId: accountId,
-      stripeConnectOnboarded: onboarded,
+      }),
     });
 
-    return c.json({ ok: true, onboarded });
+    if (!wiseRes.ok) {
+      const err = await wiseRes.json().catch(() => ({}));
+      console.error('Wise create recipient error:', err);
+      const msg = (err as any)?.errors?.[0]?.message || 'Failed to create payout recipient.';
+      return c.json({ error: msg }, 400);
+    }
+
+    const recipient = await wiseRes.json() as { id: number };
+
+    await profilesDb.updateById(serviceClient, user.id, {
+      wiseRecipientId: String(recipient.id),
+      wiseOnboarded: true,
+    });
+
+    return c.json({ ok: true, onboarded: true });
   } catch (err: any) {
     console.error('POST /api/referral/connect error:', err);
-    const msg = err?.raw?.message || err?.message || 'Failed to set up payout account.';
-    return c.json({ error: msg }, 500);
+    return c.json({ error: err?.message || 'Failed to set up payout account.' }, 500);
   }
 });
 
-// POST /api/referral/payout — instant cash out
+// POST /api/referral/payout — request cash out (requires admin approval)
 referral.post('/api/referral/payout', requiresLogin, async (c) => {
   const user = c.get('user');
   const profile = c.get('profile');
-  const stripe = getStripe(c.env);
-  if (!stripe) return c.json({ error: 'Stripe not configured.' }, 503);
-
   const serviceClient = createServiceClient(c.env);
 
   try {
     const body = await c.req.json();
     const amountCents = Number(body.amount_cents);
 
-    if (!profile.stripe_connect_onboarded || !profile.stripe_connect_account_id) {
+    if (!profile.wise_onboarded || !profile.wise_recipient_id) {
       return c.json({ error: 'Connect your bank account before requesting a payout.' }, 400);
     }
 
@@ -241,7 +192,7 @@ referral.post('/api/referral/payout', requiresLogin, async (c) => {
       return c.json({ error: 'Minimum payout is $15.00.' }, 400);
     }
 
-    // Atomic: check balance + create payout_request in one transaction
+    // Atomic: check balance + create payout_request as pending_approval
     let payoutRequest;
     try {
       payoutRequest = await commissionsDb.callAtomicPayout(serviceClient, user.id, amountCents);
@@ -249,46 +200,22 @@ referral.post('/api/referral/payout', requiresLogin, async (c) => {
       return c.json({ error: err.message }, 400);
     }
 
-    // Execute Stripe transfer immediately
-    try {
-      const transfer = await stripe.transfers.create({
-        amount: amountCents,
-        currency: 'usd',
-        destination: profile.stripe_connect_account_id,
-        metadata: {
-          payoutRequestId: payoutRequest.id,
-          userId: user.id,
-        },
-      });
-
-      await commissionsDb.completePayoutRequest(serviceClient, payoutRequest.id, transfer.id);
-
-      // Discord notification
-      if (c.env.DISCORD_PAYOUT_WEBHOOK) {
-        const amount = (amountCents / 100).toFixed(2);
-        fetch(c.env.DISCORD_PAYOUT_WEBHOOK, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            content: `💸 Payout completed: ${profile.email} cashed out $${amount}`,
-          }),
-        }).catch(() => {});
-      }
-
-      return c.json({ ok: true, transferId: transfer.id });
-    } catch (stripeErr: any) {
-      // Transfer failed — mark payout as failed so balance is released
-      await commissionsDb.failPayoutRequest(
-        serviceClient,
-        payoutRequest.id,
-        `Stripe transfer failed: ${stripeErr.message}`,
-      );
-      console.error('Stripe transfer failed:', stripeErr);
-      return c.json({ error: 'Payout transfer failed. Please try again later.' }, 500);
+    // Discord notification for admin review
+    if (c.env.DISCORD_PAYOUT_WEBHOOK) {
+      const amount = (amountCents / 100).toFixed(2);
+      fetch(c.env.DISCORD_PAYOUT_WEBHOOK, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: `💰 Payout request: ${profile.email} requested $${amount} — needs approval`,
+        }),
+      }).catch(() => {});
     }
+
+    return c.json({ ok: true, requestId: payoutRequest.id });
   } catch (err) {
     console.error('POST /api/referral/payout error:', err);
-    return c.json({ error: 'Failed to process payout.' }, 500);
+    return c.json({ error: 'Failed to process payout request.' }, 500);
   }
 });
 

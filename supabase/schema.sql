@@ -500,6 +500,10 @@ ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS stripe_connect_account_id TEXT,
   ADD COLUMN IF NOT EXISTS stripe_connect_onboarded BOOLEAN NOT NULL DEFAULT false;
 
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS wise_recipient_id TEXT,
+  ADD COLUMN IF NOT EXISTS wise_onboarded BOOLEAN NOT NULL DEFAULT false;
+
 CREATE TABLE IF NOT EXISTS public.referral_commissions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   referrer_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -638,7 +642,7 @@ BEGIN
     INTO v_reserved_total
     FROM public.payout_requests
    WHERE referrer_id = p_user_id
-     AND status IN ('pending_transfer', 'completed');
+     AND status IN ('pending_approval', 'pending_transfer', 'completed');
 
   v_available := v_available_total - v_reserved_total;
 
@@ -657,15 +661,15 @@ BEGIN
     INTO v_last_payout
     FROM public.payout_requests
    WHERE referrer_id = p_user_id
-     AND status IN ('pending_transfer', 'completed');
+     AND status IN ('pending_approval', 'pending_transfer', 'completed');
 
   IF v_last_payout IS NOT NULL AND v_last_payout > NOW() - (p_cooldown_hours || ' hours')::INTERVAL THEN
     RAISE EXCEPTION 'Payout cooldown: please wait at least % hours between payout requests', p_cooldown_hours;
   END IF;
 
-  -- 6. Insert payout request with instant status
+  -- 6. Insert payout request as pending admin approval
   INSERT INTO public.payout_requests (referrer_id, amount_cents, status)
-  VALUES (p_user_id, p_amount_cents, 'pending_transfer')
+  VALUES (p_user_id, p_amount_cents, 'pending_approval')
   RETURNING * INTO v_result;
 
   RETURN v_result;

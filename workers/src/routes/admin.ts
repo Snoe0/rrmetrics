@@ -355,4 +355,115 @@ admin.get('/api/admin/payouts', async (c) => {
   }
 });
 
+// POST /api/admin/payouts/:id/approve — approve payout and send via Wise
+admin.post('/api/admin/payouts/:id/approve', async (c) => {
+  const payoutId = c.req.param('id');
+  const supabase = createServiceClient(c.env);
+
+  if (!c.env.WISE_API_TOKEN || !c.env.WISE_PROFILE_ID) {
+    return c.json({ error: 'Wise not configured.' }, 503);
+  }
+
+  try {
+    // Get the payout request
+    const { data: payout, error: fetchErr } = await supabase
+      .from('payout_requests')
+      .select('*, profiles!payout_requests_referrer_id_fkey(email, wise_recipient_id)')
+      .eq('id', payoutId)
+      .eq('status', 'pending_approval')
+      .single();
+
+    if (fetchErr || !payout) {
+      return c.json({ error: 'Payout request not found or already processed.' }, 404);
+    }
+
+    const wiseRecipientId = (payout as any).profiles?.wise_recipient_id;
+    if (!wiseRecipientId) {
+      return c.json({ error: 'User has no Wise recipient set up.' }, 400);
+    }
+
+    const amountUsd = payout.amount_cents / 100;
+    const profileId = c.env.WISE_PROFILE_ID;
+    const headers = {
+      'Authorization': `Bearer ${c.env.WISE_API_TOKEN}`,
+      'Content-Type': 'application/json',
+    };
+
+    // 1. Create quote
+    const quoteRes = await fetch(`https://api.wise.com/v3/profiles/${profileId}/quotes`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        sourceCurrency: 'USD',
+        targetCurrency: 'USD',
+        sourceAmount: amountUsd,
+      }),
+    });
+    if (!quoteRes.ok) {
+      const err = await quoteRes.text();
+      console.error('Wise quote error:', err);
+      return c.json({ error: 'Failed to create Wise quote.' }, 500);
+    }
+    const quote = await quoteRes.json() as { id: string };
+
+    // 2. Create transfer
+    const transferRes = await fetch('https://api.wise.com/v1/transfers', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        targetAccount: Number(wiseRecipientId),
+        quoteUuid: quote.id,
+        customerTransactionId: payoutId,
+      }),
+    });
+    if (!transferRes.ok) {
+      const err = await transferRes.text();
+      console.error('Wise transfer error:', err);
+      return c.json({ error: 'Failed to create Wise transfer.' }, 500);
+    }
+    const transfer = await transferRes.json() as { id: number };
+
+    // 3. Fund the transfer from Wise balance
+    const fundRes = await fetch(
+      `https://api.wise.com/v3/profiles/${profileId}/transfers/${transfer.id}/payments`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ type: 'BALANCE' }),
+      },
+    );
+    if (!fundRes.ok) {
+      const err = await fundRes.text();
+      console.error('Wise fund error:', err);
+      // Transfer created but not funded — mark as failed
+      await commissionsDb.failPayoutRequest(supabase, payoutId, `Wise funding failed: ${err}`);
+      return c.json({ error: 'Failed to fund Wise transfer.' }, 500);
+    }
+
+    // Mark payout as completed
+    await commissionsDb.completePayoutRequest(supabase, payoutId, `wise-${transfer.id}`);
+
+    return c.json({ ok: true, wiseTransferId: transfer.id });
+  } catch (err: any) {
+    console.error('admin approve payout error:', err);
+    return c.json({ error: err?.message || 'Failed to approve payout.' }, 500);
+  }
+});
+
+// POST /api/admin/payouts/:id/reject — reject a payout request
+admin.post('/api/admin/payouts/:id/reject', async (c) => {
+  const payoutId = c.req.param('id');
+  const supabase = createServiceClient(c.env);
+
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const reason = (body as any).reason || 'Rejected by admin';
+    await commissionsDb.failPayoutRequest(supabase, payoutId, reason);
+    return c.json({ ok: true });
+  } catch (err: any) {
+    console.error('admin reject payout error:', err);
+    return c.json({ error: err?.message || 'Failed to reject payout.' }, 500);
+  }
+});
+
 export default admin;

@@ -21,6 +21,7 @@ export interface PayoutRequest {
 export interface PayoutRequestWithEmail extends PayoutRequest {
   email: string;
   stripe_connect_account_id: string | null;
+  wise_recipient_id: string | null;
 }
 
 /** Returns earned, pending, reserved, and available balance in cents for a referrer */
@@ -42,7 +43,7 @@ export async function getBalance(
       .from('payout_requests')
       .select('amount_cents, status')
       .eq('referrer_id', userId)
-      .in('status', ['pending_transfer', 'completed']),
+      .in('status', ['pending_approval', 'pending_transfer', 'completed']),
   ]);
 
   const totalEarned = (allCommissions.data ?? []).reduce(
@@ -56,7 +57,7 @@ export async function getBalance(
 
   const payouts = (payoutsResult.data ?? []) as { amount_cents: number; status: string }[];
   const reserved = payouts
-    .filter((r) => r.status === 'pending_transfer')
+    .filter((r) => r.status === 'pending_approval' || r.status === 'pending_transfer')
     .reduce((sum, row) => sum + row.amount_cents, 0);
   const paidOut = payouts
     .filter((r) => r.status === 'completed')
@@ -136,14 +137,14 @@ export async function callAtomicPayout(
   return data as PayoutRequest;
 }
 
-/** Lists all payout requests joined with email and connect account id */
+/** Lists all payout requests joined with email and payout account ids */
 export async function listPendingPayouts(
   supabase: SupabaseClient,
   statusFilter?: string,
 ): Promise<PayoutRequestWithEmail[]> {
   let query = supabase
     .from('payout_requests')
-    .select('*, profiles!payout_requests_referrer_id_fkey(email, stripe_connect_account_id)')
+    .select('*, profiles!payout_requests_referrer_id_fkey(email, stripe_connect_account_id, wise_recipient_id)')
     .order('created_at', { ascending: false });
 
   if (statusFilter && statusFilter !== 'all') {
@@ -157,6 +158,7 @@ export async function listPendingPayouts(
     ...row,
     email: row.profiles?.email ?? '',
     stripe_connect_account_id: row.profiles?.stripe_connect_account_id ?? null,
+    wise_recipient_id: row.profiles?.wise_recipient_id ?? null,
     profiles: undefined,
   }));
 }

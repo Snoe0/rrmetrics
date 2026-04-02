@@ -26,6 +26,8 @@ export interface Env {
   TRADOVATE_CLIENT_ID?: string;
   TRADOVATE_CLIENT_SECRET?: string;
   DISCORD_PAYOUT_WEBHOOK?: string;
+  WISE_API_TOKEN?: string;
+  WISE_PROFILE_ID?: string;
 }
 
 export interface ProfileRow {
@@ -45,6 +47,8 @@ export interface ProfileRow {
   registration_ip: string | null;
   stripe_connect_account_id: string | null;
   stripe_connect_onboarded: boolean;
+  wise_recipient_id: string | null;
+  wise_onboarded: boolean;
   role: string;
   created_at: string;
   email_unsubscribed: boolean;

@@ -59,6 +59,8 @@ export async function updateById(
     registrationIp: 'registration_ip',
     stripeConnectAccountId: 'stripe_connect_account_id',
     stripeConnectOnboarded: 'stripe_connect_onboarded',
+    wiseRecipientId: 'wise_recipient_id',
+    wiseOnboarded: 'wise_onboarded',
     customColorsBgPage: 'custom_colors_bg_page',
     customColorsBgSurface: 'custom_colors_bg_surface',
     customColorsTextPrimary: 'custom_colors_text_primary',
