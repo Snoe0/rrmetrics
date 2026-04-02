@@ -496,7 +496,7 @@ const App = () => {
       case 'upgrade':
         return <UpgradePage pricing={pricing} />;
       case 'referral':
-        return <ReferralPage />;
+        return <ReferralPage userRole={userRole} />;
       case 'syncer':
         return <TradeSyncerPage />;
       default:
