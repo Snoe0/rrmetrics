@@ -876,8 +876,8 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-text-primary font-semibold">Performance by Day</h3>
             <div className="flex bg-bg-input rounded-lg p-0.5 text-xs">
-              <button onClick={() => setDayPLMode('total')} className={`px-2.5 py-1 rounded-md transition-colors ${dayPLMode === 'total' ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'}`}>Total P/L</button>
-              <button onClick={() => setDayPLMode('avg')} className={`px-2.5 py-1 rounded-md transition-colors ${dayPLMode === 'avg' ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'}`}>Avg P/L</button>
+              <button onClick={() => setDayPLMode('total')} className={`px-2.5 py-1 rounded-md transition-colors ${dayPLMode === 'total' ? 'bg-accent text-gray-900' : 'text-text-secondary hover:text-text-primary'}`}>Total P/L</button>
+              <button onClick={() => setDayPLMode('avg')} className={`px-2.5 py-1 rounded-md transition-colors ${dayPLMode === 'avg' ? 'bg-accent text-gray-900' : 'text-text-secondary hover:text-text-primary'}`}>Avg P/L</button>
             </div>
           </div>
           <div>
@@ -892,8 +892,8 @@ const AnalyticsPage = ({ trades: allTrades, evalFilter, setEvalFilter }) => {
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-text-primary font-semibold">Performance by Entry Time (30-Min)</h3>
             <div className="flex bg-bg-input rounded-lg p-0.5 text-xs">
-              <button onClick={() => setTimePLMode('avg')} className={`px-2.5 py-1 rounded-md transition-colors ${timePLMode === 'avg' ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'}`}>Avg P/L</button>
-              <button onClick={() => setTimePLMode('total')} className={`px-2.5 py-1 rounded-md transition-colors ${timePLMode === 'total' ? 'bg-accent text-white' : 'text-text-secondary hover:text-text-primary'}`}>Total P/L</button>
+              <button onClick={() => setTimePLMode('avg')} className={`px-2.5 py-1 rounded-md transition-colors ${timePLMode === 'avg' ? 'bg-accent text-gray-900' : 'text-text-secondary hover:text-text-primary'}`}>Avg P/L</button>
+              <button onClick={() => setTimePLMode('total')} className={`px-2.5 py-1 rounded-md transition-colors ${timePLMode === 'total' ? 'bg-accent text-gray-900' : 'text-text-secondary hover:text-text-primary'}`}>Total P/L</button>
             </div>
           </div>
           <div className={showTimeTable ? 'mb-4' : ''}>
