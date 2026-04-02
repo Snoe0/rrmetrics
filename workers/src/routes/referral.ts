@@ -145,7 +145,7 @@ referral.post('/api/referral/connect', requiresLogin, async (c) => {
           address: {
             firstLine: address.line1,
             city: address.city,
-            stateCode: address.state.startsWith('US-') ? address.state : `US-${address.state}`,
+            state: address.state,
             postCode: address.postalCode,
             country: 'US',
           },
