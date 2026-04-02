@@ -158,8 +158,12 @@ const App = () => {
     if (customColors.accent) {
       const [r, g, b] = hexToChannels(customColors.accent);
       root.style.setProperty('--accent', toRgbStr(r, g, b));
+      // Auto-compute accent-text based on luminance (WCAG relative luminance)
+      const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      root.style.setProperty('--accent-text', luminance > 0.5 ? '0 0 0' : '255 255 255');
     } else {
       root.style.removeProperty('--accent');
+      root.style.removeProperty('--accent-text');
     }
 
     // 4. Apply full custom overrides (Elite custom theme only)
