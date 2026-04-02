@@ -102,7 +102,7 @@ referral.get('/api/referral/balance', requiresLogin, async (c) => {
   }
 });
 
-// POST /api/referral/connect — create or retrieve Stripe Connect Express account
+// POST /api/referral/connect — create Custom Connect account with inline form data
 referral.post('/api/referral/connect', requiresLogin, async (c) => {
   const user = c.get('user');
   const profile = c.get('profile');
@@ -112,64 +112,111 @@ referral.post('/api/referral/connect', requiresLogin, async (c) => {
   const serviceClient = createServiceClient(c.env);
 
   try {
+    // Already onboarded
+    if (profile.stripe_connect_onboarded && profile.stripe_connect_account_id) {
+      return c.json({ ok: true, onboarded: true });
+    }
+
+    const body = await c.req.json();
+    const { firstName, lastName, dobYear, dobMonth, dobDay, ssnLast4, address, bankToken } = body;
+
+    // Validate required fields
+    if (!firstName || !lastName || !dobYear || !dobMonth || !dobDay || !ssnLast4 || !address || !bankToken) {
+      return c.json({ error: 'All fields are required.' }, 400);
+    }
+    if (!address.line1 || !address.city || !address.state || !address.postalCode) {
+      return c.json({ error: 'Complete address is required.' }, 400);
+    }
+    if (String(ssnLast4).length !== 4) {
+      return c.json({ error: 'SSN must be exactly 4 digits.' }, 400);
+    }
+
     let accountId = profile.stripe_connect_account_id;
 
     if (!accountId) {
+      // Create Custom Connect account with all details inline
       const account = await stripe.accounts.create({
-        type: 'express',
+        type: 'custom',
         country: 'US',
         email: profile.email,
+        business_type: 'individual',
+        individual: {
+          first_name: firstName,
+          last_name: lastName,
+          email: profile.email,
+          dob: {
+            year: Number(dobYear),
+            month: Number(dobMonth),
+            day: Number(dobDay),
+          },
+          ssn_last_4: String(ssnLast4),
+          address: {
+            line1: address.line1,
+            line2: address.line2 || undefined,
+            city: address.city,
+            state: address.state,
+            postal_code: address.postalCode,
+            country: 'US',
+          },
+        },
         capabilities: {
           transfers: { requested: true },
+        },
+        external_account: bankToken,
+        tos_acceptance: {
+          date: Math.floor(Date.now() / 1000),
+          ip: c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || '0.0.0.0',
         },
         metadata: { userId: user.id },
       });
       accountId = account.id;
-      await profilesDb.updateById(serviceClient, user.id, {
-        stripeConnectAccountId: accountId,
+    } else {
+      // Account exists but not onboarded — update details
+      await stripe.accounts.update(accountId, {
+        individual: {
+          first_name: firstName,
+          last_name: lastName,
+          email: profile.email,
+          dob: {
+            year: Number(dobYear),
+            month: Number(dobMonth),
+            day: Number(dobDay),
+          },
+          ssn_last_4: String(ssnLast4),
+          address: {
+            line1: address.line1,
+            line2: address.line2 || undefined,
+            city: address.city,
+            state: address.state,
+            postal_code: address.postalCode,
+            country: 'US',
+          },
+        },
+        tos_acceptance: {
+          date: Math.floor(Date.now() / 1000),
+          ip: c.req.header('cf-connecting-ip') || c.req.header('x-forwarded-for') || '0.0.0.0',
+        },
+      });
+      // Attach bank account
+      await stripe.accounts.createExternalAccount(accountId, {
+        external_account: bankToken,
       });
     }
 
-    const accountLink = await stripe.accountLinks.create({
-      account: accountId,
-      refresh_url: `${c.env.APP_URL}/trades?tab=referral&connect=refresh`,
-      return_url: `${c.env.APP_URL}/trades?tab=referral&connect=success`,
-      type: 'account_onboarding',
+    // Check if account is ready for transfers
+    const account = await stripe.accounts.retrieve(accountId);
+    const onboarded = !!(account.capabilities?.transfers === 'active' || account.charges_enabled);
+
+    await profilesDb.updateById(serviceClient, user.id, {
+      stripeConnectAccountId: accountId,
+      stripeConnectOnboarded: onboarded,
     });
 
-    return c.json({ url: accountLink.url });
-  } catch (err) {
+    return c.json({ ok: true, onboarded });
+  } catch (err: any) {
     console.error('POST /api/referral/connect error:', err);
-    return c.json({ error: 'Failed to create Connect account.' }, 500);
-  }
-});
-
-// GET /api/referral/connect/verify — check onboarding status after redirect
-referral.get('/api/referral/connect/verify', requiresLogin, async (c) => {
-  const user = c.get('user');
-  const profile = c.get('profile');
-  const stripe = getStripe(c.env);
-  if (!stripe) return c.json({ error: 'Stripe not configured.' }, 503);
-
-  const serviceClient = createServiceClient(c.env);
-
-  try {
-    const accountId = profile.stripe_connect_account_id;
-    if (!accountId) return c.json({ onboarded: false });
-
-    const account = await stripe.accounts.retrieve(accountId);
-    const onboarded = account.charges_enabled;
-
-    if (onboarded && !profile.stripe_connect_onboarded) {
-      await profilesDb.updateById(serviceClient, user.id, {
-        stripeConnectOnboarded: true,
-      });
-    }
-
-    return c.json({ onboarded });
-  } catch (err) {
-    console.error('GET /api/referral/connect/verify error:', err);
-    return c.json({ error: 'Failed to verify Connect account.' }, 500);
+    const msg = err?.raw?.message || err?.message || 'Failed to set up payout account.';
+    return c.json({ error: msg }, 500);
   }
 });
 
