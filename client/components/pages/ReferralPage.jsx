@@ -259,43 +259,16 @@ const ReferralPage = () => {
                 </p>
               )}
 
-              {/* Connect / Cashout */}
-              {!balance.connectOnboarded ? (
-                <div className="border-t border-border pt-4">
-                  <p className="text-text-secondary text-sm mb-3">
-                    Connect your bank account to cash out your earnings.
-                  </p>
-                  <button
-                    onClick={handleConnectSetup}
-                    disabled={connectLoading}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-accent text-accent-text text-sm font-semibold rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
-                  >
-                    <Icons.Zap className="w-4 h-4" />
-                    {connectLoading ? 'Redirecting...' : 'Set Up Payouts'}
-                  </button>
-                </div>
-              ) : (
-                <div className="border-t border-border pt-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-text-secondary text-sm">
-                        {balance.availableCents >= PAYOUT_MIN_CENTS
-                          ? `${fmtCents(balance.availableCents)} ready to cash out.`
-                          : `Minimum cashout is ${fmtCents(PAYOUT_MIN_CENTS)}. You need ${fmtCents(PAYOUT_MIN_CENTS - balance.availableCents)} more.`
-                        }
-                      </p>
-                    </div>
-                    <button
-                      onClick={handleCashout}
-                      disabled={payoutLoading || balance.availableCents < PAYOUT_MIN_CENTS}
-                      className="flex items-center gap-2 px-4 py-2.5 bg-positive text-white text-sm font-semibold rounded-lg hover:brightness-110 transition-all disabled:opacity-50 whitespace-nowrap"
-                    >
-                      <Icons.DollarSign className="w-4 h-4" />
-                      {payoutLoading ? 'Processing...' : `Cash Out ${fmtCents(balance.availableCents)}`}
-                    </button>
+              {/* Connect / Cashout — Under Construction */}
+              <div className="border-t border-border pt-4">
+                <div className="flex items-center gap-3 p-4 bg-warning/5 border border-warning/20 rounded-lg">
+                  <Icons.AlertTriangle className="w-5 h-5 text-warning flex-shrink-0" />
+                  <div>
+                    <p className="text-text-primary text-sm font-medium">Payouts — Under Construction</p>
+                    <p className="text-text-muted text-xs mt-0.5">Bank account connections and cash outs are coming soon. Your earnings are being tracked and will be available for withdrawal once this feature launches.</p>
                   </div>
                 </div>
-              )}
+              </div>
             </div>
           )}
 
