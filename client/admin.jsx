@@ -26,6 +26,7 @@ const NAV_ITEMS = [
   { key: 'announcements', label: 'Announcements' },
   { key: 'email', label: 'Mass Email' },
   { key: 'payouts', label: 'Payouts' },
+  { key: 'promo', label: 'Promo Generator' },
 ];
 
 const Nav = ({ view, setView, onLogout }) => (
@@ -637,6 +638,297 @@ const PayoutsView = ({ token }) => {
   );
 };
 
+// ─── Promo Generator view ────────────────────────────────────────────────────
+
+const { useRef } = React;
+const { toPng, toJpeg } = require('html-to-image');
+
+const PROMO_DEFAULTS = {
+  code: 'OTE',
+  headline: 'Your First Month\nIs On Us.',
+  accentWords: 'First Month',
+  subheadline: "Improving as a trader shouldn't cost a fortune. Track every trade, spot your edge, and grow — your first month is free.",
+  offerMain: 'First month FREE',
+  offerSub: 'on any plan',
+  badge: 'Limited time offer',
+};
+
+const PromoPreview = React.forwardRef(({ config, layout }, ref) => {
+  const isVertical = layout === 'vertical';
+
+  // Split headline into lines and highlight accent words
+  const renderHeadline = () => {
+    const lines = config.headline.split('\n');
+    return lines.map((line, i) => {
+      if (config.accentWords && line.includes(config.accentWords)) {
+        const parts = line.split(config.accentWords);
+        return (
+          <span key={i}>
+            {parts[0]}<span style={{ color: '#a3e635' }}>{config.accentWords}</span>{parts[1]}
+            {i < lines.length - 1 && <br />}
+          </span>
+        );
+      }
+      return <span key={i}>{line}{i < lines.length - 1 && <br />}</span>;
+    });
+  };
+
+  const containerStyle = {
+    width: isVertical ? 800 : 1456,
+    height: isVertical ? 1000 : 560,
+    background: '#0a0a0a',
+    position: 'relative',
+    overflow: 'hidden',
+    fontFamily: "'Inter', sans-serif",
+  };
+
+  const streakStyle = (top, left, rotate) => ({
+    position: 'absolute',
+    width: '200%',
+    height: '1px',
+    background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.04) 30%, rgba(255,255,255,0.04) 70%, transparent 100%)',
+    top, left, transform: `rotate(${rotate}deg)`,
+  });
+
+  const glowStyle = {
+    position: 'absolute',
+    ...(isVertical
+      ? { left: '50%', top: '55%', transform: 'translate(-50%, -50%)', width: 500, height: 500 }
+      : { right: 100, top: '50%', transform: 'translateY(-50%)', width: 400, height: 400 }),
+    background: 'radial-gradient(circle, rgba(163,230,53,0.08) 0%, transparent 70%)',
+    pointerEvents: 'none',
+  };
+
+  const contentStyle = {
+    position: 'relative',
+    zIndex: 2,
+    display: 'flex',
+    alignItems: isVertical ? 'center' : 'center',
+    justifyContent: isVertical ? 'flex-start' : 'space-between',
+    flexDirection: isVertical ? 'column' : 'row',
+    height: '100%',
+    padding: isVertical ? '50px 60px 40px' : '60px 80px',
+  };
+
+  return (
+    <div ref={ref} style={containerStyle}>
+      {/* Streaks */}
+      <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
+        <div style={streakStyle('15%', '-20%', -10)} />
+        <div style={streakStyle('45%', '-40%', -20)} />
+        <div style={streakStyle('75%', '-10%', -12)} />
+        <div style={streakStyle('90%', '-30%', -18)} />
+      </div>
+      {/* Glow */}
+      <div style={glowStyle} />
+
+      <div style={contentStyle}>
+        {/* Left / Top section */}
+        <div style={{ maxWidth: isVertical ? 520 : 600, textAlign: isVertical ? 'center' : 'left' }}>
+          {/* Logo */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: isVertical ? 50 : 40, justifyContent: isVertical ? 'center' : 'flex-start' }}>
+            <div style={{ fontSize: 32, fontWeight: 900, color: '#a3e635', letterSpacing: -1, fontFamily: "'Inter', sans-serif" }}>
+              <span style={{ display: 'inline-block', transform: 'scaleX(-1)' }}>R</span>R
+            </div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: '#fff', fontFamily: "'Inter', sans-serif" }}>RR Metrics</div>
+          </div>
+          {/* Headline */}
+          <div style={{ fontSize: isVertical ? 56 : 64, fontWeight: 900, color: '#fff', lineHeight: 1.05, marginBottom: isVertical ? 24 : 28, letterSpacing: -1 }}>
+            {renderHeadline()}
+          </div>
+          {/* Subheadline */}
+          <div style={{ fontSize: isVertical ? 18 : 19, fontWeight: 400, color: '#9ca3af', lineHeight: 1.6, maxWidth: 520, fontFamily: "'Inter', sans-serif", marginBottom: isVertical ? 48 : 0 }}>
+            {config.subheadline}
+          </div>
+        </div>
+
+        {/* Code card */}
+        <div style={{
+          width: isVertical ? 380 : 340,
+          background: 'rgba(255,255,255,0.03)',
+          border: '1px solid rgba(163,230,53,0.25)',
+          borderRadius: 16,
+          padding: '36px 40px 32px',
+          textAlign: 'center',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 4,
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#a3e635', letterSpacing: 4, textTransform: 'uppercase', marginBottom: 16, fontFamily: "'Inter', sans-serif" }}>
+            Promo Code
+          </div>
+          <div style={{ fontSize: 96, fontWeight: 800, color: '#a3e635', letterSpacing: 16, lineHeight: 1, marginBottom: 16, textShadow: '0 0 60px rgba(163,230,53,0.3), 0 0 120px rgba(163,230,53,0.1)', fontFamily: "'Inter', sans-serif" }}>
+            {config.code}
+          </div>
+          <div style={{ fontSize: 17, fontWeight: 700, color: '#fff', marginBottom: 4, fontFamily: "'Inter', sans-serif" }}>
+            {config.offerMain}
+          </div>
+          <div style={{ fontSize: 15, fontWeight: 400, color: '#9ca3af', marginBottom: 20, fontFamily: "'Inter', sans-serif" }}>
+            {config.offerSub}
+          </div>
+          <div style={{ display: 'inline-block', padding: '8px 24px', border: '1px solid rgba(163,230,53,0.5)', borderRadius: 999, fontSize: 14, fontWeight: 600, color: '#a3e635', letterSpacing: 0.5, fontFamily: "'Inter', sans-serif" }}>
+            {config.badge}
+          </div>
+        </div>
+      </div>
+
+      {/* Site URL */}
+      <div style={{ position: 'absolute', bottom: 30, right: isVertical ? 60 : 80, fontSize: 15, fontWeight: 400, color: '#6b7280', zIndex: 2, fontFamily: "'Inter', sans-serif" }}>
+        rrmetrics.com
+      </div>
+    </div>
+  );
+});
+
+const PromoGeneratorView = () => {
+  const [config, setConfig] = useState({ ...PROMO_DEFAULTS });
+  const [layout, setLayout] = useState('horizontal');
+  const [exporting, setExporting] = useState(false);
+  const previewRef = useRef(null);
+
+  const update = (key, value) => setConfig((prev) => ({ ...prev, [key]: value }));
+
+  const handleExport = async (format) => {
+    if (!previewRef.current) return;
+    setExporting(true);
+    try {
+      const exportFn = format === 'png' ? toPng : toJpeg;
+      const opts = { pixelRatio: 2, quality: format === 'jpg' ? 0.95 : undefined };
+      const dataUrl = await exportFn(previewRef.current, opts);
+      const link = document.createElement('a');
+      link.download = `promo-${config.code.toLowerCase()}-${layout}.${format}`;
+      link.href = dataUrl;
+      link.click();
+    } catch (err) {
+      console.error('Export failed:', err);
+    }
+    setExporting(false);
+  };
+
+  return (
+    <div className="p-8">
+      <h2 className="text-lg font-bold text-text-primary mb-6">Promo Generator</h2>
+
+      {/* Controls */}
+      <div className="bg-bg-surface border border-border rounded-xl p-5 mb-8">
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div>
+            <label className="block text-sm text-text-secondary mb-2">Promo Code</label>
+            <input
+              type="text"
+              value={config.code}
+              onChange={(e) => update('code', e.target.value.toUpperCase())}
+              className="w-full px-4 py-3 bg-bg-input border border-border rounded-lg text-text-primary text-sm font-mono"
+              placeholder="OTE"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-text-secondary mb-2">Accent Words (highlighted in green)</label>
+            <input
+              type="text"
+              value={config.accentWords}
+              onChange={(e) => update('accentWords', e.target.value)}
+              className="w-full px-4 py-3 bg-bg-input border border-border rounded-lg text-text-primary text-sm"
+              placeholder="First Month"
+            />
+          </div>
+        </div>
+        <div className="mb-4">
+          <label className="block text-sm text-text-secondary mb-2">Headline (use Enter for line breaks)</label>
+          <textarea
+            value={config.headline}
+            onChange={(e) => update('headline', e.target.value)}
+            rows={2}
+            className="w-full px-4 py-3 bg-bg-input border border-border rounded-lg text-text-primary text-sm resize-y"
+          />
+        </div>
+        <div className="mb-4">
+          <label className="block text-sm text-text-secondary mb-2">Subheadline</label>
+          <textarea
+            value={config.subheadline}
+            onChange={(e) => update('subheadline', e.target.value)}
+            rows={2}
+            className="w-full px-4 py-3 bg-bg-input border border-border rounded-lg text-text-primary text-sm resize-y"
+          />
+        </div>
+        <div className="grid grid-cols-3 gap-4 mb-4">
+          <div>
+            <label className="block text-sm text-text-secondary mb-2">Offer Main Text</label>
+            <input
+              type="text"
+              value={config.offerMain}
+              onChange={(e) => update('offerMain', e.target.value)}
+              className="w-full px-4 py-3 bg-bg-input border border-border rounded-lg text-text-primary text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-text-secondary mb-2">Offer Sub Text</label>
+            <input
+              type="text"
+              value={config.offerSub}
+              onChange={(e) => update('offerSub', e.target.value)}
+              className="w-full px-4 py-3 bg-bg-input border border-border rounded-lg text-text-primary text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-text-secondary mb-2">Badge Text</label>
+            <input
+              type="text"
+              value={config.badge}
+              onChange={(e) => update('badge', e.target.value)}
+              className="w-full px-4 py-3 bg-bg-input border border-border rounded-lg text-text-primary text-sm"
+            />
+          </div>
+        </div>
+
+        {/* Layout + Export buttons */}
+        <div className="flex items-center gap-4 pt-2 border-t border-border">
+          <div className="flex gap-2">
+            {['horizontal', 'vertical'].map((l) => (
+              <button
+                key={l}
+                type="button"
+                onClick={() => setLayout(l)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium capitalize transition-colors ${
+                  layout === l
+                    ? 'bg-accent text-accent-text'
+                    : 'bg-bg-input border border-border text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
+          <div className="ml-auto flex gap-2">
+            <button
+              type="button"
+              onClick={() => handleExport('png')}
+              disabled={exporting}
+              className="px-5 py-2 bg-accent text-accent-text text-sm font-semibold rounded-lg disabled:opacity-50 hover:brightness-110"
+            >
+              {exporting ? 'Exporting...' : 'Download PNG'}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleExport('jpg')}
+              disabled={exporting}
+              className="px-5 py-2 bg-bg-input border border-border text-text-secondary text-sm font-semibold rounded-lg disabled:opacity-50 hover:text-text-primary"
+            >
+              Download JPG
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Preview */}
+      <div className="overflow-x-auto rounded-xl border border-border">
+        <PromoPreview ref={previewRef} config={config} layout={layout} />
+      </div>
+    </div>
+  );
+};
+
 // ─── Manage user modal ────────────────────────────────────────────────────────
 
 const PLAN_BORDER = {
@@ -811,6 +1103,7 @@ const Dashboard = ({ token, onLogout }) => {
       case 'announcements': return <AnnouncementsView token={token} />;
       case 'email': return <EmailView token={token} />;
       case 'payouts': return <PayoutsView token={token} />;
+      case 'promo': return <PromoGeneratorView />;
       default: return null;
     }
   };

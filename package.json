@@ -38,6 +38,7 @@
     "express-session": "^1.18.2",
     "framer-motion": "^12.34.3",
     "helmet": "^8.1.0",
+    "html-to-image": "^1.11.13",
     "lucide-react": "^1.6.0",
     "mongoose": "^8.19.3",
     "nodemailer": "^8.0.1",
