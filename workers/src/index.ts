@@ -1,7 +1,9 @@
 import { Hono } from 'hono';
+export { RateLimiterDO } from './durable-objects/RateLimiter';
 import type { Env, AuthContext } from './bindings';
 import { securityHeaders } from './middleware/security';
 import { authMiddleware } from './middleware/supabase-auth';
+import { rateLimitMiddleware } from './middleware/rate-limit';
 import { refreshExpiringBrokerTokens } from './scheduled/broker-refresh';
 import accountRoutes from './routes/account';
 import tradeRoutes from './routes/trade';
@@ -35,6 +37,9 @@ const app = new Hono<HonoEnv>();
 // Global middleware
 app.use('*', securityHeaders);
 app.use('*', authMiddleware);
+
+// Rate limiting (after auth, before routes)
+app.use('/api/*', rateLimitMiddleware);
 
 // Health check
 app.get('/api/health', (c) => c.json({ status: 'ok' }));

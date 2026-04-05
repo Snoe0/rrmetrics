@@ -2,6 +2,7 @@ import type { SupabaseClient, User } from '@supabase/supabase-js';
 
 export interface Env {
   ASSETS: Fetcher;
+  RATE_LIMITER: DurableObjectNamespace;
   SUPABASE_URL: string;
   SUPABASE_PUBLISHABLE_KEY: string;
   SUPABASE_SECRET_KEY: string;

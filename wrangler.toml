@@ -19,6 +19,15 @@ SUPABASE_URL = "https://pmvrsprcwolttzdvuuyp.supabase.co"
 # Tradovate OAuth — set the secrets via: wrangler secret put TRADOVATE_CLIENT_ID
 #                                          wrangler secret put TRADOVATE_CLIENT_SECRET
 
+[durable_objects]
+bindings = [
+  { name = "RATE_LIMITER", class_name = "RateLimiterDO" }
+]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["RateLimiterDO"]
+
 [triggers]
 crons = ["0 * * * *", "0 5 * * *"]
 
