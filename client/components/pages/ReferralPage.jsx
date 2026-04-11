@@ -20,6 +20,9 @@ const ReferralPage = () => {
   const [stats, setStats] = useState({ total: 0, subscribed: 0, completed: 0 });
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState(null);
+  const [editingCode, setEditingCode] = useState(false);
+  const [customCode, setCustomCode] = useState('');
+  const [savingCode, setSavingCode] = useState(false);
 
   // Balance & payout state
   const [balance, setBalance] = useState(null);
@@ -27,6 +30,7 @@ const ReferralPage = () => {
   const [connectLoading, setConnectLoading] = useState(false);
   const [payoutLoading, setPayoutLoading] = useState(false);
   const [payoutSuccess, setPayoutSuccess] = useState(null);
+  const [redeemLoading, setRedeemLoading] = useState(false);
 
   // Bank setup form state
   const [showSetupForm, setShowSetupForm] = useState(false);
@@ -68,6 +72,31 @@ const ReferralPage = () => {
       setError('Failed to generate code.');
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleSaveCustomCode = async () => {
+    setSavingCode(true);
+    setError(null);
+    try {
+      const res = await authFetch('/api/referral/customize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: customCode }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Failed to set code.');
+      } else {
+        setCode(data.code);
+        setLink(data.link);
+        setEditingCode(false);
+        setCustomCode('');
+      }
+    } catch {
+      setError('Failed to set code.');
+    } finally {
+      setSavingCode(false);
     }
   };
 
@@ -150,6 +179,33 @@ const ReferralPage = () => {
       setError('Payout request failed. Please try again.');
     } finally {
       setPayoutLoading(false);
+    }
+  };
+
+  const handleRedeemCredit = async () => {
+    if (redeemLoading) return;
+    if (!window.confirm('Redeem your earnings for one free month of subscription? This will deduct one month\'s subscription cost from your available balance and apply it as a credit on your next invoice.')) return;
+    setRedeemLoading(true);
+    setError(null);
+    setPayoutSuccess(null);
+    try {
+      const res = await authFetch('/api/referral/redeem-credit', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Failed to redeem credit.');
+      } else {
+        setPayoutSuccess(`Success! ${fmtCents(data.creditCents)} credit applied to your next invoice — that's one free month.`);
+        const balRes = await authFetch('/api/referral/balance');
+        const balData = await balRes.json();
+        if (balData) {
+          setBalance(balData);
+          if (balData.payoutHistory) setPayoutHistory(balData.payoutHistory);
+        }
+      }
+    } catch {
+      setError('Failed to redeem credit.');
+    } finally {
+      setRedeemLoading(false);
     }
   };
 
@@ -238,7 +294,48 @@ const ReferralPage = () => {
                 {copied ? 'Copied!' : 'Copy'}
               </button>
             </div>
-            <p className="text-text-muted text-xs mt-3">Your code: <span className="font-mono text-text-secondary">{code}</span></p>
+            <div className="flex items-center justify-between mt-3 gap-2">
+              <p className="text-text-muted text-xs">Your code: <span className="font-mono text-text-secondary">{code}</span></p>
+              {!editingCode && stats.total === 0 && (
+                <button
+                  onClick={() => { setEditingCode(true); setCustomCode(code); }}
+                  className="text-xs text-accent hover:brightness-110"
+                >
+                  Customize
+                </button>
+              )}
+              {stats.total > 0 && (
+                <span className="text-xs text-text-muted">Locked — in use by referrals</span>
+              )}
+            </div>
+            {editingCode && (
+              <div className="mt-3 p-3 bg-bg-input border border-border rounded-lg">
+                <label className="block text-text-secondary text-xs font-medium mb-1">Custom code (4-20 chars, letters/numbers/dashes)</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={customCode}
+                    onChange={(e) => setCustomCode(e.target.value.toUpperCase())}
+                    maxLength={20}
+                    className="flex-1 bg-bg-page border border-border rounded-lg px-3 py-2 text-sm font-mono text-text-primary focus:outline-none focus:border-accent"
+                    placeholder="YOURCODE"
+                  />
+                  <button
+                    onClick={handleSaveCustomCode}
+                    disabled={savingCode || !customCode.trim()}
+                    className="px-3 py-2 bg-accent text-accent-text text-xs font-semibold rounded-lg hover:brightness-110 disabled:opacity-50"
+                  >
+                    {savingCode ? 'Saving...' : 'Save'}
+                  </button>
+                  <button
+                    onClick={() => { setEditingCode(false); setCustomCode(''); setError(null); }}
+                    className="px-3 py-2 bg-bg-page border border-border text-text-secondary text-xs rounded-lg hover:brightness-110"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
           </>
         ) : (
           <>
@@ -246,14 +343,52 @@ const ReferralPage = () => {
             <p className="text-text-secondary text-sm mb-4">
               Generate a unique link to share with friends. A link is only created when you ask for one.
             </p>
-            <button
-              onClick={handleGenerate}
-              disabled={generating}
-              className="flex items-center gap-2 px-4 py-2.5 bg-accent text-accent-text text-sm font-semibold rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
-            >
-              <Icons.Gift className="w-4 h-4" />
-              {generating ? 'Generating...' : 'Generate My Referral Link'}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={handleGenerate}
+                disabled={generating}
+                className="flex items-center gap-2 px-4 py-2.5 bg-accent text-accent-text text-sm font-semibold rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
+              >
+                <Icons.Gift className="w-4 h-4" />
+                {generating ? 'Generating...' : 'Generate My Referral Link'}
+              </button>
+              {!editingCode && (
+                <button
+                  onClick={() => { setEditingCode(true); setCustomCode(''); }}
+                  className="px-4 py-2.5 border border-border text-text-secondary text-sm rounded-lg hover:brightness-110"
+                >
+                  Choose custom code
+                </button>
+              )}
+            </div>
+            {editingCode && (
+              <div className="mt-3 p-3 bg-bg-input border border-border rounded-lg">
+                <label className="block text-text-secondary text-xs font-medium mb-1">Custom code (4-20 chars, letters/numbers/dashes)</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={customCode}
+                    onChange={(e) => setCustomCode(e.target.value.toUpperCase())}
+                    maxLength={20}
+                    className="flex-1 bg-bg-page border border-border rounded-lg px-3 py-2 text-sm font-mono text-text-primary focus:outline-none focus:border-accent"
+                    placeholder="YOURCODE"
+                  />
+                  <button
+                    onClick={handleSaveCustomCode}
+                    disabled={savingCode || !customCode.trim()}
+                    className="px-3 py-2 bg-accent text-accent-text text-xs font-semibold rounded-lg hover:brightness-110 disabled:opacity-50"
+                  >
+                    {savingCode ? 'Saving...' : 'Save'}
+                  </button>
+                  <button
+                    onClick={() => { setEditingCode(false); setCustomCode(''); setError(null); }}
+                    className="px-3 py-2 bg-bg-page border border-border text-text-secondary text-xs rounded-lg hover:brightness-110"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -369,7 +504,7 @@ const ReferralPage = () => {
                 </div>
               ) : (
                 <div className="border-t border-border pt-4">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
                     <div>
                       <p className="text-text-secondary text-sm">
                         {balance.availableCents >= PAYOUT_MIN_CENTS
@@ -378,15 +513,29 @@ const ReferralPage = () => {
                         }
                       </p>
                     </div>
-                    <button
-                      onClick={handleCashout}
-                      disabled={payoutLoading || balance.availableCents < PAYOUT_MIN_CENTS}
-                      className="flex items-center gap-2 px-4 py-2.5 bg-positive text-white text-sm font-semibold rounded-lg hover:brightness-110 transition-all disabled:opacity-50 whitespace-nowrap"
-                    >
-                      <Icons.DollarSign className="w-4 h-4" />
-                      {payoutLoading ? 'Requesting...' : `Cash Out ${fmtCents(balance.availableCents)}`}
-                    </button>
+                    <div className="flex gap-2 flex-wrap">
+                      <button
+                        onClick={handleRedeemCredit}
+                        disabled={redeemLoading || balance.availableCents <= 0}
+                        title="Apply your earnings as credit toward your next invoice"
+                        className="flex items-center gap-2 px-4 py-2.5 bg-accent text-accent-text text-sm font-semibold rounded-lg hover:brightness-110 transition-all disabled:opacity-50 whitespace-nowrap"
+                      >
+                        <Icons.Gift className="w-4 h-4" />
+                        {redeemLoading ? 'Redeeming...' : 'Redeem Free Month'}
+                      </button>
+                      <button
+                        onClick={handleCashout}
+                        disabled={payoutLoading || balance.availableCents < PAYOUT_MIN_CENTS}
+                        className="flex items-center gap-2 px-4 py-2.5 bg-positive text-white text-sm font-semibold rounded-lg hover:brightness-110 transition-all disabled:opacity-50 whitespace-nowrap"
+                      >
+                        <Icons.DollarSign className="w-4 h-4" />
+                        {payoutLoading ? 'Requesting...' : `Cash Out ${fmtCents(balance.availableCents)}`}
+                      </button>
+                    </div>
                   </div>
+                  <p className="text-text-muted text-xs mt-2">
+                    Don't want to wait for a payout? Redeem your earnings as a credit on your next subscription invoice.
+                  </p>
                 </div>
               )}
             </div>

@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import Stripe from 'stripe';
 import type { Env, AuthContext } from '../bindings';
 import * as referralDb from '../db/referrals';
 import * as commissionsDb from '../db/commissions';
@@ -46,6 +47,23 @@ referral.post('/api/referral/generate', requiresLogin, async (c) => {
   } catch (err) {
     console.error('POST /api/referral/generate error:', err);
     return c.json({ error: 'Failed to generate referral code' }, 500);
+  }
+});
+
+// POST /api/referral/customize — set/change to a custom code
+referral.post('/api/referral/customize', requiresLogin, async (c) => {
+  const user = c.get('user');
+  let body: any;
+  try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid request.' }, 400); }
+
+  const serviceClient = createServiceClient(c.env);
+  try {
+    const result = await referralDb.setCustomCode(serviceClient, user.id, body?.code ?? '');
+    if (result.error) return c.json({ error: result.error }, 400);
+    return c.json({ code: result.code, link: `${c.env.APP_URL}/?ref=${result.code}` });
+  } catch (err) {
+    console.error('POST /api/referral/customize error:', err);
+    return c.json({ error: 'Failed to set referral code.' }, 500);
   }
 });
 
@@ -171,6 +189,104 @@ referral.post('/api/referral/connect', requiresLogin, async (c) => {
   } catch (err: any) {
     console.error('POST /api/referral/connect error:', err);
     return c.json({ error: err?.message || 'Failed to set up payout account.' }, 500);
+  }
+});
+
+// POST /api/referral/redeem-credit — exchange available earnings for a free month of subscription
+referral.post('/api/referral/redeem-credit', requiresLogin, async (c) => {
+  const user = c.get('user');
+  const profile = c.get('profile');
+  const serviceClient = createServiceClient(c.env);
+
+  if (!c.env.STRIPE_SECRET_KEY) {
+    return c.json({ error: 'Billing is not configured.' }, 503);
+  }
+  if (!profile.stripe_customer_id || !profile.stripe_subscription_id) {
+    return c.json({ error: 'You need an active subscription to redeem a free month.' }, 400);
+  }
+
+  const stripe = new Stripe(c.env.STRIPE_SECRET_KEY);
+
+  try {
+    // Determine cost of one month — use the recurring price unit_amount, normalize yearly to monthly
+    const subscription = await stripe.subscriptions.retrieve(profile.stripe_subscription_id, {
+      expand: ['items.data.price'],
+    });
+    if (subscription.status !== 'active' && subscription.status !== 'trialing') {
+      return c.json({ error: 'Your subscription is not active.' }, 400);
+    }
+    const item = subscription.items.data[0];
+    const price = item?.price;
+    if (!price || price.unit_amount == null) {
+      return c.json({ error: 'Could not determine subscription price.' }, 500);
+    }
+    const interval = price.recurring?.interval;
+    const intervalCount = price.recurring?.interval_count ?? 1;
+    let monthlyCents: number;
+    if (interval === 'month') {
+      monthlyCents = Math.round(price.unit_amount / intervalCount);
+    } else if (interval === 'year') {
+      monthlyCents = Math.round(price.unit_amount / (12 * intervalCount));
+    } else {
+      return c.json({ error: 'Unsupported billing interval for credit redemption.' }, 400);
+    }
+
+    // Atomically reserve the funds (bypass min/cooldown)
+    let payoutRequest;
+    try {
+      const { data, error } = await serviceClient.rpc('create_payout_atomic', {
+        p_user_id: user.id,
+        p_amount_cents: monthlyCents,
+        p_min_cents: 0,
+        p_cooldown_hours: 0,
+      });
+      if (error) throw new Error(error.message);
+      payoutRequest = data;
+    } catch (err: any) {
+      const msg = String(err.message || '');
+      if (msg.includes('Insufficient')) {
+        return c.json({ error: `You need at least $${(monthlyCents / 100).toFixed(2)} in available earnings to redeem a free month.` }, 400);
+      }
+      return c.json({ error: msg || 'Failed to redeem credit.' }, 400);
+    }
+
+    // Apply Stripe customer balance credit (negative amount = credit toward future invoices)
+    let balanceTx;
+    try {
+      balanceTx = await stripe.customers.createBalanceTransaction(profile.stripe_customer_id, {
+        amount: -monthlyCents,
+        currency: (price.currency || 'usd').toLowerCase(),
+        description: `Referral credit redemption — 1 month free (payout_request ${payoutRequest.id})`,
+      });
+    } catch (err: any) {
+      // Roll back the reservation so the user's balance is released
+      await serviceClient
+        .from('payout_requests')
+        .update({
+          status: 'failed',
+          admin_note: `Stripe credit failed: ${err?.message || 'unknown'}`,
+          processed_at: new Date().toISOString(),
+        })
+        .eq('id', payoutRequest.id);
+      console.error('Stripe credit error:', err);
+      return c.json({ error: 'Failed to apply credit. Your balance has not been deducted.' }, 500);
+    }
+
+    // Mark the payout_request as completed so it counts as paid out
+    await serviceClient
+      .from('payout_requests')
+      .update({
+        status: 'completed',
+        stripe_transfer_id: balanceTx.id,
+        admin_note: 'Redeemed for subscription credit',
+        processed_at: new Date().toISOString(),
+      })
+      .eq('id', payoutRequest.id);
+
+    return c.json({ ok: true, creditCents: monthlyCents });
+  } catch (err: any) {
+    console.error('POST /api/referral/redeem-credit error:', err);
+    return c.json({ error: err?.message || 'Failed to redeem credit.' }, 500);
   }
 });
 

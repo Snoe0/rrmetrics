@@ -34,6 +34,88 @@ export async function generateCode(supabase: SupabaseClient, userId: string): Pr
   throw new Error('Failed to generate a unique referral code after 5 attempts');
 }
 
+// Blocked substrings for custom codes (case-insensitive). Intentionally short —
+// catches obvious slurs/profanity. Substring match so variants are caught.
+const BLOCKED_SUBSTRINGS = [
+  'nigg', 'nigr', 'fag', 'kike', 'spic', 'chink', 'gook', 'tranny', 'retard',
+  'cunt', 'fuck', 'shit', 'bitch', 'whore', 'slut', 'rape', 'nazi', 'hitler',
+  'kkk', 'porn', 'sex', 'cock', 'dick', 'pussy', 'anal', 'cum', 'jizz',
+  'admin', 'rrmetrics', 'support', 'official',
+];
+
+export function validateCustomCode(raw: string): { ok: true; code: string } | { ok: false; error: string } {
+  if (typeof raw !== 'string') return { ok: false, error: 'Code is required.' };
+  const code = raw.trim().toUpperCase();
+  if (code.length < 4 || code.length > 20) {
+    return { ok: false, error: 'Code must be 4-20 characters.' };
+  }
+  if (!/^[A-Z0-9-]+$/.test(code)) {
+    return { ok: false, error: 'Code can only contain letters, numbers, and dashes.' };
+  }
+  if (!/[A-Z]/.test(code)) {
+    return { ok: false, error: 'Code must contain at least one letter.' };
+  }
+  if (code.startsWith('-') || code.endsWith('-') || code.includes('--')) {
+    return { ok: false, error: 'Code cannot start/end with a dash or have consecutive dashes.' };
+  }
+  const lower = code.toLowerCase();
+  if (BLOCKED_SUBSTRINGS.some((w) => lower.includes(w))) {
+    return { ok: false, error: 'That code is not allowed.' };
+  }
+  return { ok: true, code };
+}
+
+/**
+ * Sets a custom referral code for a user. Must be called with a service-role
+ * client (RLS has no UPDATE policy). Upserts so users without an existing code
+ * can claim a custom one directly.
+ */
+export async function setCustomCode(
+  supabase: SupabaseClient,
+  userId: string,
+  rawCode: string,
+): Promise<{ error?: string; code?: string }> {
+  const validation = validateCustomCode(rawCode);
+  if (!validation.ok) return { error: validation.error };
+  const code = validation.code;
+
+  // Lock the code once anyone has used it — changing it would break their links
+  const { count: usesCount } = await supabase
+    .from('referral_uses')
+    .select('id', { count: 'exact', head: true })
+    .eq('referrer_id', userId);
+  if ((usesCount ?? 0) > 0) {
+    return { error: 'You cannot change your code once people have signed up using it.' };
+  }
+
+  // Uniqueness check (case-insensitive via upper-cased storage)
+  const { data: existing } = await supabase
+    .from('referral_codes')
+    .select('user_id')
+    .eq('code', code)
+    .maybeSingle();
+
+  if (existing && existing.user_id !== userId) {
+    return { error: 'That code is already taken.' };
+  }
+  if (existing && existing.user_id === userId) {
+    return { code };
+  }
+
+  // Upsert by user_id (user_id is UNIQUE)
+  const { error } = await supabase
+    .from('referral_codes')
+    .upsert({ user_id: userId, code }, { onConflict: 'user_id' });
+
+  if (error) {
+    if (error.message.includes('unique') || error.message.includes('duplicate')) {
+      return { error: 'That code is already taken.' };
+    }
+    return { error: 'Failed to set referral code.' };
+  }
+  return { code };
+}
+
 /** Returns referral stats for a referrer */
 export async function getStats(
   supabase: SupabaseClient,
