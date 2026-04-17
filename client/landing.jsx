@@ -250,7 +250,7 @@ const SocialProofBar = () => {
       <div className="max-w-4xl mx-auto">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
           <CountUpStat value={12} suffix="K+" label="Trades Logged" />
-          <CountUpStat value={500} suffix="+" label="Active Traders" />
+          <CountUpStat value={24} suffix="/7" label="Automated Sync" />
           <CountUpStat value={99} suffix="%" label="Uptime" />
           <CountUpStat value={100} suffix="%" label="Secure" />
         </div>
