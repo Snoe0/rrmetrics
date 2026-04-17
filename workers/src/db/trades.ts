@@ -118,7 +118,7 @@ export async function createTrade(
       screenshot: data.screenshot || null,
       comments: data.comments || '',
       is_eval: data.isEval || false,
-      account: data.account || null,
+      account: data.account || 'Manual',
     })
     .select()
     .single();
@@ -168,7 +168,7 @@ export async function updateTrade(
       screenshot: data.screenshot || null,
       comments: data.comments || '',
       is_eval: data.isEval || false,
-      account: data.account || null,
+      account: data.account || 'Manual',
     })
     .eq('id', data._id)
     .eq('user_id', userId)
