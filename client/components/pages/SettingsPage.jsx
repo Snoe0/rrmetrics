@@ -1,6 +1,6 @@
 const React = require('react');
 const { useState, useEffect, useCallback } = React;
-const { authFetch, supabase } = require('../../helper.js');
+const { authFetch } = require('../../helper.js');
 const { TAG_COLOR_PRESETS } = require('../../utils/tagConstants');
 const Icons = require('../shared/Icons');
 const { useBrokerConnection, TRADOVATE_BROKERS, BROKER_CONFIGS } = require('../../hooks/useBrokerConnection');
@@ -748,7 +748,6 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
   const tabs = [
     { id: 'brokers', label: 'Broker Connections' },
     { id: 'tags', label: 'Tags' },
-    { id: 'account', label: 'Account' },
     { id: 'preferences', label: 'Preferences' },
   ];
 
@@ -1285,26 +1284,6 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                 ))}
               </div>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* Account tab */}
-      {activeTab === 'account' && (
-        <div className="space-y-6">
-          {/* Account settings section */}
-          <div className="bg-bg-surface border border-border rounded-xl p-6 space-y-4">
-            <h3 className="text-text-primary font-semibold">Account Settings</h3>
-            <div className="space-y-3">
-              <a href="/changePass" className="flex items-center gap-3 px-4 py-3 bg-bg-input border border-border rounded-lg text-text-secondary hover:text-text-primary transition-colors no-underline">
-                <Icons.Lock className="w-5 h-5" />
-                <span className="text-sm">Change Password</span>
-              </a>
-              <button onClick={() => { supabase.auth.signOut().then(() => { window.location = '/'; }); }} className="flex items-center gap-3 px-4 py-3 bg-bg-input border border-border rounded-lg text-text-secondary hover:text-negative transition-colors w-full">
-                <Icons.LogOut className="w-5 h-5" />
-                <span className="text-sm">Log Out</span>
-              </button>
-            </div>
           </div>
         </div>
       )}

@@ -2,7 +2,8 @@ import 'dotenv/config';
 import { serve } from '@hono/node-server';
 import app from './index';
 import { ensureDataDirs, getEnv, getPort, getSecretKey } from './config';
-import { initDb } from './db/connection';
+import { getDb, initDb } from './db/connection';
+import { ensureLocalUser } from './db/profiles';
 import { refreshExpiringBrokerTokens } from './scheduled/broker-refresh';
 
 const BROKER_REFRESH_INTERVAL_MS = 60 * 60 * 1000; // hourly
@@ -13,11 +14,12 @@ const runBrokerRefresh = (env: ReturnType<typeof getEnv>) => {
   });
 };
 
-const main = () => {
-  // Bootstrap: data dirs, server secret, database schema
+const main = async () => {
+  // Bootstrap: data dirs, server secret, database schema, local user
   ensureDataDirs();
   getSecretKey();
   initDb();
+  await ensureLocalUser(getDb());
 
   const env = getEnv();
   const port = getPort();
@@ -34,4 +36,7 @@ const main = () => {
   setInterval(() => runBrokerRefresh(env), BROKER_REFRESH_INTERVAL_MS);
 };
 
-main();
+main().catch((err) => {
+  console.error('Failed to start server:', err);
+  process.exit(1);
+});

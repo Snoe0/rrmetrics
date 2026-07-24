@@ -36,35 +36,26 @@ export async function findById(db: Db, id: string): Promise<ProfileRow | null> {
   return row ? rowFromDb(row) : null;
 }
 
-export async function findByEmail(db: Db, email: string): Promise<ProfileRow | null> {
-  const row = db.prepare('SELECT * FROM profiles WHERE email = ?').get(email);
-  return row ? rowFromDb(row) : null;
-}
+/**
+ * Resolves the single local user for this self-hosted install. Adopts the
+ * oldest existing profile (preserving pre-existing single-user data) or creates
+ * a default one. Used in place of authentication now that the app is local-only.
+ */
+export async function ensureLocalUser(db: Db): Promise<ProfileRow> {
+  const existing = db
+    .prepare('SELECT * FROM profiles ORDER BY created_at ASC LIMIT 1')
+    .get();
+  if (existing) return rowFromDb(existing);
 
-export async function createProfile(
-  db: Db,
-  data: { email: string; passwordHash: string },
-): Promise<ProfileRow> {
   const id = generateId();
   db.prepare(
-    `INSERT INTO profiles (id, email, password_hash, created_at)
-     VALUES (?, ?, ?, ?)`,
-  ).run(id, data.email, data.passwordHash, new Date().toISOString());
+    `INSERT INTO profiles (id, email, password_hash, onboarding_completed, created_at)
+     VALUES (?, ?, ?, 1, ?)`,
+  ).run(id, 'local@localhost', '', new Date().toISOString());
 
   const row = await findById(db, id);
-  if (!row) throw new Error('Failed to create profile');
+  if (!row) throw new Error('Failed to create local user');
   return row;
-}
-
-export async function updatePasswordHash(
-  db: Db,
-  id: string,
-  passwordHash: string,
-): Promise<void> {
-  const result = db
-    .prepare('UPDATE profiles SET password_hash = ? WHERE id = ?')
-    .run(passwordHash, id);
-  if (result.changes === 0) throw new Error('Profile not found');
 }
 
 export async function updateById(

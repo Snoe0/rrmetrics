@@ -11,7 +11,6 @@
     "test": "echo \"Tests complete\"",
     "start": "tsx server/src/node.ts",
     "dev": "tsx watch server/src/node.ts",
-    "reset-password": "tsx server/scripts/reset-password.ts",
     "seed-demo": "tsx server/scripts/seed-demo.ts"
   },
   "keywords": [

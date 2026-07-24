@@ -3,7 +3,6 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import type { Env, AuthContext } from './bindings';
 import { securityHeaders } from './middleware/security';
 import { authMiddleware } from './middleware/auth';
-import authRoutes from './routes/auth';
 import uploadRoutes from './routes/uploads';
 import accountRoutes from './routes/account';
 import tradeRoutes from './routes/trade';
@@ -34,7 +33,6 @@ app.use('*', authMiddleware);
 app.get('/api/health', (c) => c.json({ status: 'ok' }));
 
 // API routes (must be before page routes to take precedence)
-app.route('/', authRoutes);
 app.route('/', uploadRoutes);
 app.route('/', accountRoutes);
 app.route('/', tradeRoutes);

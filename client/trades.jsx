@@ -1,5 +1,5 @@
 const helper = require('./helper.js');
-const { authFetch, supabase } = helper;
+const { authFetch } = helper;
 const React = require('react');
 const { useState, useEffect } = React;
 const { createRoot } = require('react-dom/client');
@@ -497,21 +497,12 @@ const App = () => {
 };
 
 const init = () => {
-  const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
-    if (event === 'INITIAL_SESSION') {
-      // Clean up OAuth hash fragments from URL
-      if (window.location.hash) {
-        window.history.replaceState(null, '', window.location.pathname);
-      }
-      if (!session) {
-        window.location = '/login';
-        return;
-      }
-      listener.subscription.unsubscribe();
-      const root = createRoot(document.getElementById('app'));
-      root.render(<App />);
-    }
-  });
+  // Clean up any leftover OAuth hash fragments from the URL.
+  if (window.location.hash) {
+    window.history.replaceState(null, '', window.location.pathname);
+  }
+  const root = createRoot(document.getElementById('app'));
+  root.render(<App />);
 };
 
 window.onload = init;

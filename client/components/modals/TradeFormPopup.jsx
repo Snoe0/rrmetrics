@@ -1,7 +1,7 @@
 const React = require('react');
 const { useState, useEffect, useRef } = React;
 const helper = require('../../helper.js');
-const { authFetch, supabase } = helper;
+const { authFetch, postScreenshot } = helper;
 const Icons = require('../shared/Icons');
 const TickerAutofill = require('../shared/TickerAutofill');
 const ScreenshotMarkupModal = require('../shared/ScreenshotMarkupModal');
@@ -128,18 +128,7 @@ const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, prefillD
   const uploadScreenshot = async (dataUrl) => {
     setIsUploading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-      const base64 = dataUrl.split(',')[1];
-      const byteChars = atob(base64);
-      const byteArr = new Uint8Array(byteChars.length);
-      for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
-      const blob = new Blob([byteArr], { type: 'image/jpeg' });
-      const fileName = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
-      const { data, error } = await supabase.storage.from('trade-screenshots').upload(fileName, blob, { contentType: 'image/jpeg', upsert: false });
-      if (error) throw new Error(error.message);
-      const { data: urlData } = supabase.storage.from('trade-screenshots').getPublicUrl(data.path);
-      return urlData.publicUrl;
+      return await postScreenshot(dataUrl);
     } finally {
       setIsUploading(false);
     }

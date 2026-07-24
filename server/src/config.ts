@@ -52,11 +52,6 @@ export function getSecretKey(): string {
   return generated;
 }
 
-/** Secret used for JWT HS256 signing. */
-export function getJwtSecret(): string {
-  return getSecretKey();
-}
-
 /**
  * Builds the runtime environment/config object passed to the Hono app
  * (available in routes as `c.env`). Every value is optional with a sane

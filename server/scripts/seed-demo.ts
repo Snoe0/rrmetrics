@@ -1,18 +1,14 @@
 /**
- * Seeds a demo account with realistic trading history.
+ * Seeds the local journal with realistic sample trading history.
  * Usage: npm run seed-demo
- * Login afterwards with demo@example.com / demo1234
+ * The data lands under the local user; just open the app to explore it.
  */
 import 'dotenv/config';
-import bcrypt from 'bcryptjs';
 import { initDb } from '../src/db/connection';
 import * as profilesDb from '../src/db/profiles';
 import * as tradesDb from '../src/db/trades';
 import * as tagsDb from '../src/db/tags';
 import * as dailyNotesDb from '../src/db/daily-notes';
-
-const DEMO_EMAIL = 'demo@example.com';
-const DEMO_PASSWORD = 'demo1234';
 
 interface Instrument {
   ticker: string;
@@ -51,16 +47,15 @@ const main = async () => {
   const db = initDb();
   const rand = mulberry32(42);
 
-  let profile = await profilesDb.findByEmail(db, DEMO_EMAIL);
-  if (profile) {
-    console.log(`Demo account already exists (${DEMO_EMAIL}) — skipping. Delete data/rrmetrics.db to reseed.`);
+  const profile = await profilesDb.ensureLocalUser(db);
+
+  const existing = db
+    .prepare('SELECT COUNT(*) AS n FROM trades WHERE user_id = ?')
+    .get(profile.id) as { n: number };
+  if (existing.n > 0) {
+    console.log('The local journal already has trades — skipping seed. Delete data/rrmetrics.db to reseed.');
     return;
   }
-
-  const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 10);
-  profile = await profilesDb.createProfile(db, { email: DEMO_EMAIL, passwordHash });
-  // Demo data speaks for itself — skip the first-run onboarding questionnaire
-  db.prepare('UPDATE profiles SET onboarding_completed = 1 WHERE id = ?').run(profile.id);
 
   const tagNames: Array<{ name: string; color: string }> = [
     { name: 'Breakout', color: '#22c55e' },
@@ -136,7 +131,7 @@ const main = async () => {
     }
   }
 
-  console.log(`Seeded demo account ${DEMO_EMAIL} (password: ${DEMO_PASSWORD})`);
+  console.log('Seeded the local journal with sample data — open the app to explore it.');
   console.log(`  ${totalTrades} trades, ${tagNames.length} tags across ${days} days`);
 };
 

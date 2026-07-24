@@ -3,7 +3,6 @@ const { useState, useRef, useEffect, useCallback } = React;
 const Icons = require('./shared/Icons');
 const AccountSwitcher = require('./shared/AccountSwitcher');
 const { cn } = require('../lib/utils');
-const { supabase } = require('../helper');
 
 const MIN_WIDTH = 64;
 const COLLAPSE_THRESHOLD = 140;
@@ -11,7 +10,6 @@ const DEFAULT_WIDTH = 240;
 
 const Sidebar = ({ currentPage, onNavigate, onCollapsedChange, onWidthChange, trades, selectedAccounts, setSelectedAccounts, accountBrokers }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [accountOpen, setAccountOpen] = useState(false);
   const [width, setWidth] = useState(() => {
     const stored = localStorage.getItem('sidebar-width');
     return stored ? Number(stored) : DEFAULT_WIDTH;
@@ -82,23 +80,6 @@ const Sidebar = ({ currentPage, onNavigate, onCollapsedChange, onWidthChange, tr
     onNavigate(id);
     setSidebarOpen(false);
   };
-
-  const handleSignOut = () => {
-    supabase.auth.signOut().then(() => { window.location.href = '/'; });
-  };
-
-  const accountMenuContent = (
-    <>
-      <a href="/changePass" className="flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:bg-bg-input hover:text-text-primary transition-colors no-underline">
-        <Icons.Lock className="w-4 h-4" />
-        Change Password
-      </a>
-      <button onClick={handleSignOut} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:bg-bg-input hover:text-text-primary transition-colors">
-        <Icons.LogOut className="w-4 h-4" />
-        Log Out
-      </button>
-    </>
-  );
 
   const sidebarWidth = isCollapsed ? MIN_WIDTH : width;
 
@@ -244,46 +225,12 @@ const Sidebar = ({ currentPage, onNavigate, onCollapsedChange, onWidthChange, tr
 
         </div>
 
-        {/* Account section */}
-        <div className="px-3 pb-4 border-t border-border pt-3">
-          <div className="relative">
-            <button
-              className={`w-full flex items-center px-3 py-2.5 rounded-lg text-sm text-text-secondary hover:bg-bg-surface transition-colors ${isCollapsed ? 'justify-center gap-0' : 'gap-3'}`}
-              onClick={(e) => { e.stopPropagation(); setAccountOpen(!accountOpen); }}
-              title={isCollapsed ? 'Account' : undefined}
-            >
-              <div className="w-8 h-8 bg-bg-surface border border-border rounded-full flex items-center justify-center flex-shrink-0">
-                <Icons.User className="w-4 h-4" />
-              </div>
-              <span className={`flex-1 text-left text-text-primary text-sm transition-opacity duration-200 whitespace-nowrap ${isCollapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100'}`}>
-                Account
-              </span>
-              {!isCollapsed && (accountOpen ? <Icons.ChevronUp className="w-4 h-4" /> : <Icons.ChevronDown className="w-4 h-4" />)}
-            </button>
-            {accountOpen && !isCollapsed && (
-              <div className="absolute bottom-full left-0 right-0 mb-1 bg-bg-surface border border-border rounded-lg overflow-hidden shadow-lg">
-                {accountMenuContent}
-              </div>
-            )}
-          </div>
-        </div>
-
         {/* Drag handle */}
         <div
           className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-accent/30 active:bg-accent/50 transition-colors hidden lg:block"
           onMouseDown={handleMouseDown}
         />
       </nav>
-
-      {/* Account side panel — outside nav to escape CSS transform containing block */}
-      {accountOpen && isCollapsed && (
-        <>
-          <div className="fixed inset-0 z-[59]" onClick={() => setAccountOpen(false)} />
-          <div className="fixed left-16 bottom-4 w-48 bg-bg-surface border border-border rounded-lg overflow-hidden shadow-lg z-[60]">
-            {accountMenuContent}
-          </div>
-        </>
-      )}
     </>
   );
 };

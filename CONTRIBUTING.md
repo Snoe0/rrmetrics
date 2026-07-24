@@ -23,7 +23,7 @@ npm run build:watch
 Open http://localhost:8459. To get realistic data to work with:
 
 ```bash
-npm run seed-demo    # then log in as demo@example.com / demo1234
+npm run seed-demo    # fills the local journal with sample trades
 ```
 
 The first run creates `data/` (SQLite database, screenshots dir, secret key) automatically. Delete `data/` any time to start fresh.
@@ -34,9 +34,7 @@ The first run creates `data/` (SQLite database, screenshots dir, secret key) aut
 rrmetrics/
 ├── client/                  # React 19 client (JSX, no TypeScript)
 │   ├── trades.jsx           # main app entry (webpack "app" bundle)
-│   ├── login.jsx            # login/signup page entry
-│   ├── changepass.jsx       # password change page entry
-│   ├── supabase.js          # zero-dependency API/auth shim (talks to /api/*)
+│   ├── helper.js            # authFetch + postScreenshot (talks to /api/*)
 │   ├── components/
 │   │   ├── pages/           # one component per page (Dashboard, Analytics, ...)
 │   │   ├── modals/          # trade form, CSV import, sync popup
@@ -53,11 +51,11 @@ rrmetrics/
 │   │   ├── config.ts        # paths, port, secret key, env
 │   │   ├── routes/          # one file per API area (trade, tag, tradovate, ...)
 │   │   ├── db/              # schema.sql + one module per table group
-│   │   ├── middleware/      # auth (JWT) and security headers
+│   │   ├── middleware/      # local-user context and security headers
 │   │   ├── services/        # broker API clients (TradovateAPI, ProjectXAPI, ...)
 │   │   ├── scheduled/       # hourly broker token refresh
 │   │   └── utils/           # crypto, id generation, round-trip builder
-│   └── scripts/             # reset-password, seed-demo
+│   └── scripts/             # seed-demo
 ├── public/                  # static HTML shells + webpack output in assets/
 └── install.sh               # one-command installer
 ```
@@ -93,7 +91,7 @@ Broker integrations follow a consistent four-part pattern. The Webull integratio
    Each broker gets a child table keyed by `broker_connection_id` referencing the shared `broker_connections` parent table (which tracks broker type, environment, and label per user). Store tokens/credentials **encrypted** with `encrypt()` from `server/src/utils/crypto.ts` — never in plaintext.
 
 3. **Route** — `server/src/routes/yourbroker.ts`, mounted in `server/src/index.ts`
-   Typical endpoints: `POST /api/yourbroker/connect`, `GET /api/yourbroker/status`, `POST /api/yourbroker/sync`, `DELETE /api/yourbroker/connections/:connectionId`. Guard everything with `requiresLogin` (OAuth callback endpoints are the exception — they validate a CSRF nonce instead). If the broker returns raw fills rather than round trips, run them through `buildRoundTrips()` in `server/src/utils/round-trip-builder.ts` before inserting trades.
+   Typical endpoints: `POST /api/yourbroker/connect`, `GET /api/yourbroker/status`, `POST /api/yourbroker/sync`, `DELETE /api/yourbroker/connections/:connectionId`. There's no auth (single-user, local); the local user is on every request as `c.get('user')` — thread `user.id` into your DB calls to keep rows owner-scoped. If the broker returns raw fills rather than round trips, run them through `buildRoundTrips()` in `server/src/utils/round-trip-builder.ts` before inserting trades.
 
 4. **Token refresh** — hook expiring tokens into `server/src/scheduled/broker-refresh.ts` so the hourly cron keeps connections alive, and/or add an `ensureFreshToken` helper in your route (see `routes/webull.ts` for the pattern: refresh proactively when a token expires within 30 minutes).
 

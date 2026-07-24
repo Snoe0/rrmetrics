@@ -61,7 +61,7 @@ npm run build
 npm start
 ```
 
-Open http://localhost:8459 and sign up. That's it — the first run automatically creates the `data/` directory with the SQLite database, a screenshots folder, and a server secret key. Accounts are local (email + password, bcrypt-hashed); no email server or third-party auth is involved.
+Open http://localhost:8459 — that's it, no login. RR Metrics is single-user and fully local: the first run automatically creates the `data/` directory with the SQLite database, a screenshots folder, and a server secret key (used to encrypt broker credentials at rest). There are no accounts, passwords, or third-party auth.
 
 ### Try it with demo data
 
@@ -69,18 +69,13 @@ Open http://localhost:8459 and sign up. That's it — the first run automaticall
 npm run seed-demo
 ```
 
-Then log in with `demo@example.com` / `demo1234` to explore a pre-populated journal.
+This fills the journal with realistic sample trades — just open the app to explore it.
 
 ## Usage Basics
 
 - **Add trades** manually from the Trades page, or import a CSV from your broker's export.
 - **Export** your journal to CSV at any time.
 - **Attach screenshots** to trades — they're stored locally in `data/screenshots/`.
-- **Forgot a password?** There's no email reset (nothing to configure, either). From the server, run:
-
-  ```bash
-  npm run reset-password -- you@example.com newpassword
-  ```
 
 ## Broker Sync
 
@@ -162,7 +157,7 @@ data/
 - **Server:** Node.js 20+, [Hono](https://hono.dev), TypeScript (run via `tsx` — no compile step)
 - **Database:** SQLite via [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) (WAL mode, single file)
 - **Client:** React 19, Tailwind CSS, Framer Motion, bundled by webpack to `public/assets`
-- **Auth:** local email/password with bcrypt + JWT (HS256, server-generated secret)
+- **Auth:** none — single-user, local-only
 
 ## Contributing
 

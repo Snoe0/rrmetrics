@@ -15,10 +15,8 @@ async function servePage(filename: string): Promise<string> {
   return fs.promises.readFile(path.join(PUBLIC_DIR, filename), 'utf8');
 }
 
-// All pages served publicly — client-side JS handles auth redirects
-pages.get('/', (c) => c.redirect('/login'));
-pages.get('/login', async (c) => c.html(await servePage('login.html')));
+// Single-user local app: the journal is the home page, no login/auth pages.
+pages.get('/', (c) => c.redirect('/trades'));
 pages.get('/trades', async (c) => c.html(await servePage('trades.html')));
-pages.get('/changePass', async (c) => c.html(await servePage('changepass.html')));
 
 export default pages;
