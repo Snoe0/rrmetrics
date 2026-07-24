@@ -202,97 +202,33 @@ const SignupWindow = ({ onSwitchToLogin }) => {
   );
 };
 
-const ForgotPasswordWindow = ({ onSwitchToLogin }) => {
-  const [submitted, setSubmitted] = useState(false);
-  const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(false);
+const ForgotPasswordWindow = ({ onSwitchToLogin }) => (
+  <div className="w-full">
+    <h2 className="text-2xl font-bold text-text-primary mb-1">Forgot Password</h2>
+    <p className="text-text-secondary text-sm mb-8">
+      This is a self-hosted instance, so password resets are done from the server.
+    </p>
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
-
-    const email = e.target.querySelector('#forgotEmail').value.trim();
-    if (!email) {
-      setError('Please enter your email.');
-      setLoading(false);
-      return;
-    }
-
-    const { error: authError } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/changePass`,
-    });
-
-    if (authError) {
-      setError(authError.message);
-    } else {
-      setSubmitted(true);
-    }
-    setLoading(false);
-  };
-
-  if (submitted) {
-    return (
-      <div className="w-full text-center">
-        <div className="w-14 h-14 bg-positive/20 rounded-full flex items-center justify-center mx-auto mb-5">
-          <svg className="w-7 h-7 text-positive" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="20 6 9 17 4 12"></polyline>
-          </svg>
-        </div>
-        <h2 className="text-2xl font-bold text-text-primary mb-2">Check Your Email</h2>
-        <p className="text-text-secondary text-sm mb-8">
-          If an account with that email exists, we've sent a password reset link.
-        </p>
-        <button
-          type="button"
-          className="text-accent hover:underline text-sm font-medium"
-          onClick={onSwitchToLogin}
-        >
-          Back to Sign In
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="w-full">
-      <h2 className="text-2xl font-bold text-text-primary mb-1">Forgot Password</h2>
-      <p className="text-text-secondary text-sm mb-8">Enter your email and we'll send a reset link.</p>
-
-      {error && (
-        <div className="mb-4 p-3 bg-negative/20 border border-negative/40 rounded-lg">
-          <span className="text-negative text-sm">{error}</span>
-        </div>
-      )}
-
-      <div>
-        <label htmlFor="forgotEmail" className="block text-sm font-medium text-text-secondary mb-2">Email</label>
-        <input
-          id="forgotEmail"
-          type="email"
-          placeholder="you@example.com"
-          autoComplete="email"
-          className="w-full px-4 py-3 bg-bg-input border border-border rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
-        />
-      </div>
-
-      <button
-        type="submit"
-        disabled={loading}
-        className="w-full mt-8 py-3 bg-accent text-accent-text font-semibold rounded-lg hover:brightness-110 transition-all disabled:opacity-50"
-      >
-        {loading ? 'Sending...' : 'Send Reset Link'}
-      </button>
-
-      <p className="text-center text-text-secondary text-sm mt-6">
-        Remember your password?{' '}
-        <button type="button" className="text-accent hover:underline font-medium" onClick={onSwitchToLogin}>
-          Sign In
-        </button>
+    <div className="p-4 bg-bg-input border border-border rounded-lg">
+      <p className="text-text-secondary text-sm mb-3">
+        Run this command in the server terminal to set a new password for your account:
       </p>
-    </form>
-  );
-};
+      <code className="block font-mono text-sm text-text-primary bg-bg-page border border-border rounded-md px-3 py-2 overflow-x-auto whitespace-nowrap">
+        npm run reset-password -- &lt;email&gt; &lt;new-password&gt;
+      </code>
+      <p className="text-text-muted text-xs mt-3">
+        Then sign in with your new password.
+      </p>
+    </div>
+
+    <p className="text-center text-text-secondary text-sm mt-6">
+      Remember your password?{' '}
+      <button type="button" className="text-accent hover:underline font-medium" onClick={onSwitchToLogin}>
+        Sign In
+      </button>
+    </p>
+  </div>
+);
 
 const App = () => {
   const [view, setView] = useState(() => {

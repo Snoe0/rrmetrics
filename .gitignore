@@ -58,6 +58,7 @@ typings/
 .env
 .env.*
 *.env
+!.env.example
 .dev.vars
 **/.dev.vars
 
