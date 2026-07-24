@@ -1,21 +1,28 @@
 {
-  "name": "tradingjournal",
+  "name": "rrmetrics",
   "version": "1.0.0",
-  "description": "A self-hosted trading journal application",
+  "description": "Open-source, self-hosted trading journal with broker sync (Tradovate, TopstepX, Webull)",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
-    "webpack": "webpack",
-    "webpackWatch": "webpack watch",
+    "build": "webpack",
+    "build:watch": "webpack watch",
     "test": "echo \"Tests complete\"",
     "start": "tsx server/src/node.ts",
     "dev": "tsx watch server/src/node.ts",
-    "reset-password": "tsx server/scripts/reset-password.ts"
+    "reset-password": "tsx server/scripts/reset-password.ts",
+    "seed-demo": "tsx server/scripts/seed-demo.ts"
   },
   "keywords": [
     "trading",
-    "journal"
+    "journal",
+    "self-hosted",
+    "tradovate",
+    "topstep",
+    "futures"
   ],
-  "author": "Cody Van De Mark / Austin Willoughby",
-  "license": "Apache 2.0",
+  "license": "Apache-2.0",
   "dependencies": {
     "@hono/node-server": "^1.14.0",
     "@radix-ui/react-avatar": "^1.1.11",
