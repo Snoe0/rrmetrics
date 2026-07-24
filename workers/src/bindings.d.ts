@@ -2,42 +2,20 @@ import type { SupabaseClient, User } from '@supabase/supabase-js';
 
 export interface Env {
   ASSETS: Fetcher;
-  RATE_LIMITER: DurableObjectNamespace;
   SUPABASE_URL: string;
   SUPABASE_PUBLISHABLE_KEY: string;
   SUPABASE_SECRET_KEY: string;
   ENCRYPTION_KEY: string;
-  RESEND_API_KEY: string;
-  RESEND_FROM_EMAIL: string;
-  STRIPE_PUBLISHABLE_KEY: string;
-  STRIPE_SECRET_KEY: string;
-  STRIPE_WEBHOOK_SECRET: string;
-  STRIPE_PRICE_PRO: string;
-  STRIPE_PRICE_ELITE: string;
-  STRIPE_PRICE_PRO_YEARLY: string;
-  STRIPE_PRICE_ELITE_YEARLY: string;
-  PRICE_PRO_YEARLY: string;
-  PRICE_ELITE_YEARLY: string;
   APP_URL: string;
-  PRICE_PRO: string;
-  PRICE_ELITE: string;
-  TRIAL_DAYS: string;
-  GOOGLE_CLIENT_ID?: string;
-  ADMIN_SECRET?: string;
   TRADOVATE_CLIENT_ID?: string;
   TRADOVATE_CLIENT_SECRET?: string;
-  DISCORD_PAYOUT_WEBHOOK?: string;
-  WISE_API_TOKEN?: string;
-  WISE_PROFILE_ID?: string;
+  WEBULL_APP_ID?: string;
+  WEBULL_APP_SECRET?: string;
 }
 
 export interface ProfileRow {
   id: string;
   email: string;
-  stripe_customer_id: string | null;
-  stripe_subscription_id: string | null;
-  subscription_plan: string;
-  subscription_status: string | null;
   theme: string;
   custom_colors_bg_page: string | null;
   custom_colors_bg_surface: string | null;
@@ -46,22 +24,14 @@ export interface ProfileRow {
   custom_colors_positive: string | null;
   custom_colors_negative: string | null;
   registration_ip: string | null;
-  stripe_connect_account_id: string | null;
-  stripe_connect_onboarded: boolean;
-  wise_recipient_id: string | null;
-  wise_onboarded: boolean;
   role: string;
   created_at: string;
-  email_unsubscribed: boolean;
   onboarding_completed: boolean;
 }
 
 export interface AccountAPI {
   _id: string;
   email: string;
-  isPremium: boolean;
-  subscriptionPlan: string;
-  subscriptionStatus: string | null;
   theme: string;
   customColors: {
     bgPage?: string | null;
@@ -74,6 +44,7 @@ export interface AccountAPI {
   createdDate: string;
   hasPassword: boolean;
   role?: string;
+  onboardingCompleted: boolean;
 }
 
 export interface TradeRow {
@@ -142,6 +113,26 @@ export interface ProjectXConnectionRow {
   token_expires_at: string | null;
   selected_accounts: number[] | null;
   copytrade_config: { leadAccountId: number; multiplier: number } | null;
+}
+
+export interface RobinhoodConnectionRow {
+  id: string;
+  broker_connection_id: string;
+  access_token: string | null;
+  refresh_token: string | null;
+  token_expires_at: string | null;
+  account_id: string | null;
+  device_token: string | null;
+}
+
+export interface WebullConnectionRow {
+  id: string;
+  broker_connection_id: string;
+  access_token: string | null;
+  refresh_token: string | null;
+  token_expires_at: string | null;
+  oauth_nonce: string | null;
+  account_id: string | null;
 }
 
 export interface SyncerConfigRow {

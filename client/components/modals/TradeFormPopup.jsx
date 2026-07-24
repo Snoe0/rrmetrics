@@ -16,7 +16,7 @@ const { TAG_COLOR_PRESETS } = require('../../utils/tagConstants');
 // TRADE FORM POPUP
 // =====================================================
 
-const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, prefillDate, tags, strategyRules, subscriptionStatus, trades, sidebarCollapsed }) => {
+const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, prefillDate, tags, strategyRules, trades, sidebarCollapsed }) => {
   const [screenshot, setScreenshot] = useState(null);
   const [pastedImage, setPastedImage] = useState(null);
   const [isMarkupOpen, setIsMarkupOpen] = useState(false);
@@ -39,7 +39,6 @@ const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, prefillD
   const isSidePanel = isUltrawide || (sidebarCollapsed && windowWidth >= 1280);
   const setSidePanelOffset = React.useContext(SidePanelContext);
   const tradeRules = strategyRules ? strategyRules.filter(r => r.type === 'trade') : [];
-  const isElite = subscriptionStatus && subscriptionStatus.plan === 'elite';
   useEffect(() => {
     if (!isOpen) { setSidePanelOffset(0); return; }
     if (isSidePanel) setSidePanelOffset(520);
@@ -461,16 +460,12 @@ const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, prefillD
               )}
             </div>
 
-            {/* Screenshot section — Elite only */}
+            {/* Screenshot section */}
             <div>
               <div className="flex items-center gap-2 mb-1.5">
                 <label className={labelClass + ' mb-0'}>Screenshot</label>
-                {!isElite && (
-                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-yellow-500/15 text-yellow-400">Elite</span>
-                )}
               </div>
-              {isElite ? (
-                <>
+              <>
                   {!screenshot && !pastedImage && (
                     <div className="border-2 border-dashed border-border rounded-lg p-6 text-center">
                       <Icons.Download className="w-8 h-8 text-text-muted mx-auto mb-2" />
@@ -526,17 +521,6 @@ const TradeFormPopup = ({ isOpen, onClose, triggerReload, editingTrade, prefillD
                     </div>
                   )}
                 </>
-              ) : (
-                <div className="border border-border rounded-lg p-4 flex items-center gap-3 bg-bg-input">
-                  <Icons.Lock className="w-4 h-4 text-text-muted flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-text-secondary text-xs">Screenshot attachments are available on the <span className="text-yellow-400 font-medium">Elite</span> plan.</p>
-                  </div>
-                  <a href="/upgrade" className="flex-shrink-0 px-2.5 py-1.5 text-xs font-semibold bg-yellow-500 text-black rounded-lg hover:brightness-110 transition-all">
-                    Upgrade
-                  </a>
-                </div>
-              )}
             </div>
 
             {/* Image Lightbox */}

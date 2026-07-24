@@ -1,9 +1,7 @@
 import { Hono } from 'hono';
 import type { Env, AuthContext } from '../bindings';
 import * as profilesDb from '../db/profiles';
-import * as tradesDb from '../db/trades';
 import { requiresLogin } from '../middleware/supabase-auth';
-import { checkSubscriptionStatus } from '../middleware/subscription';
 
 type HonoEnv = {
   Bindings: Env;
@@ -29,35 +27,26 @@ account.post('/api/preferences/theme', requiresLogin, async (c) => {
     return c.json({ error: 'Invalid theme.' }, 400);
   }
 
-  const isElite = profile.subscription_plan === 'elite';
-
-  // Non-Elite cannot use 'custom' theme
-  if (theme === 'custom' && !isElite) {
-    theme = profile.theme === 'light' ? 'light' : 'dark';
-  }
-
   try {
     const updateData: Record<string, unknown> = { theme };
     const validHex = /^#[0-9A-Fa-f]{6}$/;
 
     if (customColors) {
-      // Accent is always allowed for all users
       if (customColors.accent === null) {
         updateData.customColorsAccent = null;
       } else if (customColors.accent && validHex.test(customColors.accent)) {
         updateData.customColorsAccent = customColors.accent;
       }
 
-      // Remaining 5 colors: Elite + custom theme only
-      if (isElite && theme === 'custom') {
-        const eliteFields: Array<[string, string]> = [
+      if (theme === 'custom') {
+        const customFields: Array<[string, string]> = [
           ['bgPage', 'customColorsBgPage'],
           ['bgSurface', 'customColorsBgSurface'],
           ['textPrimary', 'customColorsTextPrimary'],
           ['positive', 'customColorsPositive'],
           ['negative', 'customColorsNegative'],
         ];
-        for (const [clientKey, dbKey] of eliteFields) {
+        for (const [clientKey, dbKey] of customFields) {
           if (customColors[clientKey] === null) {
             updateData[dbKey] = null;
           } else if (customColors[clientKey] && validHex.test(customColors[clientKey])) {
@@ -126,91 +115,6 @@ account.post('/api/account/onboarding-complete', requiresLogin, async (c) => {
   } catch (err: any) {
     return c.json({ error: 'Failed to mark onboarding complete' }, 500);
   }
-});
-
-// GET /api/subscriptionStatus
-account.get(
-  '/api/subscriptionStatus',
-  requiresLogin,
-  checkSubscriptionStatus,
-  async (c) => {
-    const status = c.get('subscriptionStatus' as any);
-    const profile = c.get('profile');
-    if (!status) {
-      return c.json({ error: 'Subscription status not available' }, 500);
-    }
-    const responseData: Record<string, unknown> = {
-      isPremium: status.isPremium,
-      plan: status.effectivePlan,
-      role: profile.role || 'user',
-      onboardingCompleted: profile.onboarding_completed ?? true,
-    };
-
-    if (status.hasTradeLimit) {
-      const trialDays = parseInt(c.env.TRIAL_DAYS || '14', 10);
-      const createdAt = new Date(profile.created_at);
-      const trialEndsAt = new Date(createdAt.getTime() + trialDays * 24 * 60 * 60 * 1000);
-      const supabase = c.get('supabase');
-      const tradeCount = await tradesDb.countTrades(supabase, profile.id);
-      responseData.trialEndsAt = trialEndsAt.toISOString();
-      responseData.tradeCount = tradeCount;
-    }
-
-    return c.json(responseData);
-  },
-);
-
-// GET /api/pricing (public)
-account.get('/api/pricing', async (c) => {
-  return c.json({
-    pro: c.env.PRICE_PRO || '12',
-    elite: c.env.PRICE_ELITE || '18',
-    proYearly: c.env.PRICE_PRO_YEARLY || '120',
-    eliteYearly: c.env.PRICE_ELITE_YEARLY || '180',
-    trialDays: 14,
-    plans: {
-      trial: {
-        name: 'Trial',
-        features: [
-          'Most Pro features for 14 days',
-          'Up to 50 trades',
-        ],
-      },
-      pro: {
-        name: 'Pro',
-        features: [
-          'Unlimited trades',
-          '2 broker connections',
-          'CSV Import/Export',
-          'Strategy & rule tracking',
-          'Premarket prep',
-          '1 Backtesting session',
-        ],
-      },
-      elite: {
-        name: 'Elite',
-        features: [
-          'Everything in Pro',
-          'Attach and annotate screenshots',
-          'Unlimited broker connections',
-          'Custom themes',
-          'Unlimited Backtesting',
-        ],
-      },
-    },
-    featureGates: {
-      accentColor: ['free', 'trial', 'pro', 'elite'],
-      customThemes: ['elite'],
-      backtesting: ['pro', 'elite'],
-      unlimitedTrades: ['pro', 'elite'],
-      brokerConnections: ['pro', 'elite'],
-      exportCsv: ['pro', 'elite'],
-      multipleScreenshots: ['elite'],
-      unlimitedBrokers: ['elite'],
-      strategyRules: ['pro', 'elite'],
-      premarket: ['pro', 'elite'],
-    },
-  });
 });
 
 export default account;

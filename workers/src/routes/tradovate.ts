@@ -7,9 +7,7 @@ import * as tradesDb from '../db/trades';
 import { encrypt, decrypt } from '../utils/crypto';
 import { TradovateAPI } from '../services/TradovateAPI';
 import { requiresLogin } from '../middleware/supabase-auth';
-import { checkSubscriptionStatus, requiresBrokerSync, BROKER_CONNECTION_LIMITS } from '../middleware/subscription';
 import { createServiceClient } from '../lib/supabase';
-import type { EffectivePlan } from '../middleware/subscription';
 
 type HonoEnv = {
   Bindings: Env;
@@ -424,8 +422,6 @@ async function syncConnection(
 tradovate.post(
   '/api/tradovate/connect',
   requiresLogin,
-  checkSubscriptionStatus,
-  requiresBrokerSync,
   async (c) => {
     const user = c.get('user');
     const body = await c.req.json().catch(() => ({})) as { environment?: string; broker?: string };
@@ -439,51 +435,32 @@ tradovate.post(
 
     const serviceClient = createServiceClient(c.env);
 
-    // Determine connection limit for user's plan
-    const status = c.get('subscriptionStatus' as any) as { effectivePlan: EffectivePlan } | undefined;
-    const plan = status?.effectivePlan || 'free';
-    const limit = BROKER_CONNECTION_LIMITS[plan];
+    // Create parent broker_connection (returns UUID string)
+    const connectionId = await brokerDb.createWithLimitCheck(
+      serviceClient,
+      user.id,
+      broker,
+      environment,
+      null, // label auto-generated after exchange
+      Infinity,
+    );
 
-    try {
-      // Create parent broker_connection with limit check (returns UUID string)
-      const connectionId = await brokerDb.createWithLimitCheck(
-        serviceClient,
-        user.id,
-        broker,
-        environment,
-        null, // label auto-generated after exchange
-        limit,
-      );
+    // Generate CSRF nonce and create child tradovate_connection
+    const nonce = generateNonce();
+    await tvConnDb.create(serviceClient, connectionId, nonce);
 
-      // Generate CSRF nonce and create child tradovate_connection
-      const nonce = generateNonce();
-      await tvConnDb.create(serviceClient, connectionId, nonce);
+    // Build state: base64(connectionId:nonce)
+    const state = btoa(connectionId + ':' + nonce);
+    const redirectUri = `${c.env.APP_URL}/api/tradovate/callback`;
 
-      // Build state: base64(connectionId:nonce)
-      const state = btoa(connectionId + ':' + nonce);
-      const redirectUri = `${c.env.APP_URL}/api/tradovate/callback`;
+    const authUrl =
+      `https://trader.tradovate.com/oauth` +
+      `?response_type=code` +
+      `&client_id=${encodeURIComponent(clientId)}` +
+      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+      `&state=${encodeURIComponent(state)}`;
 
-      const authUrl =
-        `https://trader.tradovate.com/oauth` +
-        `?response_type=code` +
-        `&client_id=${encodeURIComponent(clientId)}` +
-        `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-        `&state=${encodeURIComponent(state)}`;
-
-      return c.json({ authUrl, connectionId });
-    } catch (err: any) {
-      if (err.message === 'CONNECTION_LIMIT_REACHED') {
-        return c.json(
-          {
-            error: 'You have reached your broker connection limit. Upgrade your plan for more connections.',
-            upgrade: true,
-            limit,
-          },
-          402,
-        );
-      }
-      throw err;
-    }
+    return c.json({ authUrl, connectionId });
   },
 );
 
@@ -657,7 +634,6 @@ tradovate.post('/api/tradovate/exchange', requiresLogin, async (c) => {
 tradovate.get(
   '/api/tradovate/status',
   requiresLogin,
-  checkSubscriptionStatus,
   async (c) => {
     const user = c.get('user');
     const serviceClient = createServiceClient(c.env);
@@ -666,14 +642,8 @@ tradovate.get(
     // Fetch all connections for user matching the requested broker
     const brokerConns = await brokerDb.findByOwnerAndBroker(serviceClient, user.id, broker);
 
-    // Total count across ALL brokers for limit tracking
+    // Total count across ALL brokers
     const totalCount = await brokerDb.countByOwner(serviceClient, user.id);
-
-    // Determine plan and limits
-    const status = c.get('subscriptionStatus' as any) as { effectivePlan: EffectivePlan } | undefined;
-    const plan = status?.effectivePlan || 'free';
-    const limit = BROKER_CONNECTION_LIMITS[plan];
-    const canUseBrokerSync = plan === 'pro' || plan === 'elite';
 
     // Build status for each connection
     const connections = [];
@@ -744,9 +714,8 @@ tradovate.get(
     return c.json({
       connections,
       connectionsUsed: totalCount,
-      connectionLimit: limit === Infinity ? null : limit,
-      plan,
-      canUseBrokerSync,
+      connectionLimit: null,
+      canUseBrokerSync: true,
     });
   },
 );
@@ -827,8 +796,6 @@ tradovate.post(
 tradovate.post(
   '/api/tradovate/sync',
   requiresLogin,
-  checkSubscriptionStatus,
-  requiresBrokerSync,
   async (c) => {
     const user = c.get('user');
     const supabase = c.get('supabase');
@@ -876,8 +843,6 @@ tradovate.post(
 tradovate.post(
   '/api/tradovate/sync-all',
   requiresLogin,
-  checkSubscriptionStatus,
-  requiresBrokerSync,
   async (c) => {
     const user = c.get('user');
     const supabase = c.get('supabase');

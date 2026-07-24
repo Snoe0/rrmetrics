@@ -311,6 +311,25 @@ export async function findByTradovateOrderIds(
   return (data || []).map((row: any) => row.tradovate_order_id).filter(Boolean);
 }
 
+// The trades schema has no robinhood/webull order-id columns, so broker order
+// IDs are not persisted for these brokers. Dedup falls back to the time-based
+// key inside bulkInsertTrades; these lookups therefore never match.
+export async function findByRobinhoodOrderIds(
+  _supabase: SupabaseClient,
+  _userId: string,
+  _orderIds: string[],
+): Promise<string[]> {
+  return [];
+}
+
+export async function findByWebullOrderIds(
+  _supabase: SupabaseClient,
+  _userId: string,
+  _orderIds: string[],
+): Promise<string[]> {
+  return [];
+}
+
 export async function bulkUpdateEval(
   supabase: SupabaseClient,
   userId: string,

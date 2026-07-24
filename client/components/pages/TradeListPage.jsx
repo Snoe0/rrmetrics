@@ -8,7 +8,7 @@ const { TAG_COLOR_PRESETS } = require('../../utils/tagConstants');
 const Icons = require('../shared/Icons');
 const RuleChecklist = require('../shared/RuleChecklist');
 
-const TradeListPage = ({ trades, triggerReload, onEdit, subscriptionStatus, onOpenForm, onOpenImport, tags, strategyRules }) => {
+const TradeListPage = ({ trades, triggerReload, onEdit, onOpenForm, onOpenImport, tags, strategyRules }) => {
   const [searchTicker, setSearchTicker] = useState('');
   const [sortField, setSortField] = useState('exitTime');
   const [sortDir, setSortDir] = useState('desc');
@@ -91,7 +91,6 @@ const TradeListPage = ({ trades, triggerReload, onEdit, subscriptionStatus, onOp
     }
   };
 
-  const isElite = subscriptionStatus && subscriptionStatus.isPremium;
   const tradeRules = strategyRules ? strategyRules.filter(r => r.type === 'trade') : [];
 
   const fetchTradeChecksForList = async (tradeId) => {
@@ -376,12 +375,10 @@ const TradeListPage = ({ trades, triggerReload, onEdit, subscriptionStatus, onOp
             <Icons.Download className="w-4 h-4" />
             Import CSV
           </button>
-          {subscriptionStatus && subscriptionStatus.isPremium && (subscriptionStatus.tradeCount == null || subscriptionStatus.tradeCount < 50) && (
-            <button className="flex items-center gap-2 px-4 py-2.5 bg-accent text-accent-text text-sm font-semibold rounded-lg hover:brightness-110 transition-all" onClick={onOpenForm}>
-              <Icons.Plus className="w-4 h-4" />
-              New Trade
-            </button>
-          )}
+          <button className="flex items-center gap-2 px-4 py-2.5 bg-accent text-accent-text text-sm font-semibold rounded-lg hover:brightness-110 transition-all" onClick={onOpenForm}>
+            <Icons.Plus className="w-4 h-4" />
+            New Trade
+          </button>
         </div>
       </div>
 
@@ -779,11 +776,11 @@ const TradeListPage = ({ trades, triggerReload, onEdit, subscriptionStatus, onOp
                                     <img src={trade.screenshot} alt="Trade screenshot" className="rounded-lg border border-border max-h-48 w-full object-contain bg-bg-surface mt-1.5" />
                                   </div>
                                 )}
-                                {!trade.comments && !trade.screenshot && tradeTags.length === 0 && (!isElite || tradeRules.length === 0) && (
+                                {!trade.comments && !trade.screenshot && tradeTags.length === 0 && tradeRules.length === 0 && (
                                   <p className="text-text-muted text-xs">No notes or screenshot attached to this trade.</p>
                                 )}
                               </div>
-                              {isElite && tradeRules.length > 0 && (
+                              {tradeRules.length > 0 && (
                                 <div>
                                   <span className="text-text-muted text-[10px] font-semibold uppercase tracking-wider">Trade Rules</span>
                                   <div className="mt-1.5">

@@ -8,9 +8,7 @@ import { WebullAPI } from '../services/WebullAPI';
 import { buildRoundTrips } from '../utils/round-trip-builder';
 import type { BrokerFill } from '../utils/round-trip-builder';
 import { requiresLogin } from '../middleware/supabase-auth';
-import { checkSubscriptionStatus, requiresBrokerSync, BROKER_CONNECTION_LIMITS } from '../middleware/subscription';
 import { createServiceClient } from '../lib/supabase';
-import type { EffectivePlan } from '../middleware/subscription';
 
 type HonoEnv = {
   Bindings: Env;
@@ -92,8 +90,6 @@ async function ensureFreshToken(
 webull.post(
   '/api/webull/connect',
   requiresLogin,
-  checkSubscriptionStatus,
-  requiresBrokerSync,
   async (c) => {
     const user = c.get('user');
 
@@ -104,10 +100,7 @@ webull.post(
 
     const serviceClient = createServiceClient(c.env);
 
-    // Determine connection limit for user's plan
-    const status = c.get('subscriptionStatus' as any) as { effectivePlan: EffectivePlan } | undefined;
-    const plan = status?.effectivePlan || 'free';
-    const limit = BROKER_CONNECTION_LIMITS[plan];
+    const limit = Infinity;
 
     try {
       // Create parent broker_connection with limit check (returns UUID string)
@@ -131,16 +124,6 @@ webull.post(
 
       return c.json({ authUrl, connectionId });
     } catch (err: any) {
-      if (err.message === 'CONNECTION_LIMIT_REACHED') {
-        return c.json(
-          {
-            error: 'You have reached your broker connection limit. Upgrade your plan for more connections.',
-            upgrade: true,
-            limit,
-          },
-          402,
-        );
-      }
       throw err;
     }
   },
@@ -277,7 +260,6 @@ webull.post('/api/webull/exchange', requiresLogin, async (c) => {
 webull.get(
   '/api/webull/status',
   requiresLogin,
-  checkSubscriptionStatus,
   async (c) => {
     const user = c.get('user');
     const serviceClient = createServiceClient(c.env);
@@ -288,11 +270,6 @@ webull.get(
     // Total count across ALL brokers for limit tracking
     const totalCount = await brokerDb.countByOwner(serviceClient, user.id);
 
-    // Determine plan and limits
-    const status = c.get('subscriptionStatus' as any) as { effectivePlan: EffectivePlan } | undefined;
-    const plan = status?.effectivePlan || 'free';
-    const limit = BROKER_CONNECTION_LIMITS[plan];
-    const canUseBrokerSync = plan === 'pro' || plan === 'elite';
 
     // Build status for each connection
     const connections = [];
@@ -346,9 +323,8 @@ webull.get(
     return c.json({
       connections,
       connectionsUsed: totalCount,
-      connectionLimit: limit === Infinity ? null : limit,
-      plan,
-      canUseBrokerSync,
+      connectionLimit: null,
+      canUseBrokerSync: true,
     });
   },
 );
@@ -361,8 +337,6 @@ webull.get(
 webull.post(
   '/api/webull/sync',
   requiresLogin,
-  checkSubscriptionStatus,
-  requiresBrokerSync,
   async (c) => {
     const user = c.get('user');
     const supabase = c.get('supabase');

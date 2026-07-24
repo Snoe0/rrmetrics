@@ -9,7 +9,7 @@ const MIN_WIDTH = 64;
 const COLLAPSE_THRESHOLD = 140;
 const DEFAULT_WIDTH = 240;
 
-const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChange, onWidthChange, userRole, trades, selectedAccounts, setSelectedAccounts, accountBrokers }) => {
+const Sidebar = ({ currentPage, onNavigate, onCollapsedChange, onWidthChange, trades, selectedAccounts, setSelectedAccounts, accountBrokers }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [width, setWidth] = useState(() => {
@@ -89,10 +89,6 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChang
 
   const accountMenuContent = (
     <>
-      <a href="/upgrade" className="flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:bg-bg-input hover:text-text-primary transition-colors no-underline">
-        <Icons.Zap className="w-4 h-4" />
-        Manage Subscription
-      </a>
       <a href="/changePass" className="flex items-center gap-3 px-4 py-2.5 text-sm text-text-secondary hover:bg-bg-input hover:text-text-primary transition-colors no-underline">
         <Icons.Lock className="w-4 h-4" />
         Change Password
@@ -209,97 +205,43 @@ const Sidebar = ({ currentPage, onNavigate, subscriptionStatus, onCollapsedChang
             </div>
           </div>
 
-          {/* Developer-only tools */}
-          {(userRole === 'developer' || userRole === 'admin') && (
-            <div className="mt-4">
-              <div className="border-t border-border mx-2 mb-2" />
-              {!isCollapsed && (
-                <div className="px-3 mb-1">
-                  <span className="text-text-muted text-[10px] font-semibold uppercase tracking-wider">Dev Tools</span>
-                </div>
-              )}
-              <div className="space-y-1">
-                {[
-                  { id: 'syncer', label: 'Trade Syncer', icon: Icons.RefreshCw },
-                  { id: 'backtesting', label: 'Backtesting', icon: Icons.FlaskConical },
-                ].map(item => {
-                  const Icon = item.icon;
-                  const isActive = currentPage === item.id;
-                  return (
-                    <a
-                      key={item.id}
-                      href="#"
-                      title={isCollapsed ? item.label : undefined}
-                      className={`flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition-colors no-underline ${isCollapsed ? 'justify-center gap-0' : 'gap-3'} ${
-                        isActive
-                          ? 'bg-bg-surface text-accent border-l-2 border-accent'
-                          : 'text-text-secondary hover:text-text-primary hover:bg-bg-surface'
-                      }`}
-                      onClick={(e) => { e.preventDefault(); handleNav(item.id); }}
-                    >
-                      <Icon className="w-5 h-5 flex-shrink-0" />
-                      <span className={`transition-opacity duration-200 whitespace-nowrap ${isCollapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100'}`}>
-                        {item.label}
-                      </span>
-                    </a>
-                  );
-                })}
+          {/* Tools */}
+          <div className="mt-4">
+            <div className="border-t border-border mx-2 mb-2" />
+            {!isCollapsed && (
+              <div className="px-3 mb-1">
+                <span className="text-text-muted text-[10px] font-semibold uppercase tracking-wider">Tools</span>
               </div>
-            </div>
-          )}
-
-        </div>
-
-        {/* Upgrade box — show for trial and free users, not for paid */}
-        {!isCollapsed && (!subscriptionStatus || (subscriptionStatus.plan !== 'pro' && subscriptionStatus.plan !== 'elite')) && (
-          <div className="px-4 pb-3">
-            <div className="bg-bg-surface border border-border rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Icons.Zap className="w-4 h-4 text-accent" />
-                <span className="text-text-primary text-sm font-semibold">Upgrade to Pro</span>
-              </div>
-              <p className="text-text-tertiary text-xs mb-3">Get auto syncing, unlimited trades, and more.</p>
-              <button
-                className="w-full py-2 bg-accent text-accent-text text-xs font-semibold rounded-lg hover:brightness-110 transition-all"
-                onClick={() => { window.location.href = '/upgrade'; }}
-              >
-                Upgrade Now
-              </button>
+            )}
+            <div className="space-y-1">
+              {[
+                { id: 'syncer', label: 'Trade Syncer', icon: Icons.RefreshCw },
+                { id: 'backtesting', label: 'Backtesting', icon: Icons.FlaskConical },
+              ].map(item => {
+                const Icon = item.icon;
+                const isActive = currentPage === item.id;
+                return (
+                  <a
+                    key={item.id}
+                    href="#"
+                    title={isCollapsed ? item.label : undefined}
+                    className={`flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition-colors no-underline ${isCollapsed ? 'justify-center gap-0' : 'gap-3'} ${
+                      isActive
+                        ? 'bg-bg-surface text-accent border-l-2 border-accent'
+                        : 'text-text-secondary hover:text-text-primary hover:bg-bg-surface'
+                    }`}
+                    onClick={(e) => { e.preventDefault(); handleNav(item.id); }}
+                  >
+                    <Icon className="w-5 h-5 flex-shrink-0" />
+                    <span className={`transition-opacity duration-200 whitespace-nowrap ${isCollapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100'}`}>
+                      {item.label}
+                    </span>
+                  </a>
+                );
+              })}
             </div>
           </div>
-        )}
 
-        {/* Refer & Earn link */}
-        <div className="px-3 pb-0">
-          <a
-            href="#"
-            title={isCollapsed ? 'Refer & Earn' : undefined}
-            className={`flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition-colors no-underline ${isCollapsed ? 'justify-center gap-0' : 'gap-3'} ${
-              currentPage === 'referral'
-                ? 'bg-bg-surface text-accent border-l-2 border-accent'
-                : 'text-text-secondary hover:text-text-primary hover:bg-bg-surface'
-            }`}
-            onClick={(e) => { e.preventDefault(); handleNav('referral'); }}
-          >
-            <Icons.Gift className="w-5 h-5 flex-shrink-0" />
-            <span className={`transition-opacity duration-200 whitespace-nowrap ${isCollapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100'}`}>
-              Refer &amp; Earn
-            </span>
-          </a>
-        </div>
-
-        {/* Guides link */}
-        <div className="px-3 pb-2">
-          <a
-            href="/guides"
-            title={isCollapsed ? 'Guides' : undefined}
-            className={`flex items-center px-3 py-2.5 rounded-lg text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors no-underline ${isCollapsed ? 'justify-center gap-0' : 'gap-3'}`}
-          >
-            <Icons.BookOpen className="w-5 h-5 flex-shrink-0" />
-            <span className={`transition-opacity duration-200 whitespace-nowrap ${isCollapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100'}`}>
-              Guides
-            </span>
-          </a>
         </div>
 
         {/* Account section */}

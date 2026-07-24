@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import type { Env, AuthContext } from '../bindings';
 import { requiresLogin } from '../middleware/supabase-auth';
-import { requiresDeveloper } from '../middleware/developer-auth';
 import { createServiceClient } from '../lib/supabase';
 import { ensureFreshToken } from '../utils/tradovate-token';
 import * as syncerDb from '../db/syncer';
@@ -17,8 +16,8 @@ type HonoEnv = {
 
 const syncer = new Hono<HonoEnv>();
 
-// All syncer routes require login + developer role
-syncer.use('/api/syncer/*', requiresLogin, requiresDeveloper);
+// All syncer routes require login
+syncer.use('/api/syncer/*', requiresLogin);
 
 // ─── GET /api/syncer/config ──────────────────────────────────────────────────
 

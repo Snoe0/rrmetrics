@@ -6,9 +6,7 @@ import * as tradesDb from '../db/trades';
 import { encrypt, decrypt } from '../utils/crypto';
 import { ProjectXAPI } from '../services/ProjectXAPI';
 import { requiresLogin } from '../middleware/supabase-auth';
-import { checkSubscriptionStatus, requiresBrokerSync, BROKER_CONNECTION_LIMITS } from '../middleware/subscription';
 import { createServiceClient } from '../lib/supabase';
-import type { EffectivePlan } from '../middleware/subscription';
 
 type HonoEnv = {
   Bindings: Env;
@@ -25,8 +23,6 @@ const projectx = new Hono<HonoEnv>();
 projectx.post(
   '/api/projectx/connect',
   requiresLogin,
-  checkSubscriptionStatus,
-  requiresBrokerSync,
   async (c) => {
     const user = c.get('user');
     const body = await c.req.json();
@@ -38,10 +34,7 @@ projectx.post(
 
     const serviceClient = createServiceClient(c.env);
 
-    // Determine connection limit for user's plan
-    const status = c.get('subscriptionStatus' as any) as { effectivePlan: EffectivePlan } | undefined;
-    const plan = status?.effectivePlan || 'free';
-    const limit = BROKER_CONNECTION_LIMITS[plan];
+    const limit = Infinity;
 
     try {
       const api = new ProjectXAPI();
@@ -51,29 +44,14 @@ projectx.post(
       const accounts = await api.getAccounts(token);
 
       // Create parent broker_connection with limit check (returns UUID string)
-      let connectionId: string;
-      try {
-        connectionId = await brokerDb.createWithLimitCheck(
-          serviceClient,
-          user.id,
-          'projectx',
-          'live', // ProjectX is always live
-          `ProjectX — ${username}`,
-          limit,
-        );
-      } catch (err: any) {
-        if (err.message === 'CONNECTION_LIMIT_REACHED') {
-          return c.json(
-            {
-              error: 'You have reached your broker connection limit. Upgrade your plan for more connections.',
-              upgrade: true,
-              limit,
-            },
-            402,
-          );
-        }
-        throw err;
-      }
+      const connectionId = await brokerDb.createWithLimitCheck(
+        serviceClient,
+        user.id,
+        'projectx',
+        'live', // ProjectX is always live
+        `ProjectX — ${username}`,
+        limit,
+      );
 
       // Create child projectx_connection with encrypted credentials
       const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
@@ -100,7 +78,6 @@ projectx.post(
 projectx.get(
   '/api/projectx/status',
   requiresLogin,
-  checkSubscriptionStatus,
   async (c) => {
     const user = c.get('user');
     const serviceClient = createServiceClient(c.env);
@@ -112,11 +89,6 @@ projectx.get(
       // Total count across ALL brokers for limit tracking
       const totalCount = await brokerDb.countByOwner(serviceClient, user.id);
 
-      // Determine plan and limits
-      const subStatus = c.get('subscriptionStatus' as any) as { effectivePlan: EffectivePlan } | undefined;
-      const plan = subStatus?.effectivePlan || 'free';
-      const limit = BROKER_CONNECTION_LIMITS[plan];
-      const canUseBrokerSync = plan === 'pro' || plan === 'elite';
 
       // Build status for each connection
       const connections = [];
@@ -173,9 +145,8 @@ projectx.get(
       return c.json({
         connections,
         connectionsUsed: totalCount,
-        connectionLimit: limit === Infinity ? null : limit,
-        plan,
-        canUseBrokerSync,
+        connectionLimit: null,
+        canUseBrokerSync: true,
       });
     } catch (err: any) {
       console.error('ProjectX status error:', err.message);
@@ -191,8 +162,6 @@ projectx.get(
 projectx.post(
   '/api/projectx/accounts',
   requiresLogin,
-  checkSubscriptionStatus,
-  requiresBrokerSync,
   async (c) => {
     const user = c.get('user');
     const body = await c.req.json();
@@ -280,8 +249,6 @@ projectx.post(
 projectx.post(
   '/api/projectx/sync',
   requiresLogin,
-  checkSubscriptionStatus,
-  requiresBrokerSync,
   async (c) => {
     const user = c.get('user');
     const supabase = c.get('supabase');

@@ -11,7 +11,6 @@ const { SidePanelContext } = require('./utils/contexts');
 // Shared components
 const Icons = require('./components/shared/Icons');
 const Toast = require('./components/shared/Toast');
-const FreeBanner = require('./components/shared/FreeBanner');
 
 // Layout
 const Sidebar = require('./components/Sidebar');
@@ -29,40 +28,16 @@ const SettingsPage = require('./components/pages/SettingsPage');
 const PreMarketPage = require('./components/pages/PreMarketPage');
 const StrategyPage = require('./components/pages/StrategyPage');
 const BacktestingPage = require('./components/pages/BacktestingPage');
-const UpgradePage = require('./components/pages/UpgradePage');
-const ReferralPage = require('./components/pages/ReferralPage');
 const TradeSyncerPage = require('./components/pages/TradeSyncerPage');
 const DotGrid = require('./components/shared/DotGrid');
 const OnboardingFlow = require('./components/OnboardingFlow');
 const { useThemeFavicon } = require('./components/shared/LogoIcon');
-
-const AnnouncementBanner = ({ announcement, onDismiss }) => {
-  if (!announcement) return null;
-  const typeStyles = {
-    info: 'bg-info/15 border-info/30 text-info',
-    warning: 'bg-warning/15 border-warning/30 text-warning',
-    success: 'bg-positive/15 border-positive/30 text-positive',
-  };
-  const style = typeStyles[announcement.type] || typeStyles.info;
-  return (
-    <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 max-w-lg w-full mx-4 border rounded-xl p-4 shadow-lg ${style}`}>
-      <div className="flex items-start gap-3">
-        <div className="flex-1">
-          <div className="font-semibold text-sm">{announcement.title}</div>
-          <div className="text-sm mt-0.5 opacity-90">{announcement.body}</div>
-        </div>
-        <button type="button" onClick={onDismiss} className="opacity-60 hover:opacity-100 text-lg leading-none">&times;</button>
-      </div>
-    </div>
-  );
-};
 
 const App = () => {
   const [currentPage, setCurrentPage] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('tv_code') || params.get('tv_error') || params.get('webull_code') || params.get('wb_error')) return 'settings';
     if (params.get('tab')) return params.get('tab');
-    if (params.get('connect')) return 'referral';
     return 'dashboard';
   });
   const [reloadTrades, setReloadTrades] = useState(false);
@@ -76,8 +51,6 @@ const App = () => {
   const [syncPopupOpen, setSyncPopupOpen] = useState(false);
   const [brokerStatuses, setBrokerStatuses] = useState([]);
   const [toast, setToast] = useState(null);
-  const [subscriptionStatus, setSubscriptionStatus] = useState(null);
-  const [userRole, setUserRole] = useState('user');
   const [syncNotification, setSyncNotification] = useState(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
@@ -85,7 +58,6 @@ const App = () => {
     try { return JSON.parse(localStorage.getItem('customColors')) || {}; } catch { return {}; }
   });
   const [dailyNotes, setDailyNotes] = useState([]);
-  const [pricing, setPricing] = useState({ pro: '12', elite: '18' });
   const [strategyRules, setStrategyRules] = useState([]);
   const [sidePanelOffset, setSidePanelOffset] = useState(0);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
@@ -98,7 +70,6 @@ const App = () => {
     const stored = localStorage.getItem('sidebar-width');
     return stored ? Number(stored) : (localStorage.getItem('sidebar-collapsed') === 'true' ? 64 : 240);
   });
-  const [announcement, setAnnouncement] = useState(null);
   const [evalFilter, setEvalFilterState] = useState(() => {
     const stored = localStorage.getItem('evalFilter');
     return ['all', 'exclude', 'only'].includes(stored) ? stored : 'exclude';
@@ -218,6 +189,7 @@ const App = () => {
           setTheme(data.account.theme);
           if (data.account.customColors) setCustomColors(data.account.customColors);
         }
+        if (data.account && data.account.onboardingCompleted === false) setShowOnboarding(true);
       } catch (err) {
         console.error('Failed to fetch account theme:', err);
       }
@@ -252,13 +224,6 @@ const App = () => {
     loadTradesFromServer();
   }, [reloadTrades]);
 
-  const handleDismissAnnouncement = () => {
-    if (announcement) {
-      localStorage.setItem(`announcement-dismissed-${announcement.id}`, '1');
-    }
-    setAnnouncement(null);
-  };
-
   useEffect(() => {
     const loadTags = async () => {
       try {
@@ -273,33 +238,10 @@ const App = () => {
   }, [reloadTrades]);
 
   useEffect(() => {
-    const fetchSubscriptionStatus = async () => {
-      try {
-        const response = await authFetch('/api/subscriptionStatus');
-        const data = await response.json();
-        setSubscriptionStatus(data);
-        if (data.role) setUserRole(data.role);
-        if (data.onboardingCompleted === false) setShowOnboarding(true);
-      } catch (err) {
-        console.error('Failed to fetch subscription status:', err);
-      }
-    };
-    fetchSubscriptionStatus();
-    fetch('/api/pricing').then(r => r.json()).then(setPricing).catch(() => {});
     authFetch('/api/strategy/rules')
       .then(r => r.json())
       .then(data => { if (data.rules) setStrategyRules(data.rules); })
       .catch(() => {});
-    // Fetch active announcement (non-blocking — never prevent app load)
-    fetch('/api/announcement/active')
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.announcement) {
-          const dismissed = localStorage.getItem(`announcement-dismissed-${data.announcement.id}`);
-          if (!dismissed) setAnnouncement(data.announcement);
-        }
-      })
-      .catch(() => {}); // silently ignore
   }, []);
 
   useEffect(() => {
@@ -469,14 +411,14 @@ const App = () => {
   const renderPage = () => {
     switch (currentPage) {
       case 'dashboard':
-        return <DashboardPage trades={filteredTrades} subscriptionStatus={subscriptionStatus} onOpenForm={openForm} onOpenImport={() => setCsvImportOpen(true)} onManualSync={handleManualSync} brokerStatuses={brokerStatuses} onOpenAddTrade={openFormWithDate} onEditTrade={openEditForm} dailyNotes={dailyNotes} onSaveNote={handleSaveNote} onDeleteNote={handleDeleteNote} tags={tags} strategyRules={strategyRules} evalFilter={evalFilter} setEvalFilter={setEvalFilter} sidebarCollapsed={sidebarCollapsed} />;
+        return <DashboardPage trades={filteredTrades} onOpenForm={openForm} onOpenImport={() => setCsvImportOpen(true)} onManualSync={handleManualSync} brokerStatuses={brokerStatuses} onOpenAddTrade={openFormWithDate} onEditTrade={openEditForm} dailyNotes={dailyNotes} onSaveNote={handleSaveNote} onDeleteNote={handleDeleteNote} tags={tags} strategyRules={strategyRules} evalFilter={evalFilter} setEvalFilter={setEvalFilter} sidebarCollapsed={sidebarCollapsed} />;
       case 'trades':
         return (
           <TradeListPage
             trades={filteredTrades}
             triggerReload={triggerReload}
             onEdit={(trade) => { setEditingTrade(trade); setIsFormOpen(true); }}
-            subscriptionStatus={subscriptionStatus}
+           
             onOpenForm={openForm}
             onOpenImport={() => setCsvImportOpen(true)}
             tags={tags}
@@ -486,36 +428,29 @@ const App = () => {
       case 'analytics':
         return <AnalyticsPage trades={filteredTrades} evalFilter={evalFilter} setEvalFilter={setEvalFilter} />;
       case 'strategy':
-        return <StrategyPage subscriptionStatus={subscriptionStatus} trades={filteredTrades} evalFilter={evalFilter} setEvalFilter={setEvalFilter} />;
+        return <StrategyPage trades={filteredTrades} evalFilter={evalFilter} setEvalFilter={setEvalFilter} />;
       case 'premarket':
-        return <PreMarketPage subscriptionStatus={subscriptionStatus} trades={filteredTrades} />;
+        return <PreMarketPage trades={filteredTrades} />;
       case 'backtesting':
-        return <BacktestingPage subscriptionStatus={subscriptionStatus} />;
+        return <BacktestingPage />;
       case 'settings':
-        return <SettingsPage onSyncComplete={triggerReload} onNavigate={setCurrentPage} theme={theme} onThemeChange={handleThemeChange} customColors={customColors} tags={tags} triggerReload={triggerReload} subscriptionStatus={subscriptionStatus} />;
-      case 'upgrade':
-        return <UpgradePage pricing={pricing} />;
-      case 'referral':
-        return <ReferralPage userRole={userRole} />;
+        return <SettingsPage onSyncComplete={triggerReload} onNavigate={setCurrentPage} theme={theme} onThemeChange={handleThemeChange} customColors={customColors} tags={tags} triggerReload={triggerReload} />;
       case 'syncer':
         return <TradeSyncerPage />;
       default:
-        return <DashboardPage trades={filteredTrades} subscriptionStatus={subscriptionStatus} onOpenForm={openForm} onOpenImport={() => setCsvImportOpen(true)} onManualSync={handleManualSync} brokerStatuses={brokerStatuses} onOpenAddTrade={openFormWithDate} onEditTrade={openEditForm} dailyNotes={dailyNotes} onSaveNote={handleSaveNote} onDeleteNote={handleDeleteNote} tags={tags} strategyRules={strategyRules} evalFilter={evalFilter} setEvalFilter={setEvalFilter} sidebarCollapsed={sidebarCollapsed} />;
+        return <DashboardPage trades={filteredTrades} onOpenForm={openForm} onOpenImport={() => setCsvImportOpen(true)} onManualSync={handleManualSync} brokerStatuses={brokerStatuses} onOpenAddTrade={openFormWithDate} onEditTrade={openEditForm} dailyNotes={dailyNotes} onSaveNote={handleSaveNote} onDeleteNote={handleDeleteNote} tags={tags} strategyRules={strategyRules} evalFilter={evalFilter} setEvalFilter={setEvalFilter} sidebarCollapsed={sidebarCollapsed} />;
     }
   };
 
   return (
     <SidePanelContext.Provider value={setSidePanelOffset}>
     <DotGrid />
-    <AnnouncementBanner announcement={announcement} onDismiss={handleDismissAnnouncement} />
     <div className="flex min-h-screen relative z-[1]">
       <Sidebar
         currentPage={currentPage}
         onNavigate={setCurrentPage}
-        subscriptionStatus={subscriptionStatus}
         onCollapsedChange={setSidebarCollapsed}
         onWidthChange={setSidebarWidth}
-        userRole={userRole}
         trades={trades}
         selectedAccounts={selectedAccounts}
         setSelectedAccounts={setSelectedAccounts}
@@ -523,7 +458,6 @@ const App = () => {
       />
       <main className="flex-1 min-h-screen transition-[margin] duration-200 max-lg:!ml-0" style={{ marginLeft: sidebarWidth, paddingRight: sidePanelOffset }}>
         <div className="p-6 lg:p-8">
-          <FreeBanner subscriptionStatus={subscriptionStatus} proPrice={pricing.pro} />
           {syncNotification && (
             <div className="flex items-center gap-2 bg-info/10 border border-info/30 rounded-lg px-4 py-3 mb-6 text-info text-sm">
               <Icons.RefreshCw className="w-4 h-4 animate-spin" />
@@ -542,7 +476,6 @@ const App = () => {
         prefillDate={prefillDate}
         tags={tags}
         strategyRules={strategyRules}
-        subscriptionStatus={subscriptionStatus}
         trades={trades}
         sidebarCollapsed={sidebarCollapsed}
       />
@@ -556,7 +489,6 @@ const App = () => {
           theme={theme}
           customColors={customColors}
           onThemeChange={handleThemeChange}
-          subscriptionStatus={subscriptionStatus}
         />
       )}
     </div>

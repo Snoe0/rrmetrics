@@ -18,7 +18,5 @@ pages.get('/', (c) => c.redirect('/login'));
 pages.get('/login', (c) => servePage(c.env, '/login.html'));
 pages.get('/trades', (c) => servePage(c.env, '/trades.html'));
 pages.get('/changePass', (c) => servePage(c.env, '/changepass.html'));
-pages.get('/upgrade', (c) => servePage(c.env, '/upgrade.html'));
-pages.get('/admin', (c) => servePage(c.env, '/admin.html'));
 
 export default pages;

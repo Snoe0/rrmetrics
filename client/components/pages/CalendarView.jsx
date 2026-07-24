@@ -11,14 +11,13 @@ const { calcPercentChange } = require("../../utils/periodUtils");
 const { SidePanelContext } = require("../../utils/contexts");
 const { useWindowWidth } = require("../../utils/hooks");
 
-const DayDetailPanel = ({ dateKey, dayData, onClose, dailyNotes, onSaveNote, onDeleteNote, tags, subscriptionStatus, strategyRules, onEditTrade, sidebarCollapsed }) => {
+const DayDetailPanel = ({ dateKey, dayData, onClose, dailyNotes, onSaveNote, onDeleteNote, tags, strategyRules, onEditTrade, sidebarCollapsed }) => {
   const [expandedTrade, setExpandedTrade] = useState(null);
   const [dailyChecks, setDailyChecks] = useState([]);
   const [tradeChecksMap, setTradeChecksMap] = useState({});
   const [checksLoading, setChecksLoading] = useState(false);
   const date = new Date(dateKey + 'T00:00:00');
   const formatted = formatFullDateEST(date);
-  const isElite = subscriptionStatus && subscriptionStatus.isPremium;
   const dayRules = strategyRules ? strategyRules.filter(r => r.type === 'day') : [];
   const tradeRules = strategyRules ? strategyRules.filter(r => r.type === 'trade') : [];
   const windowWidth = useWindowWidth();
@@ -31,7 +30,7 @@ const DayDetailPanel = ({ dateKey, dayData, onClose, dailyNotes, onSaveNote, onD
   }, [isSidePanel, setSidePanelOffset]);
 
   useEffect(() => {
-    if (!isElite || !strategyRules || strategyRules.length === 0) return;
+    if (!strategyRules || strategyRules.length === 0) return;
     const fetchDailyChecks = async () => {
       try {
         const resp = await authFetch(`/api/strategy/checks/daily/${dateKey}`);
@@ -42,7 +41,7 @@ const DayDetailPanel = ({ dateKey, dayData, onClose, dailyNotes, onSaveNote, onD
       }
     };
     fetchDailyChecks();
-  }, [dateKey, isElite, strategyRules]);
+  }, [dateKey, strategyRules]);
 
   const handleDailyToggle = async (ruleId, followed) => {
     setChecksLoading(true);
@@ -197,7 +196,7 @@ const DayDetailPanel = ({ dateKey, dayData, onClose, dailyNotes, onSaveNote, onD
                       onClick={() => {
                         const nextId = isExpanded ? null : trade._id;
                         setExpandedTrade(nextId);
-                        if (nextId && isElite && tradeRules.length > 0) fetchTradeChecks(nextId);
+                        if (nextId && tradeRules.length > 0) fetchTradeChecks(nextId);
                       }}
                     >
                       <div className="flex items-center gap-2">
@@ -263,7 +262,7 @@ const DayDetailPanel = ({ dateKey, dayData, onClose, dailyNotes, onSaveNote, onD
                             <img src={trade.screenshot} alt="Trade screenshot" className="rounded-lg border border-border max-h-40 w-full object-contain bg-bg-surface" />
                           </div>
                         )}
-                        {isElite && tradeRules.length > 0 && (
+                        {tradeRules.length > 0 && (
                           <div className="mt-2 pt-2 border-t border-border/50">
                             <label className="text-text-secondary text-[10px] font-semibold uppercase tracking-wider mb-1.5 block">Trade Rules</label>
                             <RuleChecklist
@@ -313,7 +312,7 @@ const DayDetailPanel = ({ dateKey, dayData, onClose, dailyNotes, onSaveNote, onD
           </div>
 
           {/* Daily Rule Checks */}
-          {isElite && dayRules.length > 0 && (
+          {dayRules.length > 0 && (
             <div className="border-t border-border pt-3">
               <label className="text-text-secondary text-xs font-medium mb-1.5 block">Daily Rules</label>
               <RuleChecklist
@@ -337,13 +336,11 @@ const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'Ju
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-const CalendarView = ({ trades, dailyNotes, onSaveNote, onDeleteNote, tags, subscriptionStatus, strategyRules, onOpenAddTrade, onEditTrade, sidebarCollapsed }) => {
+const CalendarView = ({ trades, dailyNotes, onSaveNote, onDeleteNote, tags, strategyRules, onOpenAddTrade, onEditTrade, sidebarCollapsed }) => {
   const [viewMode, setViewMode] = useState('daily'); // 'daily' | 'heatmap' | 'monthly'
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState(null);
   const dailyData = groupTradesByDate(trades);
-  const canAddTrade = subscriptionStatus && subscriptionStatus.isPremium
-    && (subscriptionStatus.tradeCount == null || subscriptionStatus.tradeCount < 50);
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -460,7 +457,7 @@ const CalendarView = ({ trades, dailyNotes, onSaveNote, onDeleteNote, tags, subs
           dailyData={dailyData}
           onSelectDay={setSelectedDay}
           dailyNotes={dailyNotes}
-          onOpenAddTrade={canAddTrade ? onOpenAddTrade : undefined}
+          onOpenAddTrade={onOpenAddTrade}
         />
       )}
 
@@ -488,7 +485,6 @@ const CalendarView = ({ trades, dailyNotes, onSaveNote, onDeleteNote, tags, subs
           onSaveNote={onSaveNote}
           onDeleteNote={onDeleteNote}
           tags={tags}
-          subscriptionStatus={subscriptionStatus}
           strategyRules={strategyRules}
           onEditTrade={onEditTrade}
           sidebarCollapsed={sidebarCollapsed}

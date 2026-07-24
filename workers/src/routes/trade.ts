@@ -76,17 +76,7 @@ trade.get('/api/getTrades', requiresLogin, async (c) => {
 const makeTradeHandler = async (c: any) => {
   const user = c.get('user');
   const supabase = c.get('supabase');
-  const profile = c.get('profile');
   const body = await c.req.json();
-
-  // Enforce 50 trade limit for trial and free users
-  const plan = profile?.subscription_plan || 'free';
-  if (plan !== 'pro' && plan !== 'elite') {
-    const count = await tradesDb.countTrades(supabase, user.id);
-    if (count >= 50) {
-      return c.json({ error: 'Trade limit reached (50). Upgrade to Pro for unlimited trades.' }, 402);
-    }
-  }
 
   const hasPrices = body.enterPrice != null && body.enterPrice !== '' && body.exitPrice != null && body.exitPrice !== '';
   const hasPL = body.manualPL != null && body.manualPL !== '';
@@ -191,7 +181,6 @@ trade.post('/api/updateTrade', requiresLogin, async (c) => {
 trade.post('/api/importTrades', requiresLogin, async (c) => {
   const user = c.get('user');
   const supabase = c.get('supabase');
-  const profile = c.get('profile');
   const body = await c.req.json();
 
   if (!body.trades || !Array.isArray(body.trades)) {
@@ -200,19 +189,6 @@ trade.post('/api/importTrades', requiresLogin, async (c) => {
 
   if (body.trades.length > 500) {
     return c.json({ error: 'Maximum 500 trades per import!' }, 400);
-  }
-
-  // Enforce 50 trade limit for trial and free users
-  const plan = profile?.subscription_plan || 'free';
-  if (plan !== 'pro' && plan !== 'elite') {
-    const currentCount = await tradesDb.countTrades(supabase, user.id);
-    const remaining = 50 - currentCount;
-    if (remaining <= 0) {
-      return c.json({ error: 'Trade limit reached (50). Upgrade to Pro for unlimited trades.' }, 402);
-    }
-    if (body.trades.length > remaining) {
-      return c.json({ error: `Import would exceed your 50 trade limit. You can import ${remaining} more trade(s).` }, 402);
-    }
   }
 
   const required = ['ticker', 'enterTime', 'exitTime', 'enterPrice', 'exitPrice', 'quantity'];

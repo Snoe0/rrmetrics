@@ -4,7 +4,7 @@ const { authFetch } = require('../../helper');
 const Icons = require('../shared/Icons');
 const EvalFilterControl = require('../shared/EvalFilterControl');
 
-const StrategyPage = ({ subscriptionStatus, trades, evalFilter, setEvalFilter }) => {
+const StrategyPage = ({ trades, evalFilter, setEvalFilter }) => {
   const [rules, setRules] = useState([]);
   const [analytics, setAnalytics] = useState([]);
   const [disciplineScore, setDisciplineScore] = useState(0);
@@ -18,8 +18,6 @@ const StrategyPage = ({ subscriptionStatus, trades, evalFilter, setEvalFilter })
   const [editingId, setEditingId] = useState(null);
   const [editingLabel, setEditingLabel] = useState('');
   const [activeTab, setActiveTab] = useState('rules');
-
-  const isElite = subscriptionStatus && subscriptionStatus.isPremium;
 
   const fetchRules = async () => {
     try {
@@ -48,12 +46,10 @@ const StrategyPage = ({ subscriptionStatus, trades, evalFilter, setEvalFilter })
   };
 
   useEffect(() => {
-    if (!isElite) { setLoading(false); return; }
     Promise.all([fetchRules(), fetchAnalytics()]).finally(() => setLoading(false));
-  }, [isElite]);
+  }, []);
 
   useEffect(() => {
-    if (!isElite) return;
     fetchAnalytics();
   }, [evalFilter]);
 
@@ -103,21 +99,6 @@ const StrategyPage = ({ subscriptionStatus, trades, evalFilter, setEvalFilter })
       console.error('Failed to delete rule:', err);
     }
   };
-
-  if (!isElite) {
-    return (
-      <div className="text-center py-16">
-        <Icons.Target className="w-12 h-12 text-text-muted mx-auto mb-4" />
-        <h2 className="text-text-primary text-xl font-semibold mb-2">Strategy & Rule Tracking</h2>
-        <p className="text-text-secondary text-sm mb-6 max-w-md mx-auto">
-          Define trading rules, track adherence per trade and per day, and see how rule-following correlates with profitability.
-        </p>
-        <a href="/upgrade" className="inline-flex items-center gap-2 px-6 py-3 bg-accent text-accent-text text-sm font-semibold rounded-xl hover:brightness-110 transition-all">
-          <Icons.Zap className="w-4 h-4" /> Upgrade to Elite
-        </a>
-      </div>
-    );
-  }
 
   if (loading) {
     return (

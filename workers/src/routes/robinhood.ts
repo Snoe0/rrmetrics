@@ -8,9 +8,7 @@ import { RobinhoodAPI } from '../services/RobinhoodAPI';
 import { buildRoundTrips } from '../utils/round-trip-builder';
 import type { BrokerFill } from '../utils/round-trip-builder';
 import { requiresLogin } from '../middleware/supabase-auth';
-import { checkSubscriptionStatus, requiresBrokerSync, BROKER_CONNECTION_LIMITS } from '../middleware/subscription';
 import { createServiceClient } from '../lib/supabase';
-import type { EffectivePlan } from '../middleware/subscription';
 
 type HonoEnv = {
   Bindings: Env;
@@ -63,8 +61,6 @@ async function ensureFreshToken(
 robinhood.post(
   '/api/robinhood/connect',
   requiresLogin,
-  checkSubscriptionStatus,
-  requiresBrokerSync,
   async (c) => {
     const user = c.get('user');
     const body = await c.req.json();
@@ -76,10 +72,7 @@ robinhood.post(
 
     const serviceClient = createServiceClient(c.env);
 
-    // Determine connection limit for user's plan
-    const status = c.get('subscriptionStatus' as any) as { effectivePlan: EffectivePlan } | undefined;
-    const plan = status?.effectivePlan || 'free';
-    const limit = BROKER_CONNECTION_LIMITS[plan];
+    const limit = Infinity;
 
     try {
       // Generate a device token (UUID v4) for this connection
@@ -93,29 +86,14 @@ robinhood.post(
       const accountNumber = accounts.length > 0 ? accounts[0].account_number : 'Unknown';
 
       // Create parent broker_connection with limit check
-      let connectionId: string;
-      try {
-        connectionId = await brokerDb.createWithLimitCheck(
-          serviceClient,
-          user.id,
-          'robinhood',
-          'live',
-          `Robinhood \u2014 ${accountNumber}`,
-          limit,
-        );
-      } catch (err: any) {
-        if (err.message === 'CONNECTION_LIMIT_REACHED') {
-          return c.json(
-            {
-              error: 'You have reached your broker connection limit. Upgrade your plan for more connections.',
-              upgrade: true,
-              limit,
-            },
-            402,
-          );
-        }
-        throw err;
-      }
+      const connectionId = await brokerDb.createWithLimitCheck(
+        serviceClient,
+        user.id,
+        'robinhood',
+        'live',
+        `Robinhood \u2014 ${accountNumber}`,
+        limit,
+      );
 
       // Create child robinhood_connection with encrypted tokens
       const expiresAt = new Date(Date.now() + authResult.expiresIn * 1000).toISOString();
@@ -140,7 +118,6 @@ robinhood.post(
 robinhood.get(
   '/api/robinhood/status',
   requiresLogin,
-  checkSubscriptionStatus,
   async (c) => {
     const user = c.get('user');
     const serviceClient = createServiceClient(c.env);
@@ -152,11 +129,6 @@ robinhood.get(
       // Total count across ALL brokers for limit tracking
       const totalCount = await brokerDb.countByOwner(serviceClient, user.id);
 
-      // Determine plan and limits
-      const subStatus = c.get('subscriptionStatus' as any) as { effectivePlan: EffectivePlan } | undefined;
-      const plan = subStatus?.effectivePlan || 'free';
-      const limit = BROKER_CONNECTION_LIMITS[plan];
-      const canUseBrokerSync = plan === 'pro' || plan === 'elite';
 
       // Build status for each connection
       const connections = [];
@@ -201,9 +173,8 @@ robinhood.get(
       return c.json({
         connections,
         connectionsUsed: totalCount,
-        connectionLimit: limit === Infinity ? null : limit,
-        plan,
-        canUseBrokerSync,
+        connectionLimit: null,
+        canUseBrokerSync: true,
       });
     } catch (err: any) {
       console.error('Robinhood status error:', err.message);
@@ -217,8 +188,6 @@ robinhood.get(
 robinhood.post(
   '/api/robinhood/sync',
   requiresLogin,
-  checkSubscriptionStatus,
-  requiresBrokerSync,
   async (c) => {
     const user = c.get('user');
     const supabase = c.get('supabase');

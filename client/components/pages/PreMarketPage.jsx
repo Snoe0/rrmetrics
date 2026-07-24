@@ -6,7 +6,7 @@ const Icons = require('../shared/Icons');
 const { toEST } = require('../../utils/dateUtils');
 const { getTradePL } = require('../../utils/analytics');
 
-const PreMarketPage = ({ subscriptionStatus, trades }) => {
+const PreMarketPage = ({ trades }) => {
   const [items, setItems] = useState([]);
   const [completions, setCompletions] = useState([]);
   const [settings, setSettings] = useState({ resetTime: '06:00', timezone: 'America/New_York' });
@@ -17,8 +17,6 @@ const PreMarketPage = ({ subscriptionStatus, trades }) => {
   const [showSettings, setShowSettings] = useState(false);
   const [consistencyData, setConsistencyData] = useState(null);
   const [consistencyLoading, setConsistencyLoading] = useState(true);
-
-  const isElite = subscriptionStatus && subscriptionStatus.isPremium;
 
   const getTodayDate = () => {
     const now = new Date();
@@ -68,10 +66,9 @@ const PreMarketPage = ({ subscriptionStatus, trades }) => {
   };
 
   useEffect(() => {
-    if (!isElite) { setLoading(false); setConsistencyLoading(false); return; }
     fetchChecklist();
     fetchConsistency();
-  }, [isElite]);
+  }, []);
 
   const addItem = async () => {
     const label = newItemLabel.trim();
@@ -231,21 +228,6 @@ const PreMarketPage = ({ subscriptionStatus, trades }) => {
     'America/Los_Angeles': 'PT',
     'UTC': 'UTC',
   };
-
-  if (!isElite) {
-    return (
-      <div className="text-center py-16">
-        <Icons.Sunrise className="w-12 h-12 text-text-muted mx-auto mb-4" />
-        <h2 className="text-text-primary text-xl font-semibold mb-2">Pre-Market Prep</h2>
-        <p className="text-text-secondary text-sm mb-6 max-w-md mx-auto">
-          Build a daily pre-market checklist, track your routine consistency, and see how your preparation correlates with trading performance.
-        </p>
-        <a href="/upgrade" className="inline-flex items-center gap-2 px-6 py-3 bg-accent text-accent-text text-sm font-semibold rounded-xl hover:brightness-110 transition-all">
-          <Icons.Zap className="w-4 h-4" /> Upgrade to Elite
-        </a>
-      </div>
-    );
-  }
 
   if (loading) {
     return (

@@ -4,13 +4,11 @@ const React = require('react');
 const { useState, useEffect } = React;
 const Icons = require('../shared/Icons');
 
-const BacktestingContent = ({ subscriptionStatus }) => {
+const BacktestingPage = () => {
   const [sessions, setSessions] = useState([]);
   const [activeTrades, setActiveTrades] = useState([]);
   const [allTrades, setAllTrades] = useState([]);
   const [loading, setLoading] = useState(true);
-  const isProUser = subscriptionStatus?.plan === 'pro';
-  const hasReachedSessionLimit = isProUser && sessions.length >= 1;
   const [statsFilter, setStatsFilter] = useState('all'); // 'all' | session id
   const [showStartForm, setShowStartForm] = useState(false);
   const [showEndForm, setShowEndForm] = useState(false);
@@ -251,23 +249,12 @@ const BacktestingContent = ({ subscriptionStatus }) => {
           <h1 className="text-text-primary text-2xl font-bold">Backtesting</h1>
           <p className="text-text-muted text-sm mt-1">Track wins and losses across backtesting sessions</p>
         </div>
-        {!activeSession && !showStartForm && !hasReachedSessionLimit && (
+        {!activeSession && !showStartForm && (
           <button className={btnPrimary} onClick={() => setShowStartForm(true)}>
             + Start Session
           </button>
         )}
       </div>
-
-      {/* Pro session limit banner */}
-      {hasReachedSessionLimit && (
-        <div className="flex items-center gap-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-4 py-3">
-          <Icons.AlertCircle className="w-5 h-5 text-yellow-500 flex-shrink-0" />
-          <p className="text-text-primary text-sm font-medium">Upgrade to Elite to unlock Unlimited Backtesting Sessions</p>
-          <button className="ml-auto px-4 py-1.5 bg-yellow-500 text-black text-xs font-semibold rounded-lg hover:brightness-110 transition-all whitespace-nowrap" onClick={() => { window.location.href = '/upgrade'; }}>
-            Upgrade
-          </button>
-        </div>
-      )}
 
       {/* Start Session Form */}
       {showStartForm && (
@@ -543,7 +530,7 @@ const BacktestingContent = ({ subscriptionStatus }) => {
       <div className="bg-bg-surface border border-border rounded-xl overflow-hidden">
         <div className="px-5 py-4 border-b border-border flex items-center justify-between">
           <h2 className="text-text-primary font-semibold">Sessions</h2>
-          {!activeSession && !showStartForm && !hasReachedSessionLimit && (
+          {!activeSession && !showStartForm && (
             <button className={btnPrimary} onClick={() => setShowStartForm(true)}>+ Start Session</button>
           )}
         </div>
@@ -620,88 +607,6 @@ const BacktestingContent = ({ subscriptionStatus }) => {
   );
 };
 
-
-const BacktestingPage = ({ subscriptionStatus }) => {
-  const plan = subscriptionStatus?.plan;
-  // Free and trial users see a blurred preview
-  if (plan !== 'pro' && plan !== 'elite') {
-    return (
-      <div>
-        <h1 className="text-text-primary text-2xl font-bold mb-1">Backtesting</h1>
-        <p className="text-text-muted text-sm mb-8">Track wins and losses across backtesting sessions</p>
-
-        {/* Blurred peek of the interface */}
-        <div className="relative rounded-xl overflow-hidden">
-          <div className="pointer-events-none select-none blur-[6px] opacity-60">
-            {/* Fake active session panel */}
-            <div className="bg-bg-surface border border-accent/30 rounded-xl p-5 space-y-4 mb-6">
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="w-2 h-2 rounded-full bg-positive"></span>
-                    <span className="text-xs font-semibold uppercase tracking-wider text-positive">Active Session</span>
-                  </div>
-                  <h2 className="text-text-primary font-semibold text-lg">Morning Breakout v2 <span className="text-text-muted font-normal ml-2 text-sm">(NQ)</span></h2>
-                  <p className="text-text-muted text-xs mt-0.5">Started 2026-02-15</p>
-                </div>
-              </div>
-              <div className="border-t border-border pt-4">
-                <p className="text-text-tertiary text-xs font-semibold uppercase tracking-wider mb-3">Log Trade</p>
-                <div className="flex flex-wrap items-end gap-3">
-                  <div className="flex rounded-lg overflow-hidden border border-border">
-                    <span className="px-4 py-2 text-sm font-semibold bg-positive text-white">Win</span>
-                    <span className="px-4 py-2 text-sm font-semibold bg-bg-input text-text-muted">Loss</span>
-                  </div>
-                  <div className="flex-1 min-w-[100px] bg-bg-input border border-border rounded-lg px-3 py-2 text-sm text-text-muted">2.50</div>
-                  <div className="bg-bg-input border border-border rounded-lg px-3 py-2 text-sm text-text-muted">09:45</div>
-                  <span className="px-4 py-2 bg-accent text-accent-text text-sm font-semibold rounded-lg">Add Trade</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Fake stats overview */}
-            <div className="bg-bg-surface border border-border rounded-xl p-5">
-              <h2 className="text-text-primary font-semibold mb-4">Stats Overview</h2>
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                {[
-                  { label: 'Total Trades', value: '24' },
-                  { label: 'Wins', value: '16' },
-                  { label: 'Losses', value: '8' },
-                  { label: 'Win Rate', value: '66.7%' },
-                  { label: 'Avg RR', value: '2.14R' },
-                ].map(stat => (
-                  <div key={stat.label} className="bg-bg-input rounded-lg p-3 text-center">
-                    <div className="text-xl font-bold font-mono text-text-primary">{stat.value}</div>
-                    <div className="text-text-muted text-xs mt-0.5">{stat.label}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Overlay CTA */}
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="bg-bg-surface/95 backdrop-blur-sm border border-border rounded-xl p-8 text-center shadow-2xl max-w-sm mx-4">
-              <Icons.FlaskConical className="w-10 h-10 text-yellow-400 mx-auto mb-3" />
-              <h2 className="text-text-primary font-semibold text-lg mb-2">Pro & Elite Feature</h2>
-              <p className="text-text-muted text-sm mb-5">
-                Backtesting is available on the Pro and Elite plans. Create sessions, log trades, and track your strategy performance over time.
-              </p>
-              <button
-                className="px-6 py-2.5 bg-accent text-accent-text text-sm font-semibold rounded-lg hover:brightness-110 transition-all"
-                onClick={() => { window.location.href = '/upgrade'; }}
-              >
-                Upgrade Now
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return <BacktestingContent subscriptionStatus={subscriptionStatus} />;
-};
 
 
 module.exports = BacktestingPage;

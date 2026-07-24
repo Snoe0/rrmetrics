@@ -1,9 +1,7 @@
 import { Hono } from 'hono';
-export { RateLimiterDO } from './durable-objects/RateLimiter';
 import type { Env, AuthContext } from './bindings';
 import { securityHeaders } from './middleware/security';
 import { authMiddleware } from './middleware/supabase-auth';
-import { rateLimitMiddleware } from './middleware/rate-limit';
 import { refreshExpiringBrokerTokens } from './scheduled/broker-refresh';
 import accountRoutes from './routes/account';
 import tradeRoutes from './routes/trade';
@@ -11,20 +9,12 @@ import tagRoutes from './routes/tag';
 import dailyNoteRoutes from './routes/daily-note';
 import tradovateRoutes from './routes/tradovate';
 import projectxRoutes from './routes/projectx';
-import stripeRoutes from './routes/stripe';
 import premarketRoutes from './routes/premarket';
 import strategyRoutes from './routes/strategy';
-import referralRoutes from './routes/referral';
 import backtestingRoutes from './routes/backtesting';
-import adminRoutes from './routes/admin';
 import syncerRoutes from './routes/syncer';
-import announcementRoutes from './routes/announcement';
-import emailRoutes from './routes/email';
 import robinhoodRoutes from './routes/robinhood';
 import webullRoutes from './routes/webull';
-import { processEmailDrips } from './scheduled/email-drips';
-import { maturePendingCommissions } from './db/commissions';
-import { createServiceClient } from './lib/supabase';
 import pageRoutes from './routes/pages';
 
 type HonoEnv = {
@@ -38,9 +28,6 @@ const app = new Hono<HonoEnv>();
 app.use('*', securityHeaders);
 app.use('*', authMiddleware);
 
-// Rate limiting (after auth, before routes)
-app.use('/api/*', rateLimitMiddleware);
-
 // Health check
 app.get('/api/health', (c) => c.json({ status: 'ok' }));
 
@@ -51,15 +38,10 @@ app.route('/', tagRoutes);
 app.route('/', dailyNoteRoutes);
 app.route('/', tradovateRoutes);
 app.route('/', projectxRoutes);
-app.route('/', stripeRoutes);
 app.route('/', premarketRoutes);
 app.route('/', strategyRoutes);
-app.route('/', referralRoutes);
 app.route('/', backtestingRoutes);
-app.route('/', adminRoutes);
 app.route('/', syncerRoutes);
-app.route('/', announcementRoutes);
-app.route('/', emailRoutes);
 app.route('/', robinhoodRoutes);
 app.route('/', webullRoutes);
 
@@ -70,9 +52,5 @@ export default {
   fetch: app.fetch,
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
     ctx.waitUntil(refreshExpiringBrokerTokens(env));
-    if (event.cron === '0 5 * * *') {
-      ctx.waitUntil(processEmailDrips(env));
-      ctx.waitUntil(maturePendingCommissions(createServiceClient(env)));
-    }
   },
 };

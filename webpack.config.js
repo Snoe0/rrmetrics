@@ -6,8 +6,6 @@ module.exports = {
         app: './client/trades.jsx',
         login: './client/login.jsx',
         changepass: './client/changepass.jsx',
-        upgrade: './client/upgrade.jsx',
-        admin: './client/admin.jsx',
     },
     module: {
         rules: [

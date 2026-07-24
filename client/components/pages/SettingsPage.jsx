@@ -49,13 +49,7 @@ const TradovateBrokerSection = ({ hook, expandedBroker, toggleBroker, brokerHead
 
       {expandedBroker === config.key && (
         <div className="px-5 pb-5 border-t border-border pt-4 space-y-4">
-          {!canUseBrokerSync ? (
-            <div className="bg-accent/5 border border-accent/20 rounded-lg p-4 text-center">
-              <p className="text-sm text-text-primary font-medium mb-1">Pro or Elite plan required</p>
-              <p className="text-xs text-text-secondary mb-3">Broker sync is available on Pro and Elite plans.</p>
-              <button onClick={() => window.location.href = '/upgrade'} className="px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all">Upgrade Now</button>
-            </div>
-          ) : (
+          {(
             <>
               {isTradovateGroup && connections.filter(c => c.configured && !c.expired).length >= 2 && (
                 <button onClick={handleSyncAll} disabled={syncingId !== null} className="w-full px-4 py-2.5 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
@@ -261,13 +255,7 @@ const RobinhoodBrokerSection = ({ hook, expandedBroker, toggleBroker, brokerHead
 
       {expandedBroker === config.key && (
         <div className="px-5 pb-5 border-t border-border pt-4 space-y-4">
-          {!canUseBrokerSync ? (
-            <div className="bg-accent/5 border border-accent/20 rounded-lg p-4 text-center">
-              <p className="text-sm text-text-primary font-medium mb-1">Pro or Elite plan required</p>
-              <p className="text-xs text-text-secondary mb-3">Broker sync is available on Pro and Elite plans.</p>
-              <button onClick={() => window.location.href = '/upgrade'} className="px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all">Upgrade Now</button>
-            </div>
-          ) : (
+          {(
             <>
               {connections.map(conn => (
                 <div key={conn.connectionId} className="bg-bg-page/50 border border-border rounded-lg p-4 space-y-3">
@@ -364,7 +352,7 @@ const RobinhoodBrokerSection = ({ hook, expandedBroker, toggleBroker, brokerHead
   );
 };
 
-const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, customColors, tags, triggerReload, subscriptionStatus }) => {
+const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, customColors, tags, triggerReload }) => {
   const [activeTab, setActiveTab] = useState('brokers');
   const [message, setMessage] = useState(null);
 
@@ -372,7 +360,6 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
   const [pxConnections, setPxConnections] = useState([]);
   const [pxConnectionsUsed, setPxConnectionsUsed] = useState(0);
   const [pxConnectionLimit, setPxConnectionLimit] = useState(0);
-  const [pxCanUseBrokerSync, setPxCanUseBrokerSync] = useState(false);
   const [pxUsername, setPxUsername] = useState('');
   const [pxApiKey, setPxApiKey] = useState('');
   const [pxConnecting, setPxConnecting] = useState(false);
@@ -393,10 +380,6 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
   const [editTagColor, setEditTagColor] = useState('');
 
   const [expandedBroker, setExpandedBroker] = useState(null);
-
-  // --- Billing details state (fetched from Stripe when Account tab is active) ---
-  const [billingData, setBillingData] = useState(null);
-  const [billingLoading, setBillingLoading] = useState(false);
 
   // --- Broker hooks (must be top-level, not in a loop) ---
   const hookOpts = { onSyncComplete, setMessage, setExpandedBroker };
@@ -437,7 +420,6 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
       setPxConnections(data.connections || []);
       setPxConnectionsUsed(data.connectionsUsed || 0);
       setPxConnectionLimit(data.connectionLimit || 0);
-      setPxCanUseBrokerSync(data.canUseBrokerSync || false);
     } catch (err) {
       console.error('Failed to fetch ProjectX status:', err);
     }
@@ -448,17 +430,6 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
     Object.values(brokerHooks).forEach(h => h.fetchStatus());
     fetchPxStatus();
   }, []);
-
-  // Fetch billing details when Account tab is active and user has a paid plan
-  useEffect(() => {
-    if (activeTab !== 'account' || !subscriptionStatus?.isPremium || billingData) return;
-    setBillingLoading(true);
-    authFetch('/api/stripe/subscription')
-      .then(r => r.json())
-      .then(data => { if (data.subscription) setBillingData(data); })
-      .catch(() => {})
-      .finally(() => setBillingLoading(false));
-  }, [activeTab, subscriptionStatus]);
 
   // =============================================
   // OAuth callback detection (shared across all Tradovate-compatible brokers)
@@ -995,13 +966,7 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                         {brokerHeaderBadge(pxConnections)}
                       </div>
                       <div className="px-5 pb-5 border-t border-border pt-4 space-y-4">
-                        {!pxCanUseBrokerSync ? (
-                          <div className="bg-accent/5 border border-accent/20 rounded-lg p-4 text-center">
-                            <p className="text-sm text-text-primary font-medium mb-1">Pro or Elite plan required</p>
-                            <p className="text-xs text-text-secondary mb-3">Broker sync is available on Pro and Elite plans.</p>
-                            <button onClick={() => window.location.href = '/upgrade'} className="px-4 py-2 bg-accent text-accent-text text-sm font-medium rounded-lg hover:brightness-110 transition-all">Upgrade Now</button>
-                          </div>
-                        ) : (
+                        {(
                           <>
                             {pxConnections.map(conn => (
                               <div key={conn.connectionId} className="bg-bg-page/50 border border-border rounded-lg p-4 space-y-3">
@@ -1327,140 +1292,6 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
       {/* Account tab */}
       {activeTab === 'account' && (
         <div className="space-y-6">
-          {/* Subscription section */}
-          <div className="bg-bg-surface border border-border rounded-xl p-6 space-y-5">
-            {/* Header row: plan badge + status */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <h3 className="text-text-primary font-semibold">Subscription</h3>
-                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold uppercase ${
-                  subscriptionStatus && subscriptionStatus.isPremium
-                    ? 'bg-accent/15 text-accent'
-                    : 'bg-text-muted/15 text-text-secondary'
-                }`}>
-                  {subscriptionStatus && subscriptionStatus.isPremium
-                    ? (subscriptionStatus.plan || 'Pro')
-                    : 'Free'}
-                </span>
-                {subscriptionStatus && subscriptionStatus.subscriptionStatus && (
-                  <span className={`text-xs font-medium ${
-                    subscriptionStatus.subscriptionStatus === 'active' ? 'text-positive'
-                      : subscriptionStatus.subscriptionStatus === 'canceled' ? 'text-negative'
-                        : 'text-warning'
-                  }`}>
-                    {subscriptionStatus.subscriptionStatus.charAt(0).toUpperCase() + subscriptionStatus.subscriptionStatus.slice(1)}
-                  </span>
-                )}
-              </div>
-              {subscriptionStatus && subscriptionStatus.isPremium && (
-                <button
-                  className="text-xs text-accent hover:underline font-medium"
-                  onClick={() => { window.location.href = '/upgrade'; }}
-                >
-                  Manage
-                </button>
-              )}
-            </div>
-
-            {/* Billing details grid (premium users only) */}
-            {subscriptionStatus && subscriptionStatus.isPremium && billingData && billingData.subscription && (
-              <>
-                {/* Canceling banner */}
-                {billingData.subscription.cancelAtPeriodEnd && (
-                  <div className="flex items-center gap-2 px-3 py-2 bg-warning/10 border border-warning/20 rounded-lg">
-                    <Icons.AlertTriangle className="w-4 h-4 text-warning flex-shrink-0" />
-                    <p className="text-xs text-warning">
-                      Your subscription is set to cancel on{' '}
-                      <span className="font-semibold">
-                        {new Date(billingData.subscription.currentPeriodEnd * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-                      </span>. You can resume from the{' '}
-                      <button className="underline font-medium" onClick={() => { window.location.href = '/upgrade'; }}>manage page</button>.
-                    </p>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  {/* Next billing date */}
-                  <div className="flex items-start gap-3 p-3 bg-bg-input/50 rounded-lg">
-                    <Icons.Calendar className="w-4 h-4 text-text-tertiary mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-xs text-text-muted uppercase tracking-wider font-medium mb-1">
-                        {billingData.subscription.cancelAtPeriodEnd ? 'Access Until' : 'Next Billing'}
-                      </p>
-                      <p className="text-sm text-text-primary font-medium">
-                        {new Date(billingData.subscription.currentPeriodEnd * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                      </p>
-                      <p className="text-xs text-text-muted mt-0.5 capitalize">{billingData.subscription.billingInterval}ly</p>
-                    </div>
-                  </div>
-
-                  {/* Amount */}
-                  <div className="flex items-start gap-3 p-3 bg-bg-input/50 rounded-lg">
-                    <Icons.DollarSign className="w-4 h-4 text-text-tertiary mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-xs text-text-muted uppercase tracking-wider font-medium mb-1">
-                        {billingData.subscription.cancelAtPeriodEnd ? 'Last Amount' : 'Next Amount'}
-                      </p>
-                      <p className="text-sm text-text-primary font-medium">
-                        {billingData.upcomingInvoice
-                          ? `$${(billingData.upcomingInvoice.amountDue / 100).toFixed(2)}`
-                          : '—'}
-                      </p>
-                      {billingData.upcomingInvoice && (
-                        <p className="text-xs text-text-muted mt-0.5 uppercase">{billingData.upcomingInvoice.currency}</p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Payment method */}
-                  <div className="flex items-start gap-3 p-3 bg-bg-input/50 rounded-lg">
-                    <Icons.CreditCard className="w-4 h-4 text-text-tertiary mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-xs text-text-muted uppercase tracking-wider font-medium mb-1">Payment Method</p>
-                      {billingData.paymentMethod ? (
-                        <>
-                          <p className="text-sm text-text-primary font-medium capitalize">
-                            {billingData.paymentMethod.brand} •••• {billingData.paymentMethod.last4}
-                          </p>
-                          <p className={`text-xs mt-0.5 ${billingData.paymentMethod.isExpired ? 'text-negative font-medium' : 'text-text-muted'}`}>
-                            {billingData.paymentMethod.isExpired ? 'Expired' : `Exp ${billingData.paymentMethod.expMonth}/${billingData.paymentMethod.expYear}`}
-                          </p>
-                        </>
-                      ) : (
-                        <p className="text-sm text-text-muted">No card on file</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* Loading state */}
-            {subscriptionStatus && subscriptionStatus.isPremium && billingLoading && (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {[0, 1, 2].map(i => (
-                  <div key={i} className="p-3 bg-bg-input/50 rounded-lg animate-pulse">
-                    <div className="h-3 w-16 bg-border rounded mb-2"></div>
-                    <div className="h-4 w-24 bg-border rounded"></div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Free/trial user — upgrade CTA */}
-            {(!subscriptionStatus || !subscriptionStatus.isPremium) && (
-              <div className="border-t border-border pt-4">
-                <button
-                  className="flex items-center gap-2 px-4 py-2.5 bg-accent text-accent-text text-sm font-semibold rounded-lg hover:brightness-110 transition-all"
-                  onClick={() => { window.location.href = '/upgrade'; }}
-                >
-                  <Icons.Zap className="w-4 h-4" />
-                  Upgrade Now
-                </button>
-              </div>
-            )}
-          </div>
-
           {/* Account settings section */}
           <div className="bg-bg-surface border border-border rounded-xl p-6 space-y-4">
             <h3 className="text-text-primary font-semibold">Account Settings</h3>
@@ -1544,10 +1375,10 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
             </div>
           </div>
 
-          {/* Full customization — Elite unlocked, blurred for others */}
+          {/* Full customization */}
           <div className="mt-4 pt-4 border-t border-border">
             <div className="text-text-secondary text-sm font-medium mb-3">Full Theme Customization</div>
-            {subscriptionStatus && subscriptionStatus.plan === 'elite' ? (
+            {(
               <div className="space-y-4">
                 <div className="grid grid-cols-3 gap-4">
                   {[
@@ -1583,42 +1414,6 @@ const SettingsPage = ({ onSyncComplete, onNavigate, theme, onThemeChange, custom
                 >
                   Reset colors to defaults
                 </button>
-              </div>
-            ) : (
-              <div
-                className="relative group rounded-lg"
-                aria-label="Upgrade to Elite for full theme customization"
-              >
-                <div className="filter blur-[2px] pointer-events-none select-none">
-                  <div className="grid grid-cols-3 gap-4">
-                    {[
-                      { label: 'Background', color: '#0B0E14' },
-                      { label: 'Elements', color: '#111111' },
-                      { label: 'Text', color: '#FFFFFF' },
-                      { label: 'Bullish (Positive)', color: '#10B981' },
-                      { label: 'Bearish (Negative)', color: '#EF4444' },
-                    ].map(({ label, color }) => (
-                      <div key={label} className="flex items-center gap-3">
-                        <div
-                          className="w-10 h-10 rounded-lg border border-border"
-                          style={{ backgroundColor: color }}
-                        />
-                        <div>
-                          <div className="text-text-primary text-sm">{label}</div>
-                          <div className="text-text-muted text-xs font-mono">{color}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-bg-surface/60 rounded-lg">
-                  <a
-                    href="/upgrade"
-                    className="text-accent text-sm font-medium hover:underline no-underline"
-                  >
-                    Upgrade to Elite for full customization &rarr;
-                  </a>
-                </div>
               </div>
             )}
           </div>
