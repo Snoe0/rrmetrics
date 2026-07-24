@@ -25,10 +25,11 @@ const ChangePass = () => {
     setError(null);
     setLoading(true);
 
+    const currentPass = e.target.querySelector('#currentPass').value;
     const pass = e.target.querySelector('#pass').value;
     const pass2 = e.target.querySelector('#pass2').value;
 
-    if (!pass || !pass2) {
+    if (!currentPass || !pass || !pass2) {
       setError('All fields are required');
       setLoading(false);
       return;
@@ -40,7 +41,10 @@ const ChangePass = () => {
       return;
     }
 
-    const { error: authError } = await supabase.auth.updateUser({ password: pass });
+    const { error: authError } = await supabase.auth.updateUser({
+      password: pass,
+      currentPassword: currentPass,
+    });
 
     if (authError) {
       setError(authError.message);
@@ -91,6 +95,18 @@ const ChangePass = () => {
 
         <form onSubmit={handleChangePass}>
           <div className="space-y-5">
+            <div>
+              <label htmlFor="currentPass" className="block text-sm font-medium text-text-secondary mb-2">Current Password</label>
+              <input
+                id="currentPass"
+                type="password"
+                name="currentPass"
+                placeholder="Enter current password"
+                autoComplete="current-password"
+                className="w-full px-4 py-3 bg-bg-input border border-border rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
+              />
+            </div>
+
             <div>
               <label htmlFor="pass" className="block text-sm font-medium text-text-secondary mb-2">New Password</label>
               <input

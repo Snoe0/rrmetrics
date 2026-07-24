@@ -108,12 +108,18 @@ auth.post('/api/auth/logout', async (c) => {
   return c.json({ ok: true });
 });
 
-// POST /api/auth/change-password (Bearer) {newPassword}
+// POST /api/auth/change-password (Bearer) {currentPassword, newPassword}
 auth.post('/api/auth/change-password', requiresLogin, async (c) => {
   const profile = c.get('profile');
   const db = c.get('db');
   const body = await c.req.json().catch(() => ({}));
+  const currentPassword = typeof body.currentPassword === 'string' ? body.currentPassword : '';
   const newPassword = typeof body.newPassword === 'string' ? body.newPassword : '';
+
+  // A stolen/unattended session must not be enough to take over the account
+  if (!currentPassword || !(await bcrypt.compare(currentPassword, profile.password_hash))) {
+    return c.json({ error: 'Current password is incorrect.' }, 401);
+  }
 
   if (newPassword.length < 6) {
     return c.json({ error: 'Password must be at least 6 characters.' }, 400);

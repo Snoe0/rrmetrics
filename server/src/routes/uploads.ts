@@ -15,13 +15,13 @@ const uploads = new Hono<HonoEnv>();
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10MB
 
+// Raster formats only — SVG is excluded because it can carry scripts (stored XSS)
 const MIME_EXTENSIONS: Record<string, string> = {
   'image/jpeg': 'jpg',
   'image/png': 'png',
   'image/gif': 'gif',
   'image/webp': 'webp',
   'image/avif': 'avif',
-  'image/svg+xml': 'svg',
 };
 
 const EXTENSION_MIMES: Record<string, string> = {
@@ -31,7 +31,6 @@ const EXTENSION_MIMES: Record<string, string> = {
   gif: 'image/gif',
   webp: 'image/webp',
   avif: 'image/avif',
-  svg: 'image/svg+xml',
 };
 
 // POST /api/uploads — multipart field `file`; image-only, 10MB cap.
@@ -87,6 +86,8 @@ uploads.get('/uploads/:name', async (c) => {
   return c.body(new Uint8Array(data), 200, {
     'Content-Type': contentType,
     'Cache-Control': 'public, max-age=31536000, immutable',
+    'X-Content-Type-Options': 'nosniff',
+    'Content-Security-Policy': 'sandbox',
   });
 });
 

@@ -161,7 +161,7 @@ const auth = {
     return { error: null };
   },
 
-  updateUser: async ({ password }) => {
+  updateUser: async ({ password, currentPassword }) => {
     const token = getToken();
     if (!token) {
       return { data: { user: null }, error: { message: 'Not authenticated' } };
@@ -170,7 +170,11 @@ const auth = {
       return { data: { user: null }, error: { message: 'Nothing to update' } };
     }
     try {
-      const res = await authRequest('/api/auth/change-password', { newPassword: password }, token);
+      const res = await authRequest(
+        '/api/auth/change-password',
+        { newPassword: password, currentPassword },
+        token,
+      );
       if (!res.ok) {
         const message = await parseErrorMessage(res, 'Could not update password');
         return { data: { user: null }, error: { message } };
