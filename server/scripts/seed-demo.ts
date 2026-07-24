@@ -59,6 +59,8 @@ const main = async () => {
 
   const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 10);
   profile = await profilesDb.createProfile(db, { email: DEMO_EMAIL, passwordHash });
+  // Demo data speaks for itself — skip the first-run onboarding questionnaire
+  db.prepare('UPDATE profiles SET onboarding_completed = 1 WHERE id = ?').run(profile.id);
 
   const tagNames: Array<{ name: string; color: string }> = [
     { name: 'Breakout', color: '#22c55e' },
