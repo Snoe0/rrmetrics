@@ -1,132 +1,47 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for AI assistants working in this repository.
 
-## Workflow
+RR Metrics is an open-source, self-hosted trading journal: a Node.js/Hono server with a local SQLite database and a React 19 client bundled by webpack. No Docker, no cloud services.
 
-- **Commit after every change:** Always commit all changes after they are made. Do not wait for the user to ask.
+## Commands
 
-## Project Memory Vault
-
-This project has an Obsidian vault at `.claude/RR-Metrics/`. **Read it at the start of every session and write to it as you work.**
-
-### Vault structure
-```
-.claude/RR-Metrics/
-├── Index.md              ← Start here — project overview and all links
-├── Architecture.md       ← System design, component map, data flow
-├── Database.md           ← All tables, columns, RLS, query patterns
-├── Auth.md               ← Supabase JWT flow, middleware chain
-├── Infrastructure.md     ← Build scripts, env vars, secrets reference
-├── Decisions.md          ← Architectural decisions with rationale
-├── Progress.md           ← Session log — append here after every session
-├── Features/             ← One file per feature (Trades, TradovateSync, etc.)
-├── API/                  ← One file per route group with endpoint reference
-└── Client/               ← Client architecture and component breakdowns
+```bash
+npm start                # run the server (tsx server/src/node.ts) → http://localhost:8459
+npm run dev              # server with auto-restart (tsx watch)
+npm run build            # webpack build of the client → public/assets
+npm run build:watch      # webpack watch mode (run alongside `npm run dev`)
+npm run seed-demo        # seed demo user demo@example.com / demo1234
+npm run reset-password -- <email> <new-password>
+cd server && npx tsc --noEmit   # type-check the server (strict, noEmit)
 ```
 
-### When to read
-- **Start of session:** Read `Index.md` first, then any files relevant to the task.
-- **Before touching a feature:** Read the corresponding `Features/*.md` and `API/*.md`.
-- **Before touching auth/DB/middleware:** Read `Auth.md` and `Database.md`.
-
-### When to write
-| Trigger | Action |
-|---------|--------|
-| Architectural choice made | Append to `Decisions.md` |
-| Feature added or significantly changed | Update the relevant `Features/*.md` |
-| New API endpoint added | Update `API/Routes.md` and the relevant `API/*.md` |
-| Schema change | Update `Database.md` |
-| Bug or non-obvious gotcha found | Note in `Progress.md` with `#bug` |
-| End of session | Append a session entry to `Progress.md` |
-
-### Vault notes format
-- Use `[[WikiLinks]]` to link related notes
-- Use YAML frontmatter on every note (`tags:`, `last-updated:`)
-- Keep `last-updated` accurate when editing a file
-- `Progress.md` entries: `## Session: YYYY-MM-DD` with "What was done", "Bugs & Gotchas", "Next Steps"
-
-## Build & Development Commands
-
-### Express/MongoDB (legacy - `server/`)
-- **Install dependencies:** `npm install`
-- **Build client bundles:** `npm run webpack` (production webpack build → `public/assets/`)
-- **Watch mode (client):** `npm run webpackWatch`
-- **Run server:** `npm start` (or `node ./server/app.js`)
-- **Dev server with auto-reload:** `npm run nodemon` (watches `./server` and `./hosted`)
-- **Lint:** `npx eslint ./server --fix` (runs automatically as `pretest`)
-- **Test:** `npm test` (currently runs eslint pretest only, no test suite)
-- **Full dev workflow:** Run `npm run webpackWatch` in one terminal and `npm run nodemon` in another
-
-### Cloudflare Workers (new - `workers/`)
-- **Install worker deps:** `cd workers && npm install`
-- **Dev worker server:** `npm run dev:worker` (runs `wrangler dev`)
-- **Deploy:** `npm run deploy` (builds webpack + deploys worker)
-- **D1 migrate (remote):** `npm run d1:migrate`
-- **D1 migrate (local):** `npm run d1:migrate:local`
-- **Full dev workflow:** Run `npm run webpackWatch` in one terminal and `npm run dev:worker` in another
+There is no test suite (`npm test` is a no-op). ESLint uses airbnb base (`.eslintrc`).
 
 ## Architecture
 
-This is **RR Metrics**, a trading journal web app. It has two backends:
-
-### Legacy: Express/MongoDB (`server/`)
-Preserved for rollback capability. Uses MVC architecture with Node.js/Express 5, MongoDB/Mongoose, Handlebars views.
-
-### New: Cloudflare Workers (`workers/`)
-Cloudflare-native stack using Hono framework, D1 (SQLite) database, Durable Objects for sessions.
-
-- **`src/index.ts`** — Hono entry point. Mounts all route modules, global middleware (security headers, session).
-- **`src/routes/`** — Route handlers: `account.ts` (auth/settings), `trade.ts` (CRUD + bulk import), `tag.ts`, `daily-note.ts`, `tradovate.ts` (broker sync), `stripe.ts` (billing), `pages.ts` (HTML serving with auth guards).
-- **`src/db/`** — D1 database access layer: `accounts.ts`, `trades.ts`, `tags.ts`, `trade-tags.ts` (junction), `daily-notes.ts`. All map `id` → `_id` in responses for client compat.
-- **`src/middleware/`** — `session.ts` (Durable Object sessions), `auth.ts` (requiresLogin/requiresLogout), `subscription.ts` (7-day trial), `security.ts` (CSP headers).
-- **`src/session-do.ts`** — Durable Object for server-side sessions with 24h sliding expiry via alarm().
-- **`src/services/TradovateAPI.ts`** — Tradovate broker API client (TypeScript port, uses fetch).
-- **`src/utils/`** — `crypto.ts` (Web Crypto AES-256-GCM, format-compatible with Node.js), `password.ts` (bcryptjs), `email.ts` (Resend API), `id.ts` (UUID gen).
-- **`schema.sql`** — D1 schema: 5 tables (accounts, trades, tags, trade_tags, daily_notes).
-
-### Client (`client/`)
-
-Each page is a **separate webpack entry point** that renders a standalone React app into its HTML page:
-
-- `trades.jsx` → main journal dashboard (the bulk of the app — trade table, analytics, import, tags, settings)
-- `login.jsx` → login/signup with Google OAuth
-- `landing.jsx` → public landing page
-- `changepass.jsx` → password change form
-- `upgrade.jsx` → Stripe subscription upgrade page
-- `helper.js` — Shared utilities (`sendPost`, `handleError`) used across client pages
-
-Bundles output to `public/assets/` as `[name]Bundle.js` and `[name].css`.
-
-### Static Pages (`public/`)
-
-5 HTML files replace Handlebars templates. Identical structure (mount points, errorDiv elements). Served by Cloudflare Pages with auth guards in `routes/pages.ts`.
-
-### Styling
-
-Tailwind CSS 3 with PostCSS. Theme colors use CSS custom properties (`--bg-page`, `--text-primary`, etc.) enabling dark/light mode toggle. Custom colors defined in `tailwind.config.js` map to these variables. Fonts: Inter (sans) and JetBrains Mono (mono).
+- **Entry:** `server/src/node.ts` — loads dotenv, ensures `data/` dirs + secret key, runs `schema.sql`, starts `@hono/node-server` on `PORT` (default 8459), and kicks off an hourly broker-token-refresh interval (`server/src/scheduled/broker-refresh.ts`).
+- **App:** `server/src/index.ts` — Hono app; global `securityHeaders` + `authMiddleware`, then all API route modules, then static `public/` serving, then HTML page routes (`/login`, `/trades`, `/changePass`).
+- **Config:** `server/src/config.ts` — all paths derive from `DATA_DIR` (default `./data`): `rrmetrics.db`, `screenshots/`, `secret.key` (auto-generated 64-hex, used for JWT signing and as default `ENCRYPTION_KEY`). `getEnv()` builds the `Env` object routes receive as `c.env` (typed in `server/src/bindings.d.ts`).
+- **DB:** `server/src/db/connection.ts` — singleton better-sqlite3 handle, WAL mode, foreign keys on; `schema.sql` runs on every boot with `CREATE TABLE IF NOT EXISTS` semantics (idempotent — schema changes must be additive or handled with migrations in code).
+- **Routes:** `server/src/routes/` — one file per area (trade, tag, daily-note, premarket, strategy, backtesting, uploads, account, auth, syncer + one per broker). Route files are mounted in `index.ts`.
+- **DB modules:** `server/src/db/` — one module per table group; routes never write SQL inline, they call these modules.
+- **Broker services:** `server/src/services/` — pure HTTP clients (TradovateAPI, ProjectXAPI, WebullAPI, RobinhoodAPI), no DB access.
+- **Client:** `client/` — three webpack entries (`trades.jsx` main app, `login.jsx`, `changepass.jsx`) output to `public/assets/*Bundle.js`. Pages live in `client/components/pages/`, shared widgets in `components/shared/`, modals in `components/modals/`. Tailwind for styling.
 
 ## Key Patterns
 
-- **Session-based auth:** Durable Objects store session data (same `toAPI` shape as Express). Cookie: `sessionid`. 24h sliding expiry.
-- **Owner scoping:** All trade/tag/note queries filter by `owner` to isolate user data.
-- **D1 → client compat:** Database layer maps `id` → `_id` in all JSON responses (client uses `_id` everywhere).
-- **Stripe webhook:** The `/api/stripe/webhook` route uses `c.req.text()` for raw body (no JSON parsing).
-- **No shared React router:** Each page is a fully independent React app with its own entry point. Navigation between pages is full page loads.
-- **ESLint:** Airbnb base config with `no-underscore-dangle` and `no-plusplus` disabled.
+- **Auth contract:** `authMiddleware` (server/src/middleware/auth.ts) parses `Authorization: Bearer <JWT>` (HS256, signed with the server secret), loads the profile, and sets `user`, `accessToken`, `profile`, and `db` on the Hono context — then *always* calls `next()`. Protection comes from `requiresLogin` on each route (401 for JSON requests, redirect to `/` for browsers). OAuth callback endpoints (`/api/tradovate/callback`, `/api/webull/callback`) are intentionally public and validate a CSRF nonce in `state` instead.
+- **Owner scoping:** every query in `server/src/db/` filters by `user_id` (or by a `broker_connection_id` that was itself looked up under the user). Never add a query that returns another user's rows; always thread `user.id` from `c.get('user')`.
+- **id → `_id` mapping:** DB rows use snake_case and `id`; API responses use camelCase and `_id` (a legacy of the original MongoDB-shaped client). Each db module has a `rowToAPI()` doing this mapping — follow it for new endpoints (see `server/src/db/trades.ts`).
+- **JSON-in-TEXT columns:** arrays/objects are stored as JSON strings in TEXT columns (e.g. `trades.image_attachments`, `trade_syncer_configs.follower_accounts`) and parsed defensively with helpers like `parseJsonArray()`. No SQLite JSON functions are relied on.
+- **Encrypted credentials:** broker tokens/keys are encrypted with `encrypt()`/`decrypt()` from `server/src/utils/crypto.ts` using `ENCRYPTION_KEY` (defaults to the auto-generated server secret). Never store or log broker credentials in plaintext.
+- **Broker integration shape:** parent `broker_connections` row + per-broker child table (`*_connections`) + service + route + hourly refresh. Routes proactively refresh tokens expiring within 30 minutes via an `ensureFreshToken` helper. Details in CONTRIBUTING.md.
+- **Client API shim:** `client/supabase.js` is a zero-dependency shim that mimics supabase-js return shapes (`{ data, error }`) but talks to the local `/api/*` endpoints; JWT lives in localStorage (`rr_token`). It is *not* Supabase — there is no Supabase, Cloudflare, or Workers code in the current stack.
 
-## Environment Variables
+## Gotchas
 
-### Cloudflare Workers (set via `wrangler secret put`)
-Required: `ENCRYPTION_KEY` (64-char hex)
-
-Secrets: `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_ELITE`
-
-Vars (in wrangler.toml): `APP_URL`
-
-Optional: `GOOGLE_CLIENT_ID`
-
-### Legacy Express
-Required: `MONGODB_URI`, `ENCRYPTION_KEY` (64-char hex)
-
-Optional: `PORT`/`NODE_PORT` (default 3000), `GOOGLE_CLIENT_ID`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_ELITE`, `NODE_ENV`
+- Server TypeScript runs directly via `tsx` — there is no server build step; `tsc` is type-check only.
+- The client build is required before the app renders (`public/assets` bundles); after client changes, rebuild or keep `npm run build:watch` running.
+- `data/` is runtime state (DB, screenshots, secret key) — never commit it, and be careful with destructive operations there.
+- `APP_URL` matters for broker OAuth: redirect URIs are built as `${APP_URL}/api/<broker>/callback`.
