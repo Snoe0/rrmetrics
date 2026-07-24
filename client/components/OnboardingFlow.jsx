@@ -413,34 +413,6 @@ const CustomizePage = ({ theme, customColors, onThemeChange, onNext, ready }) =>
         </div>
       </div>
 
-      {/* Full custom theme — Elite teaser */}
-      <div className="w-full max-w-xs mx-auto mb-6">
-        <div className="border-t border-border pt-5 mt-2">
-          <div className="text-text-secondary text-sm font-medium mb-3">Full Theme Customization</div>
-          <div className="relative rounded-xl bg-bg-surface/60 border border-border p-5">
-            <div className="opacity-30 pointer-events-none select-none">
-              <div className="grid grid-cols-2 gap-x-6 gap-y-3">
-                {[
-                  { label: 'Background', color: '#0B0E14' },
-                  { label: 'Elements', color: '#111111' },
-                  { label: 'Text', color: '#FFFFFF' },
-                  { label: 'Bullish', color: '#10B981' },
-                  { label: 'Bearish', color: '#EF4444' },
-                ].map(({ label, color }) => (
-                  <div key={label} className="flex items-center gap-3">
-                    <div className="w-7 h-7 rounded-md border border-border flex-shrink-0" style={{ backgroundColor: color }} />
-                    <div className="text-text-primary text-xs">{label}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-accent text-xs font-medium">Requires Elite plan</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <p className="text-text-muted text-xs mb-6">Navigate to Settings &rarr; Preferences to change this later.</p>
       <button onClick={onNext} className={`onboard-btn-primary transition-opacity duration-500 ${ready ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>Next</button>
     </div>
@@ -468,7 +440,7 @@ const GoodLuckPage = ({ onComplete }) => {
 
 // ── Main OnboardingFlow ──────────────────────────────────────────
 
-const OnboardingFlow = ({ onComplete, theme, customColors, onThemeChange, subscriptionStatus }) => {
+const OnboardingFlow = ({ onComplete, theme, customColors, onThemeChange }) => {
   const [experience, setExperience] = useState(null);
   const [pageIndex, setPageIndex] = useState(0);
   const [direction, setDirection] = useState(1);

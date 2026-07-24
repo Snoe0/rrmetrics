@@ -1,5 +1,3 @@
-const { supabase } = require('./supabase.js');
-
 /* Takes in an error message. Sets the error message up in html, and
    displays it to the user. Will be hidden by other events that could
    end in an error.
@@ -10,18 +8,34 @@ const handleError = (message) => {
 };
 
 /**
- * Wraps fetch() to attach the Supabase JWT as Authorization header.
- * Falls back to regular fetch if no session exists.
+ * The app is local and single-user (no auth), so this is a thin fetch wrapper
+ * kept as the app's single API entry point. Name retained to avoid churn across
+ * call sites.
  */
-const authFetch = async (url, options = {}) => {
-  const { data: { session } } = await supabase.auth.getSession();
-  const headers = { ...options.headers };
+const authFetch = async (url, options = {}) => fetch(url, options);
 
-  if (session?.access_token) {
-    headers['Authorization'] = `Bearer ${session.access_token}`;
+/**
+ * Uploads a JPEG data URL to the local screenshot store and returns its public
+ * URL. The server generates the stored filename, so none is sent.
+ */
+const postScreenshot = async (dataUrl) => {
+  const base64 = dataUrl.split(',')[1];
+  const byteChars = atob(base64);
+  const bytes = new Uint8Array(byteChars.length);
+  for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+  const blob = new Blob([bytes], { type: 'image/jpeg' });
+
+  const formData = new FormData();
+  formData.append('file', blob, 'screenshot.jpg');
+
+  const res = await fetch('/api/uploads', { method: 'POST', body: formData });
+  if (!res.ok) {
+    let message = 'Upload failed';
+    try { message = (await res.json()).error || message; } catch (e) { /* keep default */ }
+    throw new Error(message);
   }
-
-  return fetch(url, { ...options, headers });
+  const { path } = await res.json();
+  return `/uploads/${path}`;
 };
 
 /* Sends post requests to the server using fetch with auth.
@@ -62,5 +76,5 @@ module.exports = {
   sendPost,
   hideError,
   authFetch,
-  supabase,
+  postScreenshot,
 };

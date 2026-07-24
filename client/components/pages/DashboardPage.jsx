@@ -43,7 +43,7 @@ const AvgWinLossCard = ({ avgWin, avgLoss }) => {
 
 
 
-const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, onOpenImport, onManualSync, brokerStatuses, onOpenAddTrade, onEditTrade, dailyNotes, onSaveNote, onDeleteNote, tags, strategyRules, evalFilter, setEvalFilter, sidebarCollapsed }) => {
+const DashboardPage = ({ trades, onOpenForm, onOpenImport, onManualSync, brokerStatuses, onOpenAddTrade, onEditTrade, dailyNotes, onSaveNote, onDeleteNote, tags, strategyRules, evalFilter, setEvalFilter, sidebarCollapsed }) => {
   const [period, setPeriod] = useState('all');
   const [syncing, setSyncing] = useState(false);
   const hasBrokers = brokerStatuses && brokerStatuses.length > 0;
@@ -83,8 +83,7 @@ const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, onOpenImport, o
               <Icons.RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
             </button>
           )}
-          {subscriptionStatus && subscriptionStatus.isPremium && (subscriptionStatus.tradeCount == null || subscriptionStatus.tradeCount < 50) && (
-            <>
+          <>
               <button className="flex items-center gap-2 px-4 py-2.5 bg-accent text-accent-text text-sm font-semibold rounded-lg hover:brightness-110 transition-all" onClick={onOpenForm}>
                 <Icons.Plus className="w-4 h-4" />
                 New Trade
@@ -97,8 +96,7 @@ const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, onOpenImport, o
               >
                 <Icons.Download className="w-4 h-4" />
               </button>
-            </>
-          )}
+          </>
         </div>
       </div>
 
@@ -136,7 +134,7 @@ const DashboardPage = ({ trades, subscriptionStatus, onOpenForm, onOpenImport, o
       </div>
 
       {/* Calendar */}
-      <CalendarView trades={baseTrades} dailyNotes={dailyNotes} onSaveNote={onSaveNote} onDeleteNote={onDeleteNote} tags={tags} subscriptionStatus={subscriptionStatus} strategyRules={strategyRules} onOpenAddTrade={onOpenAddTrade} onEditTrade={onEditTrade} sidebarCollapsed={sidebarCollapsed} />
+      <CalendarView trades={baseTrades} dailyNotes={dailyNotes} onSaveNote={onSaveNote} onDeleteNote={onDeleteNote} tags={tags} strategyRules={strategyRules} onOpenAddTrade={onOpenAddTrade} onEditTrade={onEditTrade} sidebarCollapsed={sidebarCollapsed} />
     </div>
   );
 };

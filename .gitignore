@@ -56,6 +56,11 @@ typings/
 
 # dotenv environment variables file
 .env
+.env.*
+*.env
+!.env.example
+.dev.vars
+**/.dev.vars
 
 # vscode
 .vscode/
@@ -72,5 +77,11 @@ public/assets/*.map
 
 # Local tool configs
 .serena/
-.claude/RR-Metrics/.obsidian/
 .superpowers/
+
+# Local data & generated caches
+data/
+graphify-out/
+supabase/.temp/
+*.local.md
+tasks/

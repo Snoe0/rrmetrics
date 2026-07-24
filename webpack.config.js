@@ -4,11 +4,6 @@ const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 module.exports = {
     entry: {
         app: './client/trades.jsx',
-        login: './client/login.jsx',
-        changepass: './client/changepass.jsx',
-        landing: './client/landing.jsx',
-        upgrade: './client/upgrade.jsx',
-        admin: './client/admin.jsx',
     },
     module: {
         rules: [
