@@ -2,6 +2,8 @@
 
 **Open-source, self-hosted trading journal.** Log your trades, sync them automatically from your broker, and analyze your performance — all on your own machine, in a single SQLite file you own.
 
+**Website:** [rrmetrics.com](https://rrmetrics.com)
+
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Node >= 20](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://nodejs.org)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
