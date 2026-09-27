@@ -184,6 +184,20 @@ export async function deleteSession(
 
 // --- Trades ---
 
+export async function getTrades(
+  db: Db,
+  userId: string,
+): Promise<BacktestingTradeAPI[]> {
+  const rows = db
+    .prepare(
+      `SELECT * FROM backtesting_trades
+       WHERE user_id = ?
+       ORDER BY created_at ASC`,
+    )
+    .all(userId);
+  return rows.map(tradeRowToAPI);
+}
+
 export async function getTradesForSession(
   db: Db,
   userId: string,

@@ -109,6 +109,20 @@ backtesting.get('/api/backtesting/sessions/:id/trades', requiresLogin, async (c)
   }
 });
 
+// GET /api/backtesting/trades — list all trades across sessions
+backtesting.get('/api/backtesting/trades', requiresLogin, async (c) => {
+  const user = c.get('user');
+  const db = c.get('db');
+
+  try {
+    const trades = await backtestingDb.getTrades(db, user.id);
+    return c.json({ trades });
+  } catch (err) {
+    console.error('getTrades error:', err);
+    return c.json({ error: 'Failed to fetch trades' }, 500);
+  }
+});
+
 // POST /api/backtesting/trades — add a trade to the active session
 backtesting.post('/api/backtesting/trades', requiresLogin, async (c) => {
   const user = c.get('user');
